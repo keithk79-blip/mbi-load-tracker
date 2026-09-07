@@ -273,8 +273,8 @@ export const STATIONS: Station[] = [
   {
     id: "gray-tank",
     name: "Gray Tank",
-    commodities: ["Trash (MSW)", "Recycle", "Yard Waste", "Cardboard", "Leachate (tanker)"],
-    destinations: ["RSI", "Hodgkins", "Homewood", "DeKalb", "CID", "Kankakee", "Rockford", "Prairie Hill", "Pontiac", "Liberty", "Newton County", "Covanta", "Loop", "Willow Ranch", "Organix"],
+    commodities: ["Leachate (tanker)"],
+    destinations: ["FRWRD", "CID", "Dekalb Sanitary"],
   },
   {
     id: "herthside",

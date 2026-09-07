@@ -44,6 +44,11 @@ describe("pickup stations", () => {
     expect(commoditiesFor("wheeling")).toContain("Recycle");
     expect(destinationsFor("wheeling")).toContain("Groot");
   });
+
+  it("restricts Gray Tank to leachate → FRWRD, CID, Dekalb Sanitary", () => {
+    expect(commoditiesFor("gray-tank")).toEqual(["Leachate (tanker)"]);
+    expect(destinationsFor("gray-tank")).toEqual(["FRWRD", "CID", "Dekalb Sanitary"]);
+  });
 });
 
 

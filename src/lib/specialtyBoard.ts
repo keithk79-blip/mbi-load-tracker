@@ -1,5 +1,7 @@
 /** Walking-floor / specialty load board (day-scoped open slots). */
 
+import { destinationsFor } from "../data/stations";
+
 export type SpecialtyStation = {
   id: string;
   name: string;
@@ -48,6 +50,12 @@ export const SPECIALTY_DESTINATIONS = [
   "Willow Ranch",
   "Organix",
 ] as const;
+
+/** Per-station dest chips; Gray Tank is leachate-only (matches log-load cascade). */
+export function specialtyDestinationsFor(stationId: string): readonly string[] {
+  if (stationId === "gray-tank") return destinationsFor("gray-tank");
+  return SPECIALTY_DESTINATIONS;
+}
 
 export type SpecialtySlot = {
   id: string;
