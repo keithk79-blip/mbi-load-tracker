@@ -14,9 +14,16 @@ import {
   boardForDate,
   consumeSpecialtyOpens,
   countSpecialtyOpens,
+  matchingSpecialtySlotIds,
+  mergeSpecialtyStores,
   notifySpecialtyBoardChanged,
+  readSpecialtyDeletedIds,
   readSpecialtyStore,
   removeSpecialtySlot,
+  resolveSpecialtyStationId,
+  sameSpecialtyDest,
+  sameSpecialtyStation,
+  specialtyDateKey,
   writeSpecialtyStore,
   type SpecialtySlot,
   type SpecialtyStore,
@@ -56,10 +63,12 @@ const SpecialtyContext = createContext<SpecialtyContextValue | null>(null);
 function rowsToStore(rows: SpecialtyRow[]): SpecialtyStore {
   const store: SpecialtyStore = {};
   for (const row of rows) {
-    const date = row.date;
+    const date = specialtyDateKey(row.date);
     const slot: SpecialtySlot = {
       id: row.id,
-      stationId: row.station_id,
+      stationId:
+        resolveSpecialtyStationId(row.station_id, row.station_id) ??
+        row.station_id,
       destination: row.destination,
       createdAt: row.created_at,
     };
@@ -69,21 +78,7 @@ function rowsToStore(rows: SpecialtyRow[]): SpecialtyStore {
   return store;
 }
 
-/** Union slots by id per date (later arg wins on same id). */
-export function mergeSpecialtyStores(
-  a: SpecialtyStore,
-  b: SpecialtyStore,
-): SpecialtyStore {
-  const dates = new Set([...Object.keys(a), ...Object.keys(b)]);
-  const out: SpecialtyStore = {};
-  for (const date of dates) {
-    const byId = new Map<string, SpecialtySlot>();
-    for (const s of a[date] ?? []) byId.set(s.id, s);
-    for (const s of b[date] ?? []) byId.set(s.id, s);
-    out[date] = [...byId.values()];
-  }
-  return out;
-}
+export { mergeSpecialtyStores } from "../lib/specialtyBoard";
 
 export function SpecialtyProvider({ children }: { children: ReactNode }) {
   const { configured, session, user } = useAuth();
@@ -92,11 +87,28 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
   const storeRef = useRef(store);
   storeRef.current = store;
   const uploadingRef = useRef(false);
+  const deletedIdsRef = useRef<Set<string>>(new Set(readSpecialtyDeletedIds()));
 
   const persistLocal = useCallback((next: SpecialtyStore) => {
-    writeSpecialtyStore(next);
+    writeSpecialtyStore(next, [...deletedIdsRef.current]);
     setStore(next);
     notifySpecialtyBoardChanged();
+  }, []);
+
+  const rememberDeleted = useCallback((ids: string[]) => {
+    if (!ids.length) return;
+    for (const id of ids) deletedIdsRef.current.add(id);
+  }, []);
+
+  const gcDeleted = useCallback((remote: SpecialtyStore) => {
+    const remoteIds = new Set(
+      Object.values(remote)
+        .flat()
+        .map((s) => s.id),
+    );
+    for (const id of [...deletedIdsRef.current]) {
+      if (!remoteIds.has(id)) deletedIdsRef.current.delete(id);
+    }
   }, []);
 
   const pullRemote = useCallback(async (): Promise<SpecialtyStore | null> => {
@@ -112,11 +124,26 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
     return rowsToStore(data as SpecialtyRow[]);
   }, [session]);
 
+  const cloudDeleteIds = useCallback(
+    async (ids: string[]) => {
+      if (!ids.length) return;
+      const supabase = getSupabase();
+      if (!supabase) return;
+      const { error } = await supabase
+        .from("specialty_opens")
+        .delete()
+        .in("id", ids);
+      if (error) console.warn("specialty consume failed", error.message);
+    },
+    [],
+  );
+
   const uploadMissingLocal = useCallback(
     async (remote: SpecialtyStore, local: SpecialtyStore) => {
+      const deleted = deletedIdsRef.current;
       const supabase = getSupabase();
       if (!supabase || !session || uploadingRef.current) {
-        return mergeSpecialtyStores(local, remote);
+        return mergeSpecialtyStores(local, remote, deleted);
       }
       uploadingRef.current = true;
       try {
@@ -135,10 +162,10 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
         }[] = [];
         for (const [date, slots] of Object.entries(local)) {
           for (const slot of slots) {
-            if (remoteIds.has(slot.id)) continue;
+            if (remoteIds.has(slot.id) || deleted.has(slot.id)) continue;
             inserts.push({
               id: slot.id,
-              date,
+              date: specialtyDateKey(date),
               station_id: slot.stationId,
               destination: slot.destination,
               created_at: slot.createdAt,
@@ -148,30 +175,31 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
         }
 
         if (!inserts.length) {
-          // Nothing to upload — remote is authority (cross-device deletes apply).
-          return remote;
+          // Nothing to upload — remote is authority (cross-device deletes apply),
+          // but locally consumed ids must not come back from a stale pull.
+          return mergeSpecialtyStores({}, remote, deleted);
         }
 
         const { error } = await supabase.from("specialty_opens").upsert(inserts);
         if (error) {
           console.warn("specialty upload failed", error.message);
           // Never persist empty remote alone after a failed upload.
-          return mergeSpecialtyStores(local, remote);
+          return mergeSpecialtyStores(local, remote, deleted);
         }
 
         const pulled = await pullRemote();
         if (!pulled) {
-          return mergeSpecialtyStores(local, remote);
+          return mergeSpecialtyStores(local, remote, deleted);
         }
 
         const pulledCount = Object.values(pulled).flat().length;
         if (pulledCount === 0 && inserts.length > 0) {
           // Pull came back empty but we still have local slots we tried to upload.
-          return mergeSpecialtyStores(local, remote);
+          return mergeSpecialtyStores(local, remote, deleted);
         }
 
         // Successful upload + non-empty pull: remote/pulled is authority.
-        return pulled;
+        return mergeSpecialtyStores({}, pulled, deleted);
       } finally {
         uploadingRef.current = false;
       }
@@ -187,10 +215,18 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
     const remote = await pullRemote();
     // Pull failure: leave local store untouched.
     if (!remote) return;
+    const lingering = [...deletedIdsRef.current].filter((id) =>
+      Object.values(remote)
+        .flat()
+        .some((s) => s.id === id),
+    );
+    if (lingering.length) await cloudDeleteIds(lingering);
+    const remoteAfter = lingering.length ? ((await pullRemote()) ?? remote) : remote;
+    gcDeleted(remoteAfter);
     const local = readSpecialtyStore();
-    const next = await uploadMissingLocal(remote, local);
+    const next = await uploadMissingLocal(remoteAfter, local);
     persistLocal(next);
-  }, [cloud, persistLocal, pullRemote, uploadMissingLocal]);
+  }, [cloud, cloudDeleteIds, gcDeleted, persistLocal, pullRemote, uploadMissingLocal]);
 
   useEffect(() => {
     void refresh();
@@ -225,9 +261,9 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
         if (supabase) {
           const { error } = await supabase.from("specialty_opens").upsert({
             id: added.id,
-            date,
-            station_id: stationId,
-            destination,
+            date: specialtyDateKey(date),
+            station_id: added.stationId,
+            destination: added.destination,
             created_at: added.createdAt,
             created_by: user?.id ?? null,
           });
@@ -245,9 +281,8 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
       if (destination) {
         for (let i = before.length - 1; i >= 0; i--) {
           if (
-            before[i].stationId === stationId &&
-            before[i].destination.trim().toLowerCase() ===
-              destination.trim().toLowerCase()
+            sameSpecialtyStation(before[i].stationId, stationId) &&
+            sameSpecialtyDest(before[i].destination, destination)
           ) {
             target = before[i];
             break;
@@ -256,7 +291,7 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
       }
       if (!target) {
         for (let i = before.length - 1; i >= 0; i--) {
-          if (before[i].stationId === stationId) {
+          if (sameSpecialtyStation(before[i].stationId, stationId)) {
             target = before[i];
             break;
           }
@@ -268,19 +303,13 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
         stationId,
         destination,
       );
+      if (target) rememberDeleted([target.id]);
       persistLocal(next);
       if (cloud && target) {
-        const supabase = getSupabase();
-        if (supabase) {
-          const { error } = await supabase
-            .from("specialty_opens")
-            .delete()
-            .eq("id", target.id);
-          if (error) console.warn("specialty delete failed", error.message);
-        }
+        await cloudDeleteIds([target.id]);
       }
     },
-    [cloud, persistLocal],
+    [cloud, cloudDeleteIds, persistLocal, rememberDeleted],
   );
 
   const consumeOpens = useCallback(
@@ -298,17 +327,13 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
       );
       const burn = Math.min(opens, Math.max(0, Math.floor(count)));
       if (burn === 0) return 0;
-      const victims: string[] = [];
-      const board = boardForDate(storeRef.current, date);
-      const dest = destination.trim().toLowerCase();
-      for (let i = board.length - 1; i >= 0 && victims.length < burn; i--) {
-        if (
-          board[i].stationId === stationId &&
-          board[i].destination.trim().toLowerCase() === dest
-        ) {
-          victims.push(board[i].id);
-        }
-      }
+      const victims = matchingSpecialtySlotIds(
+        storeRef.current,
+        date,
+        stationId,
+        destination,
+        burn,
+      );
       const next = consumeSpecialtyOpens(
         storeRef.current,
         date,
@@ -316,20 +341,14 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
         destination,
         burn,
       );
+      rememberDeleted(victims);
       persistLocal(next);
       if (cloud && victims.length) {
-        const supabase = getSupabase();
-        if (supabase) {
-          const { error } = await supabase
-            .from("specialty_opens")
-            .delete()
-            .in("id", victims);
-          if (error) console.warn("specialty consume failed", error.message);
-        }
+        await cloudDeleteIds(victims);
       }
       return burn;
     },
-    [cloud, persistLocal],
+    [cloud, cloudDeleteIds, persistLocal, rememberDeleted],
   );
 
   const value = useMemo<SpecialtyContextValue>(
