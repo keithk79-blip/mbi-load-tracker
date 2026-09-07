@@ -27,12 +27,13 @@ export function applyPickupCascade(
   }
 
   const commodities = commoditiesFor(stationId);
-  const destinations = destinationsFor(stationId);
+  const nextCommodity = !commodity || commodities.includes(commodity) ? commodity : "";
+  const destinations = destinationsFor(stationId, nextCommodity);
   const commodityValid = !commodity || commodities.includes(commodity);
   const destinationValid = !destination || destinations.includes(destination);
 
   return {
-    commodity: commodityValid ? commodity : "",
+    commodity: nextCommodity,
     destination: destinationValid ? destination : "",
     commodityValid,
     destinationValid,

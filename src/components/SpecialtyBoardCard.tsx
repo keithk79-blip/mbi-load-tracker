@@ -2,10 +2,11 @@ import { useMemo, useState } from "react";
 import { ChevronDown, Minus, Plus } from "lucide-react";
 import { formatHeaderDate } from "../lib/chicagoDate";
 import {
-  SPECIALTY_DESTINATIONS,
   SPECIALTY_STATIONS,
   destSummary,
   slotsForStation,
+  specialtyDestHint,
+  specialtyDestinationsFor,
 } from "../lib/specialtyBoard";
 import { useSpecialty } from "../store/SpecialtyContext";
 import { Chip } from "./Chip";
@@ -103,9 +104,9 @@ export function SpecialtyBoardCard({ date }: { date: string }) {
 
                   {picking ? (
                     <div className="specialty-picker">
-                      <p className="field-hint tight">Destination for new open load</p>
+                      <p className="field-hint tight">{specialtyDestHint(station.id)}</p>
                       <div className="chip-row">
-                        {SPECIALTY_DESTINATIONS.map((dest) => (
+                        {specialtyDestinationsFor(station.id).map((dest) => (
                           <Chip
                             key={dest}
                             label={dest}

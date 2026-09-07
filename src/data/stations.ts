@@ -3,6 +3,8 @@ export type Station = {
   name: string;
   commodities: string[];
   destinations: string[];
+  /** When set, dest chips cascade from the selected commodity. */
+  destinationsByCommodity?: Record<string, string[]>;
 };
 
 export const CUSTOM_ID = "custom";
@@ -36,6 +38,7 @@ export const STATIONS: Station[] = [
       "Christianson Farms",
       "Hodgkins",
       "Homewood",
+      "Organix",
     ],
   },
   {
@@ -98,6 +101,7 @@ export const STATIONS: Station[] = [
       "Covanta",
       "Willow Ranch",
       "Zion",
+      "Homewood",
     ],
   },
   {
@@ -267,21 +271,29 @@ export const STATIONS: Station[] = [
   {
     id: "hodgkins",
     name: "Hodgkins",
-    commodities: ["Trash (MSW)", "Recycle", "Yard Waste", "Cardboard"],
-    destinations: ["RSI", "Hodgkins", "Homewood", "DeKalb", "CID", "Kankakee", "Rockford", "Prairie Hill", "Pontiac", "Liberty", "Newton County", "Covanta", "Loop", "Willow Ranch", "Organix"],
+    commodities: ["Residual", "Glass"],
+    destinations: ["Pontiac", "Liberty", "Strategic", "Resource MGT"],
+    destinationsByCommodity: {
+      Residual: ["Pontiac", "Liberty"],
+      Glass: ["Strategic", "Resource MGT"],
+    },
   },
   {
     id: "gray-tank",
     name: "Gray Tank",
-    commodities: ["Trash (MSW)", "Recycle", "Yard Waste", "Cardboard", "Leachate (tanker)"],
-    destinations: ["RSI", "Hodgkins", "Homewood", "DeKalb", "CID", "Kankakee", "Rockford", "Prairie Hill", "Pontiac", "Liberty", "Newton County", "Covanta", "Loop", "Willow Ranch", "Organix"],
+    commodities: ["Leachate (tanker)"],
+    destinations: ["FRWRD", "CID", "Dekalb Sanitary"],
   },
   {
     id: "herthside",
-    name: "Herthside",
-    commodities: ["Trash (MSW)", "Recycle", "Yard Waste", "Cardboard"],
-    destinations: ["RSI", "Hodgkins", "Homewood", "DeKalb", "CID", "Kankakee", "Rockford", "Prairie Hill", "Pontiac", "Liberty", "Newton County", "Covanta", "Loop", "Willow Ranch", "Organix"],
-  },];
+    name: "Hearthside",
+    commodities: ["Trash (MSW)"],
+    destinations: ["Newton County"],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["Newton County"],
+    },
+  },
+];
 
 if (STATIONS.length !== 30) {
   throw new Error(`Expected 30 stations, got ${STATIONS.length}`);
@@ -294,6 +306,7 @@ export const STATION_BY_ID: Record<string, Station> = Object.fromEntries(
 export const STATION_BY_NAME: Record<string, Station> = Object.fromEntries(
   STATIONS.map((station) => [station.name.toLowerCase(), station]),
 );
+STATION_BY_NAME.herthside = STATION_BY_ID.herthside;
 
 /** Shortcut chips shown before "+ more". */
 export const FREQUENT_STATION_IDS = [
@@ -319,9 +332,18 @@ export function commoditiesFor(stationId: string | undefined): string[] {
   return getStation(stationId)?.commodities ?? [];
 }
 
-export function destinationsFor(stationId: string | undefined): string[] {
+export function destinationsFor(
+  stationId: string | undefined,
+  commodity?: string,
+): string[] {
   if (stationId === CUSTOM_ID) return [...CUSTOM.exampleDestinations];
-  return getStation(stationId)?.destinations ?? [];
+  const station = getStation(stationId);
+  if (!station) return [];
+  const key = commodity?.trim();
+  if (key && station.destinationsByCommodity?.[key]) {
+    return station.destinationsByCommodity[key];
+  }
+  return station.destinations;
 }
 
 export function resolveStationId(pickup: string, stationId?: string): string {
