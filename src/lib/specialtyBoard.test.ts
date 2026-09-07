@@ -109,6 +109,25 @@ describe("specialty walking-floor catalog", () => {
     });
   });
 
+  it("lists only Pontiac, Christianson Farms, Organix, Homewood on Apollo specialty chips", () => {
+    expect(specialtyDestinationsFor("apollo")).toEqual([
+      "Pontiac",
+      "Christianson Farms",
+      "Organix",
+      "Homewood",
+    ]);
+    expect(specialtyDestinationsFor("apollo")).not.toContain("Newton County");
+    expect(specialtyDestinationsFor("apollo")).not.toContain("Hodgkins");
+    expect(applyPickupCascade("apollo", "Trash (MSW)", "Newton County")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+    expect(applyPickupCascade("apollo", "Yard Waste", "Organix")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+  });
+
   it("maps Liberty Tank labels to liberty-tank without treating leachate Liberty as the card", () => {
     expect(resolveSpecialtyStationId("liberty-tank")).toBe("liberty-tank");
     expect(resolveSpecialtyStationId(undefined, "Liberty Tank")).toBe("liberty-tank");

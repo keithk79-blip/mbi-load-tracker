@@ -73,6 +73,17 @@ describe("pickup stations", () => {
       "Resource MGT",
     ]);
   });
+
+  it("keeps Apollo log-load Newton County while specialty chips omit it", () => {
+    expect(destinationsFor("apollo")).toEqual([
+      "Newton County",
+      "Pontiac",
+      "Christianson Farms",
+      "Hodgkins",
+      "Homewood",
+      "Organix",
+    ]);
+  });
 });
 
 
