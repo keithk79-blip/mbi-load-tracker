@@ -2050,12 +2050,17 @@ body.app-ready .splash {
 @keyframes traffic-spin {
   to { transform: rotate(360deg); }
 }
-.traffic-card-collapsed .traffic-body {
-  display: none;
-}
 .traffic-body {
+  display: none;
   padding: 0 12px 12px;
   border-top: 1px solid var(--line);
+}
+.traffic-card[data-expanded="true"] .traffic-body {
+  display: block;
+}
+.traffic-card-collapsed .traffic-body,
+.traffic-body[hidden] {
+  display: none !important;
 }
 .traffic-status {
   margin: 10px 2px;
