@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ChevronDown,
@@ -15,6 +15,10 @@ import {
   type ChicagoTrafficSnapshot,
   type TrafficAlert,
 } from "../lib/chicagoTraffic";
+import {
+  forgetChicagoTrafficOpen,
+  initialChicagoTrafficOpen,
+} from "../lib/trafficCardOpen";
 
 const REFRESH_MS = 4 * 60 * 1000;
 
@@ -46,11 +50,22 @@ function AlertRow({
 }
 
 export function ChicagoTrafficCard() {
-  const [open, setOpen] = useState(false);
+  // Button accordion only — never <details open>, which browsers restore on refresh.
+  const [open, setOpen] = useState(initialChicagoTrafficOpen);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [snap, setSnap] = useState<ChicagoTrafficSnapshot | null>(null);
   const [tick, setTick] = useState(0);
+
+  useLayoutEffect(() => {
+    const collapse = () => {
+      forgetChicagoTrafficOpen();
+      setOpen(false);
+    };
+    collapse();
+    window.addEventListener("pageshow", collapse);
+    return () => window.removeEventListener("pageshow", collapse);
+  }, []);
 
   const load = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
@@ -106,7 +121,10 @@ export function ChicagoTrafficCard() {
   }, [snap, count, open, tick]);
 
   return (
-    <article className={`traffic-card${open ? "" : " traffic-card-collapsed"}`}>
+    <article
+      className={open ? "traffic-card" : "traffic-card traffic-card-collapsed"}
+      data-expanded={open ? "true" : "false"}
+    >
       <button
         type="button"
         className="traffic-toggle"
@@ -146,8 +164,9 @@ export function ChicagoTrafficCard() {
         </span>
       </button>
 
-      {open ? (
-        <div className="traffic-body">
+      <div className="traffic-body" hidden={!open} aria-hidden={!open}>
+        {open ? (
+          <>
           {loading && !snap ? (
             <p className="traffic-status">Loading corridor alerts…</p>
           ) : allFailed ? (
@@ -207,8 +226,9 @@ export function ChicagoTrafficCard() {
           )}
 
           <p className="traffic-attrib">Data: SigAlert</p>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </div>
     </article>
   );
 }
