@@ -182,6 +182,27 @@ describe("specialty walking-floor catalog", () => {
     });
   });
 
+  it("lists only Hodgkins, Thelens, Organix on the N. Lake specialty card", () => {
+    expect(SPECIALTY_STATIONS.find((s) => s.id === "northlake")).toEqual({
+      id: "northlake",
+      name: "N. Lake",
+    });
+    expect(specialtyDestinationsFor("northlake")).toEqual([
+      "Hodgkins",
+      "Thelens",
+      "Organix",
+    ]);
+    expect(specialtyDestinationsFor("northlake")).not.toContain("Newton County");
+    expect(specialtyDestinationsFor("northlake")).not.toContain("Pontiac");
+    expect(specialtyDestinationsFor("northlake")).not.toContain("Winnebago");
+    expect(resolveSpecialtyStationId("northlake", "Northlake")).toBe("northlake");
+    expect(resolveSpecialtyStationId(undefined, "N. Lake")).toBe("northlake");
+    expect(applyPickupCascade("northlake", "Trash (MSW)", "Newton County")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+  });
+
   it("maps Liberty Tank labels to liberty-tank without treating leachate Liberty as the card", () => {
     expect(resolveSpecialtyStationId("liberty-tank")).toBe("liberty-tank");
     expect(resolveSpecialtyStationId(undefined, "Liberty Tank")).toBe("liberty-tank");

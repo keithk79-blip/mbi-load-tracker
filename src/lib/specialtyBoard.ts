@@ -68,6 +68,7 @@ const SPECIALTY_DEST_OVERRIDES: Record<string, readonly string[]> = {
   ],
   melrose: ["Hodgkins", "RSI", "Willow Ranch", "Homewood"],
   batavia: ["Hodgkins", "Lake Co MRF", "RSI"],
+  northlake: ["Hodgkins", "Thelens", "Organix"],
 };
 
 /** Per-station dest chips; restricted yards match (or subset) log-load dests. */
@@ -94,6 +95,9 @@ export function specialtyDestHint(stationId: string): string {
   }
   if (stationId === "batavia") {
     return "Hodgkins · Lake Co MRF · RSI";
+  }
+  if (stationId === "northlake") {
+    return "Hodgkins · Thelens · Organix";
   }
   return "Destination for new open load";
 }
