@@ -1,11 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  fetchChicagoTraffic,
   fetchSigalertFeedViaHttp,
   isConstructionType,
   isHotCorridor,
+  isTauriDesktop,
   parseSigalertTrafficData,
   primaryRoad,
   severityLabel,
+  SIGALERT_PAGES_PATH,
   sigalertDataUrls,
   snapshotFromSigalertIncidents,
   totalAlerts,
@@ -106,6 +109,49 @@ describe("helpers", () => {
     const long = "x".repeat(200);
     expect(truncateTrafficError(long).endsWith("…")).toBe(true);
     expect(truncateTrafficError(long).length).toBeLessThanOrEqual(180);
+  });
+});
+
+describe("web /api/sigalert path", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("loads the Pages proxy and does not invoke Tauri", async () => {
+    expect(isTauriDesktop()).toBe(false);
+    const invoke = vi.fn();
+    vi.stubGlobal("__TAURI_INTERNALS__", undefined);
+    const incidents = [
+      [1, 2002, "6:01 PM", "I-57 North between Sibley Blvd and Dixie Hwy", "Closed for accident investigation", 100, 0, 0, "", ""],
+      [2, 9999, "1:00 PM", "Hawley Rd at I-94", "Accident", 80, 0, 0, "", ""],
+    ];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      expect(url).toBe(SIGALERT_PAGES_PATH);
+      expect(url.startsWith("https://")).toBe(false);
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            region: "Chicago",
+            path: "Chicago/3~j",
+            cacheBuster: 31971508,
+            incidents,
+          }),
+      } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const snap = await fetchChicagoTraffic();
+    expect(invoke).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(SIGALERT_PAGES_PATH);
+    expect(snap.errors).toEqual([]);
+    expect(snap.incidents.map((a) => a.title)).toEqual([
+      "I-57 North between Sibley Blvd and Dixie Hwy",
+    ]);
+    expect(isHotCorridor(snap.incidents[0]!.title)).toBe(true);
   });
 });
 

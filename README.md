@@ -79,7 +79,11 @@ After a successful build you should have:
 
 This Linux/cloud environment scaffolds the Tauri project and can compile the frontend, but it does **not** produce a Windows installer (no MSVC/WiX/NSIS Windows toolchain here). After merging native-shell changes (including the SigAlert reqwest command used by the Chicago traffic card), run **`npm run tauri:build` on a Windows machine** — a cloud VM typically cannot complete the full Tauri NSIS/MSI bundle.
 
-The desktop Chicago traffic card reads the **SigAlert Chicago** feed (`Map.asp` then rotating `ChicagoData.json` under `cdn-dynamic.sigalert.com`). Fetch runs in a Rust Tauri command (`fetch_sigalert_chicago`, reqwest + rustls). `@tauri-apps/plugin-http` remains a fallback (SigAlert hosts in `src-tauri/capabilities/default.json`). The browser web app still omits that card.
+The **Chicago traffic** card on Today reads the **SigAlert Chicago** feed (`Map.asp` then rotating `ChicagoData.json` under `cdn-dynamic.sigalert.com`) on both desktop and the web/phone app.
+
+- **Windows (Tauri):** Rust command `fetch_sigalert_chicago` (reqwest + rustls). `@tauri-apps/plugin-http` remains a fallback (SigAlert hosts in `src-tauri/capabilities/default.json`).
+- **Web / phone (Cloudflare Pages):** `functions/api/sigalert.ts` proxies the same two-step fetch so the browser does not hit SigAlert CORS. The card calls `GET /api/sigalert` and reuses the existing hot-corridor filter.
+- **`npm run dev`:** Vite middleware serves `/api/sigalert` with that same Node-side fetch. Production traffic on Pages requires deploying the `functions/` directory.
 
 Optional last-resort cross-compile from Linux (NSIS only, not the recommended path): see [Tauri Windows installer — build on Linux](https://v2.tauri.app/distribute/windows-installer/#build-windows-apps-on-linux-and-macos) (`cargo-xwin` + `x86_64-pc-windows-msvc`).
 
@@ -180,7 +184,7 @@ truck,pickup,commodity,destination
 
 | Tab / screen | What it does |
 | --- | --- |
-| **Today** | Running feed, commodity tallies, **+ Log load**. On desktop this sits beside Day Totals. The **Windows (Tauri) app** also shows a Chicago hot-corridor traffic card from **SigAlert** (not shown in the browser). |
+| **Today** | Running feed, commodity tallies, **+ Log load**. On desktop this sits beside Day Totals. **Chicago traffic** (SigAlert hot corridors) shows on web, phone, and the Windows app. |
 | **Log load** | Truck # (keyboard or numpad), 17 stations or Custom, cascading commodity + destination |
 | **Custom** | Free-text pickup / commodity / destination, with leachate tanker suggestions (CID, Kankakee, Reworld) |
 | **Trucks** | Search a unit, pick any calendar day, list that day’s loads |
@@ -207,7 +211,7 @@ When pickup changes, invalid commodity and destination values are cleared and sh
 11. Switch Totals to yesterday via the day chips. Counts should match that day’s loads. **Jump to today** returns to the current Chicago date.
 12. Totals → **Export CSV** and open the file: four columns (`truck,pickup,commodity,destination`), no extra fields.
 13. Widen the window past 960px (or run `npm run tauri dev` on Windows). Confirm sidebar, Today + Totals side-by-side, and that typing a truck # + Enter works.
-13b. In the **Windows desktop** app only, Today shows a **Chicago traffic** card (SigAlert · Chicago). Incidents sort severe → moderate → minor; construction-like rows sit under Construction. The web/phone Today screen must **not** show this card. If the feed fails, the card shows a truncated error (not only a generic message). After pulling native-shell changes, rebuild on Windows with `npm run tauri:build`.
+13b. On **Today** (web, phone, and Windows), the **Chicago traffic** card (SigAlert · Chicago) lists hot-corridor incidents. Incidents sort severe → moderate → minor; construction-like rows sit under Construction. Web/phone load via `/api/sigalert` (Pages Function in production, Vite middleware in `npm run dev`) — they must **not** call the Tauri invoke. If the feed fails, the card shows a truncated error. After merging, redeploy Cloudflare Pages **including `functions/`**, and rebuild the Windows exe (`npm run tauri:build`) so both platforms match.
 14. **Clear sample loads** (local-only mode) and confirm only loads you logged remain (or the feed is empty).
 15. With Supabase configured: sign in on two browsers as different users; log a load on one and confirm the other Today/Totals update without a refresh.
 

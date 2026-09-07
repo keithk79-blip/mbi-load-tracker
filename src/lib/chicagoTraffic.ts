@@ -1,6 +1,28 @@
 /** Chicago hot-corridor traffic from SigAlert.
- * Desktop (Tauri) only — native reqwest command first, plugin-http fallback.
+ * Desktop: Tauri command `fetch_sigalert_chicago`, plugin-http fallback.
+ * Web / phone: GET /api/sigalert (Cloudflare Pages Function, or Vite middleware in `npm run dev`).
  */
+
+import {
+  errorDetail,
+  fetchSigalertFeedViaHttp,
+  parseSigalertTrafficData,
+  sigalertDataUrls,
+  SIGALERT_PAGES_PATH,
+  truncateTrafficError,
+  type SigalertFeed,
+  type SigalertTrafficMeta,
+} from "./sigalertHttp";
+
+export {
+  errorDetail,
+  fetchSigalertFeedViaHttp,
+  parseSigalertTrafficData,
+  sigalertDataUrls,
+  SIGALERT_PAGES_PATH,
+  truncateTrafficError,
+};
+export type { SigalertFeed, SigalertTrafficMeta };
 
 export type TrafficAlertKind = "incident" | "construction" | "travel";
 
@@ -23,21 +45,6 @@ export type ChicagoTrafficSnapshot = {
   errors: string[];
 };
 
-export type SigalertFeed = {
-  region?: string;
-  path?: string;
-  cacheBuster?: number;
-  incidents?: unknown;
-};
-
-export type SigalertTrafficMeta = {
-  id: string;
-  region: string;
-  path: string;
-  cacheBuster: number;
-  rootPath: string;
-};
-
 /** SigAlert incident row indexes (verified against live ChicagoData.json / client JS). */
 export const SIGALERT_IDX = {
   rowId: 0,
@@ -50,10 +57,7 @@ export const SIGALERT_IDX = {
   updated: 9,
 } as const;
 
-const MAP_URL = "https://www.sigalert.com/Map.asp?region=Chicago";
-
 const ALERT_CAP = 12;
-const ERROR_MAX = 180;
 
 /** Hot corridors — match the primary road (before "between" / "at"). */
 const CORRIDOR_RES: RegExp[] = [
@@ -129,28 +133,6 @@ export function severityLabel(score: number): "severe" | "moderate" | "minor" {
   return "minor";
 }
 
-export function truncateTrafficError(text: string, max = ERROR_MAX): string {
-  const flat = text.replace(/\s+/g, " ").trim();
-  if (flat.length <= max) return flat;
-  return `${flat.slice(0, max - 1).trimEnd()}…`;
-}
-
-export function errorDetail(err: unknown): string {
-  if (typeof err === "string") return err;
-  if (err instanceof Error && err.message) return err.message;
-  if (err && typeof err === "object") {
-    const rec = err as { message?: unknown; error?: unknown };
-    if (typeof rec.message === "string" && rec.message.trim()) return rec.message;
-    if (typeof rec.error === "string" && rec.error.trim()) return rec.error;
-    try {
-      return JSON.stringify(err);
-    } catch {
-      /* fall through */
-    }
-  }
-  return String(err);
-}
-
 function cell(row: unknown[], i: number): unknown {
   return i >= 0 && i < row.length ? row[i] : undefined;
 }
@@ -172,85 +154,6 @@ function parseTs(raw: string): number | null {
   if (!raw) return null;
   const t = Date.parse(raw);
   return Number.isFinite(t) ? t : null;
-}
-
-export function parseSigalertTrafficData(html: string): SigalertTrafficMeta {
-  const key = '"trafficData"';
-  const start = html.indexOf(key);
-  if (start < 0) throw new Error("Map.asp HTML missing trafficData");
-  const after = html.slice(start + key.length);
-  const bracket = after.indexOf("[");
-  if (bracket < 0) throw new Error("Map.asp trafficData is not an array");
-  const src = after.slice(bracket);
-  let depth = 0;
-  let inStr = false;
-  let escape = false;
-  let end = -1;
-  for (let i = 0; i < src.length; i++) {
-    const ch = src[i];
-    if (inStr) {
-      if (escape) {
-        escape = false;
-        continue;
-      }
-      if (ch === "\\") {
-        escape = true;
-        continue;
-      }
-      if (ch === '"') inStr = false;
-      continue;
-    }
-    if (ch === '"') {
-      inStr = true;
-      continue;
-    }
-    if (ch === "[") depth += 1;
-    else if (ch === "]") {
-      depth -= 1;
-      if (depth === 0) {
-        end = i;
-        break;
-      }
-    }
-  }
-  if (end < 0) throw new Error("unterminated trafficData array in Map.asp");
-  const entries = JSON.parse(src.slice(0, end + 1)) as Array<{
-    id?: string;
-    region?: string;
-    path?: string;
-    cacheBuster?: number;
-    rootPath?: string;
-  }>;
-  const chicago = entries.find(
-    (e) =>
-      (e.id && e.id.toLowerCase() === "chicago") ||
-      (e.region && e.region.toLowerCase() === "chicago"),
-  );
-  if (!chicago?.path) throw new Error("Map.asp trafficData has no Chicago region");
-  const cacheBuster = Number(chicago.cacheBuster);
-  if (!Number.isFinite(cacheBuster)) {
-    throw new Error("Map.asp Chicago trafficData missing cacheBuster");
-  }
-  return {
-    id: chicago.id || "Chicago",
-    region: chicago.region || "Chicago",
-    path: chicago.path,
-    cacheBuster,
-    rootPath: chicago.rootPath || "/Data",
-  };
-}
-
-export function sigalertDataUrls(meta: SigalertTrafficMeta): string[] {
-  const root = (meta.rootPath || "/Data").replace(/\/+$/, "");
-  const path = meta.path.replace(/^\/+|\/+$/g, "");
-  const region = meta.region || "Chicago";
-  const file = `${region}Data.json`;
-  const q = `cb=${meta.cacheBuster}`;
-  return [
-    `https://cdn-dynamic.sigalert.com${root}/${path}/${file}?${q}`,
-    `https://www.sigalert.com${root}/${path}/${file}?${q}`,
-    `https://cdn.sigalert.com${root}/${path}/${file}?${q}`,
-  ];
 }
 
 type RawIncident = {
@@ -381,50 +284,20 @@ function asFeed(value: unknown, via: string): SigalertFeed {
   return value as SigalertFeed;
 }
 
-async function httpGetText(
-  fetchImpl: typeof fetch,
-  url: string,
-  accept: string,
-): Promise<string> {
-  const res = await fetchImpl(url, {
+export async function fetchSigalertFeedViaPages(
+  fetchImpl: typeof fetch = fetch,
+): Promise<SigalertFeed> {
+  const res = await fetchImpl(SIGALERT_PAGES_PATH, {
     method: "GET",
-    headers: {
-      Accept: accept,
-      Referer: MAP_URL,
-    },
+    headers: { Accept: "application/json" },
   });
   const body = await res.text();
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status} ${url} ${truncateTrafficError(body, 80)}`);
+    throw new Error(
+      `HTTP ${res.status} ${SIGALERT_PAGES_PATH} ${truncateTrafficError(body, 80)}`,
+    );
   }
-  return body;
-}
-
-export async function fetchSigalertFeedViaHttp(
-  fetchImpl: typeof fetch = fetch,
-): Promise<SigalertFeed> {
-  const html = await httpGetText(fetchImpl, MAP_URL, "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8");
-  const meta = parseSigalertTrafficData(html);
-  const urls = sigalertDataUrls(meta);
-  const errors: string[] = [];
-  for (const url of urls) {
-    try {
-      const body = await httpGetText(fetchImpl, url, "application/json,text/plain;q=0.9,*/*;q=0.8");
-      const parsed = JSON.parse(body) as { incidents?: unknown };
-      if (!Array.isArray(parsed.incidents)) {
-        throw new Error(`${url} missing incidents array`);
-      }
-      return {
-        region: meta.region,
-        path: meta.path,
-        cacheBuster: meta.cacheBuster,
-        incidents: parsed.incidents,
-      };
-    } catch (e) {
-      errors.push(errorDetail(e));
-    }
-  }
-  throw new Error(errors.join(" | ") || "SigAlert ChicagoData.json failed");
+  return asFeed(JSON.parse(body), "pages /api/sigalert");
 }
 
 async function loadSigalertFeed(): Promise<SigalertFeed> {
@@ -445,7 +318,7 @@ async function loadSigalertFeed(): Promise<SigalertFeed> {
       throw new Error(errors.join(" | "));
     }
   }
-  throw new Error("Chicago traffic is desktop-only");
+  return fetchSigalertFeedViaPages();
 }
 
 export async function fetchChicagoTraffic(): Promise<ChicagoTrafficSnapshot> {
