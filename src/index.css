@@ -1481,6 +1481,7 @@ body.app-ready .splash {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 6px 16px;
   background: #101218;
@@ -1488,6 +1489,14 @@ body.app-ready .splash {
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
+}
+
+.session-bar .text-btn:disabled {
+  opacity: 0.45;
+}
+
+.session-status.is-error {
+  color: var(--danger);
 }
 
 .session-actions {
