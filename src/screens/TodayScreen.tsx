@@ -15,7 +15,6 @@ import { DriversCard } from "../components/DriversCard";
 import { StationCallsCard } from "../components/StationCallsCard";
 import { SpecialtyBoardCard } from "../components/SpecialtyBoardCard";
 import { ChicagoTrafficCard } from "../components/ChicagoTrafficCard";
-import { isTauriDesktop } from "../lib/chicagoTraffic";
 import { LoadRow } from "../components/LoadRow";
 
 type TodayScreenProps = {
@@ -101,7 +100,7 @@ export function TodayScreen({
         </article>
       </div>
 
-      {isTauriDesktop() ? <ChicagoTrafficCard /> : null}
+      <ChicagoTrafficCard />
 
       <DriversCard compact date={date} />
 
