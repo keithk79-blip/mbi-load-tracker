@@ -5,15 +5,19 @@ import {
   SPECIALTY_DESTINATIONS,
   SPECIALTY_STATIONS,
   addSpecialtySlot,
+  applySpecialtyTombstones,
   consumeSpecialtyOpens,
   countSpecialtyOpens,
+  destKeepAfterChange,
   isSpecialtyStationId,
   mergeSpecialtyStores,
   omitSpecialtyIds,
+  remainingSpecialtySlotIds,
   removeSpecialtySlot,
   resolveSpecialtyStationId,
   slotsForStation,
   specialtyDestinationsFor,
+  unkeptSpecialtyIds,
   type SpecialtyStore,
 } from "./specialtyBoard";
 
@@ -393,6 +397,132 @@ describe("specialty consume on logged loads", () => {
     expect(countSpecialtyOpens(kept, date, "wheeling", "Groot")).toBe(0);
   });
 
+  it("keeps Liberty CID dest-chip remove gone when remote still has that open", () => {
+    const date = "2026-09-08";
+    let local = addSpecialtySlot({}, date, "liberty-tank", "CID");
+    const slotId = local[date][0].id;
+    const remote: SpecialtyStore = {
+      [date]: local[date].map((s) => ({ ...s })),
+    };
+
+    local = removeSpecialtySlot(local, date, "liberty-tank", "CID");
+    expect(countSpecialtyOpens(local, date, "liberty-tank", "CID")).toBe(0);
+
+    const bounced = mergeSpecialtyStores(local, remote);
+    expect(countSpecialtyOpens(bounced, date, "liberty-tank", "CID")).toBe(1);
+
+    const keep = destKeepAfterChange(local, date, "liberty-tank", "CID");
+    expect(keep.keepIds).toEqual([]);
+    const gone = mergeSpecialtyStores(local, remote, [slotId], [keep]);
+    expect(countSpecialtyOpens(gone, date, "liberty-tank", "CID")).toBe(0);
+    expect(
+      countSpecialtyOpens(
+        applySpecialtyTombstones(bounced, [slotId], [keep]),
+        date,
+        "liberty-tank",
+        "CID",
+      ),
+    ).toBe(0);
+  });
+
+  it("does not restore Liberty CID from a different-id remote liberty row after dest-chip remove", () => {
+    const date = "2026-09-08";
+    let local = addSpecialtySlot({}, date, "liberty-tank", "CID");
+    const localId = local[date][0].id;
+    const remote: SpecialtyStore = {
+      [date]: [
+        {
+          id: "remote-liberty-cid",
+          stationId: "liberty",
+          destination: "CID",
+          createdAt: "2026-09-08T12:00:00.000Z",
+        },
+        {
+          id: localId,
+          stationId: "liberty-tank",
+          destination: "CID",
+          createdAt: "2026-09-08T12:01:00.000Z",
+        },
+      ],
+    };
+
+    local = removeSpecialtySlot(local, date, "liberty-tank", "CID");
+    expect(countSpecialtyOpens(local, date, "liberty-tank", "CID")).toBe(0);
+
+    // PR #11 gap: UUID tombstone of the local slot still lets the catalog-id copy in.
+    const uuidOnly = mergeSpecialtyStores(local, remote, [localId]);
+    expect(countSpecialtyOpens(uuidOnly, date, "liberty-tank", "CID")).toBe(1);
+
+    const keep = destKeepAfterChange(local, date, "liberty-tank", "CID");
+    const gone = mergeSpecialtyStores(local, remote, [localId], [keep]);
+    expect(countSpecialtyOpens(gone, date, "liberty-tank", "CID")).toBe(0);
+    expect(
+      unkeptSpecialtyIds(remote, date, "liberty-tank", "CID", keep.keepIds).sort(),
+    ).toEqual(["remote-liberty-cid", localId].sort());
+    expect(countSpecialtyOpens(gone, date, "gray-tank", "CID")).toBe(0);
+  });
+
+  it("dest-chip minus of one Liberty CID keeps the remaining local slot and drops remote extras", () => {
+    const date = "2026-09-08";
+    let local = addSpecialtySlot({}, date, "liberty-tank", "CID");
+    local = addSpecialtySlot(local, date, "liberty-tank", "CID");
+    const keptId = local[date][0].id;
+    const removedId = local[date][1].id;
+    local = addSpecialtySlot(local, date, "gray-tank", "CID");
+    const grayId = local[date].find((s) => s.stationId === "gray-tank")?.id;
+    expect(grayId).toBeTruthy();
+
+    const remote: SpecialtyStore = {
+      [date]: [
+        ...local[date].map((s) => ({ ...s })),
+        {
+          id: "dup-liberty-alias",
+          stationId: "Liberty",
+          destination: "CID",
+          createdAt: "2026-09-08T15:00:00.000Z",
+        },
+      ],
+    };
+
+    local = removeSpecialtySlot(local, date, "liberty-tank", "CID");
+    expect(countSpecialtyOpens(local, date, "liberty-tank", "CID")).toBe(1);
+    expect(remainingSpecialtySlotIds(local, date, "liberty-tank", "CID")).toEqual([
+      keptId,
+    ]);
+
+    const keep = destKeepAfterChange(local, date, "liberty-tank", "CID");
+    const merged = mergeSpecialtyStores(local, remote, [removedId], [keep]);
+    expect(countSpecialtyOpens(merged, date, "liberty-tank", "CID")).toBe(1);
+    expect(remainingSpecialtySlotIds(merged, date, "liberty-tank", "CID")).toEqual([
+      keptId,
+    ]);
+    expect(countSpecialtyOpens(merged, date, "gray-tank", "CID")).toBe(1);
+  });
+
+  it("station minus of Liberty CID stays gone after UUID tombstone GC if dest-keep remains", () => {
+    const date = "2026-09-08";
+    let local = addSpecialtySlot({}, date, "liberty-tank", "CID");
+    const slotId = local[date][0].id;
+    const remoteStillHas = {
+      [date]: [
+        {
+          id: slotId,
+          stationId: "liberty-tank",
+          destination: "CID",
+          createdAt: "2026-09-08T12:00:00.000Z",
+        },
+      ],
+    } satisfies SpecialtyStore;
+
+    local = removeSpecialtySlot(local, date, "liberty-tank");
+    const keep = destKeepAfterChange(local, date, "liberty-tank", "CID");
+
+    // Simulate gcDeleted dropping the UUID because a later pull missed it, while
+    // an overlapping stale pull still contains the row (PR #11 bounce).
+    const afterGc = mergeSpecialtyStores(local, remoteStillHas, [], [keep]);
+    expect(countSpecialtyOpens(afterGc, date, "liberty-tank", "CID")).toBe(0);
+  });
+
   it.each(SPECIALTY_STATIONS)(
     "consumes $id opens when a matching load is logged with qty=2",
     ({ id, name }) => {
@@ -427,6 +557,33 @@ describe("specialty consume on logged loads", () => {
     expect(countSpecialtyOpens(store, date, "liberty", "CID")).toBe(0);
   });
 
+  it("consume Liberty→CID stays gone when remote still has that open and a liberty alias copy", () => {
+    const date = "2026-09-08";
+    let local = addSpecialtySlot({}, date, "liberty-tank", "CID");
+    const slotId = local[date][0].id;
+    const remote: SpecialtyStore = {
+      [date]: [
+        { ...local[date][0] },
+        {
+          id: "cloud-liberty-cid",
+          stationId: "liberty",
+          destination: "CID",
+          createdAt: "2026-09-08T12:00:00.000Z",
+        },
+      ],
+    };
+
+    local = logLoadConsume(local, date, "liberty", "Liberty", "CID", 1);
+    expect(countSpecialtyOpens(local, date, "liberty-tank", "CID")).toBe(0);
+
+    const uuidOnly = mergeSpecialtyStores(local, remote, [slotId]);
+    expect(countSpecialtyOpens(uuidOnly, date, "liberty-tank", "CID")).toBe(1);
+
+    const keep = destKeepAfterChange(local, date, "liberty-tank", "CID");
+    const gone = mergeSpecialtyStores(local, remote, [slotId], [keep]);
+    expect(countSpecialtyOpens(gone, date, "liberty-tank", "CID")).toBe(0);
+  });
+
   it("consumes Gray Tank → CID without touching a Liberty CID open", () => {
     const date = "2026-09-08";
     let store: SpecialtyStore = {};
@@ -459,6 +616,16 @@ describe("specialty consume on logged loads", () => {
 
       const kept = mergeSpecialtyStores(local, remote, [slotId]);
       expect(countSpecialtyOpens(kept, date, id, dest)).toBe(1);
+
+      const destKeep = destKeepAfterChange(local, date, id, dest);
+      expect(
+        countSpecialtyOpens(
+          mergeSpecialtyStores(local, remote, [slotId], [destKeep]),
+          date,
+          id,
+          dest,
+        ),
+      ).toBe(1);
 
       // Persist path: even if merge ran without tombstones, omit at write wins.
       expect(

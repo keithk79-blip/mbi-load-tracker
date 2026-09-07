@@ -140,6 +140,18 @@ export type SpecialtySlot = {
 export type SpecialtyDayBoard = SpecialtySlot[];
 export type SpecialtyStore = Record<string, SpecialtyDayBoard>;
 
+/**
+ * After − / dest-chip tap / consume, remaining local ids for that dest are source of
+ * truth. Remote copies with a different UUID (e.g. station_id `liberty` vs `liberty-tank`)
+ * must not reappear on merge.
+ */
+export type SpecialtyDestKeep = {
+  date: string;
+  stationId: string;
+  destination: string;
+  keepIds: string[];
+};
+
 const STORE_KEY = "chitrader.load-tracker.specialty-board.v1";
 
 function newId(): string {
@@ -157,6 +169,7 @@ export function readSpecialtyStore(): SpecialtyStore {
       version?: number;
       days?: SpecialtyStore;
       deletedIds?: unknown;
+      destKeeps?: unknown;
     };
     if (parsed?.version !== 1 || typeof parsed.days !== "object" || !parsed.days) {
       return {};
@@ -184,15 +197,45 @@ export function readSpecialtyStore(): SpecialtyStore {
       for (const slot of mapped) byId.set(slot.id, slot);
       out[key] = [...byId.values()];
     }
-    const deleted = Array.isArray(parsed.deletedIds)
-      ? parsed.deletedIds.filter(
-          (id): id is string => typeof id === "string" && id.length > 0,
-        )
-      : [];
-    return omitSpecialtyIds(out, deleted);
+    return applySpecialtyTombstones(
+      out,
+      parseDeletedIds(parsed.deletedIds),
+      parseDestKeeps(parsed.destKeeps),
+    );
   } catch {
     return {};
   }
+}
+
+function parseDeletedIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((id): id is string => typeof id === "string" && id.length > 0);
+}
+
+function parseDestKeeps(raw: unknown): SpecialtyDestKeep[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SpecialtyDestKeep[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const rec = row as Record<string, unknown>;
+    if (
+      typeof rec.date !== "string" ||
+      typeof rec.stationId !== "string" ||
+      typeof rec.destination !== "string" ||
+      !Array.isArray(rec.keepIds)
+    ) {
+      continue;
+    }
+    out.push({
+      date: specialtyDateKey(rec.date),
+      stationId: rec.stationId,
+      destination: rec.destination,
+      keepIds: rec.keepIds.filter(
+        (id): id is string => typeof id === "string" && id.length > 0,
+      ),
+    });
+  }
+  return out;
 }
 
 export function readSpecialtyDeletedIds(): string[] {
@@ -200,10 +243,18 @@ export function readSpecialtyDeletedIds(): string[] {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as { deletedIds?: unknown };
-    if (!Array.isArray(parsed.deletedIds)) return [];
-    return parsed.deletedIds.filter(
-      (id): id is string => typeof id === "string" && id.length > 0,
-    );
+    return parseDeletedIds(parsed.deletedIds);
+  } catch {
+    return [];
+  }
+}
+
+export function readSpecialtyDestKeeps(): SpecialtyDestKeep[] {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { destKeeps?: unknown };
+    return parseDestKeeps(parsed.destKeeps);
   } catch {
     return [];
   }
@@ -212,13 +263,15 @@ export function readSpecialtyDeletedIds(): string[] {
 export function writeSpecialtyStore(
   store: SpecialtyStore,
   deletedIds?: string[],
+  destKeeps?: SpecialtyDestKeep[],
 ): void {
   const ids = deletedIds ?? readSpecialtyDeletedIds();
+  const keeps = destKeeps ?? readSpecialtyDestKeeps();
   // Tombstones always win at persist so a stale cloud merge cannot bounce − / consume.
-  const days = omitSpecialtyIds(store, ids);
+  const days = applySpecialtyTombstones(store, ids, keeps);
   localStorage.setItem(
     STORE_KEY,
-    JSON.stringify({ version: 1, days, deletedIds: ids }),
+    JSON.stringify({ version: 1, days, deletedIds: ids, destKeeps: keeps }),
   );
 }
 
@@ -335,6 +388,88 @@ export function matchingSpecialtySlotIds(
     }
   }
   return ids;
+}
+
+/** All current slot ids for a station + destination on this calendar day. */
+export function remainingSpecialtySlotIds(
+  store: SpecialtyStore,
+  date: string,
+  stationId: string,
+  destination: string,
+): string[] {
+  if (!stationId || !specialtyDestKey(destination)) return [];
+  return boardForDate(store, date)
+    .filter(
+      (s) =>
+        sameSpecialtyStation(s.stationId, stationId) &&
+        sameSpecialtyDest(s.destination, destination),
+    )
+    .map((s) => s.id);
+}
+
+export function destKeepAfterChange(
+  store: SpecialtyStore,
+  date: string,
+  stationId: string,
+  destination: string,
+): SpecialtyDestKeep {
+  return {
+    date: specialtyDateKey(date),
+    stationId: specialtyStationKey(stationId) || stationId,
+    destination: specialtyDestKey(destination) || destination.trim(),
+    keepIds: remainingSpecialtySlotIds(store, date, stationId, destination),
+  };
+}
+
+export function upsertSpecialtyDestKeep(
+  keeps: SpecialtyDestKeep[],
+  keep: SpecialtyDestKeep,
+): SpecialtyDestKeep[] {
+  const next = keeps.filter(
+    (row) =>
+      !(
+        specialtyDateKey(row.date) === specialtyDateKey(keep.date) &&
+        sameSpecialtyStation(row.stationId, keep.stationId) &&
+        sameSpecialtyDest(row.destination, keep.destination)
+      ),
+  );
+  next.push(keep);
+  return next;
+}
+
+/** Drop dest-keeps whose remote rows already match the kept ids (no extras). */
+export function gcSpecialtyDestKeeps(
+  remote: SpecialtyStore,
+  keeps: Iterable<SpecialtyDestKeep>,
+): SpecialtyDestKeep[] {
+  return [...keeps].filter((keep) => {
+    const extras = unkeptSpecialtyIds(
+      remote,
+      keep.date,
+      keep.stationId,
+      keep.destination,
+      keep.keepIds,
+    );
+    return extras.length > 0;
+  });
+}
+
+export function unkeptSpecialtyIds(
+  store: SpecialtyStore,
+  date: string,
+  stationId: string,
+  destination: string,
+  keepIds: Iterable<string>,
+): string[] {
+  const keep = new Set(keepIds);
+  return boardForDate(store, date)
+    .filter(
+      (s) =>
+        sameSpecialtyStation(s.stationId, stationId) &&
+        sameSpecialtyDest(s.destination, destination) &&
+        !keep.has(s.id),
+    )
+    .map((s) => s.id);
 }
 
 /** Burn up to `count` open specialty slots for this station + destination. */
@@ -498,11 +633,43 @@ export function omitSpecialtyIds(
   return out;
 }
 
-/** Union slots by id (later arg wins). Optional ids are treated as consumed/deleted. */
+export function omitUnkeptDestSlots(
+  store: SpecialtyStore,
+  keeps: Iterable<SpecialtyDestKeep>,
+): SpecialtyStore {
+  const list = [...keeps];
+  if (!list.length) return store;
+  const out: SpecialtyStore = {};
+  for (const [date, slots] of Object.entries(store)) {
+    const kept = slots.filter((slot) => {
+      const hit = list.find(
+        (k) =>
+          specialtyDateKey(k.date) === specialtyDateKey(date) &&
+          sameSpecialtyStation(k.stationId, slot.stationId) &&
+          sameSpecialtyDest(k.destination, slot.destination),
+      );
+      if (!hit) return true;
+      return hit.keepIds.includes(slot.id);
+    });
+    if (kept.length) out[date] = kept;
+  }
+  return out;
+}
+
+export function applySpecialtyTombstones(
+  store: SpecialtyStore,
+  deletedIds?: Iterable<string>,
+  destKeeps?: Iterable<SpecialtyDestKeep>,
+): SpecialtyStore {
+  return omitUnkeptDestSlots(omitSpecialtyIds(store, deletedIds ?? []), destKeeps ?? []);
+}
+
+/** Union slots by id (later arg wins). Optional ids/dest-keeps are treated as consumed/deleted. */
 export function mergeSpecialtyStores(
   a: SpecialtyStore,
   b: SpecialtyStore,
   deletedIds?: Iterable<string>,
+  destKeeps?: Iterable<SpecialtyDestKeep>,
 ): SpecialtyStore {
   const drop = new Set(deletedIds ?? []);
   const byId = new Map<string, { date: string; slot: SpecialtySlot }>();
@@ -522,5 +689,5 @@ export function mergeSpecialtyStores(
     if (!out[date]) out[date] = [];
     out[date].push(slot);
   }
-  return out;
+  return omitUnkeptDestSlots(out, destKeeps ?? []);
 }
