@@ -147,6 +147,26 @@ describe("specialty walking-floor catalog", () => {
     });
   });
 
+  it("lists only Hodgkins, RSI, Willow Ranch, Homewood on Melrose specialty chips", () => {
+    expect(specialtyDestinationsFor("melrose")).toEqual([
+      "Hodgkins",
+      "RSI",
+      "Willow Ranch",
+      "Homewood",
+    ]);
+    expect(specialtyDestinationsFor("melrose")).not.toContain("Covanta");
+    expect(specialtyDestinationsFor("melrose")).not.toContain("Liberty");
+    expect(specialtyDestinationsFor("melrose")).not.toContain("Rockford");
+    expect(applyPickupCascade("melrose", "Wood", "Covanta")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+    expect(applyPickupCascade("melrose", "Recycle", "Homewood")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+  });
+
   it("maps Liberty Tank labels to liberty-tank without treating leachate Liberty as the card", () => {
     expect(resolveSpecialtyStationId("liberty-tank")).toBe("liberty-tank");
     expect(resolveSpecialtyStationId(undefined, "Liberty Tank")).toBe("liberty-tank");
