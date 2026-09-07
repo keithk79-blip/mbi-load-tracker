@@ -2055,6 +2055,7 @@ body.app-ready .splash {
 }
 .traffic-status.error {
   color: #f87171;
+  overflow-wrap: anywhere;
 }
 .traffic-status.warn {
   color: #fbbf24;

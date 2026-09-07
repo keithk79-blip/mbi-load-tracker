@@ -8,8 +8,9 @@
     {
       "identifier": "http:default",
       "allow": [
-        { "url": "https://travelmidwest.com/**" },
-        { "url": "https://*.travelmidwest.com/**" }
+        { "url": "https://www.sigalert.com/**" },
+        { "url": "https://cdn-dynamic.sigalert.com/**" },
+        { "url": "https://cdn.sigalert.com/**" }
       ]
     }
   ]
