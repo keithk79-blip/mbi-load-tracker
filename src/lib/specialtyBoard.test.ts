@@ -167,6 +167,21 @@ describe("specialty walking-floor catalog", () => {
     });
   });
 
+  it("lists only Hodgkins, Lake Co MRF, RSI on Batavia specialty chips", () => {
+    expect(specialtyDestinationsFor("batavia")).toEqual([
+      "Hodgkins",
+      "Lake Co MRF",
+      "RSI",
+    ]);
+    expect(specialtyDestinationsFor("batavia")).not.toContain("DeKalb");
+    expect(specialtyDestinationsFor("batavia")).not.toContain("Rockford");
+    expect(specialtyDestinationsFor("batavia")).not.toContain("Resource MGT");
+    expect(applyPickupCascade("batavia", "Recycle", "Resource MGT")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+  });
+
   it("maps Liberty Tank labels to liberty-tank without treating leachate Liberty as the card", () => {
     expect(resolveSpecialtyStationId("liberty-tank")).toBe("liberty-tank");
     expect(resolveSpecialtyStationId(undefined, "Liberty Tank")).toBe("liberty-tank");
