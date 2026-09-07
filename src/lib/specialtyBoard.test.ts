@@ -32,7 +32,7 @@ describe("specialty walking-floor catalog", () => {
     ]);
     expect(specialtyDestinationsFor("gray-tank")).not.toContain("Hodgkins");
     expect(specialtyDestinationsFor("gray-tank")).not.toContain("RSI");
-    expect(specialtyDestinationsFor("mccook")).toEqual([...SPECIALTY_DESTINATIONS]);
+    expect(specialtyDestinationsFor("ford")).toEqual([...SPECIALTY_DESTINATIONS]);
   });
 
   it("cascades Gray Tank log-load to leachate dests only", () => {
@@ -198,6 +198,85 @@ describe("specialty walking-floor catalog", () => {
     expect(resolveSpecialtyStationId("northlake", "Northlake")).toBe("northlake");
     expect(resolveSpecialtyStationId(undefined, "N. Lake")).toBe("northlake");
     expect(applyPickupCascade("northlake", "Trash (MSW)", "Newton County")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+  });
+
+  it("lists only Organix, Hodgkins, Thelens, Resource MGT on Arc specialty chips", () => {
+    expect(specialtyDestinationsFor("arc")).toEqual([
+      "Organix",
+      "Hodgkins",
+      "Thelens",
+      "Resource MGT",
+    ]);
+    expect(specialtyDestinationsFor("arc")).not.toContain("Winnebago");
+    expect(specialtyDestinationsFor("arc")).not.toContain("Pontiac");
+    expect(applyPickupCascade("arc", "Yard Waste", "Winnebago")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+    expect(applyPickupCascade("arc", "Recycle", "Resource MGT")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+  });
+
+  it("lists Joyce Farms, Hodgkins, WCN MRF, Homewood, Pontiac, Loop on Citi Waste specialty chips", () => {
+    expect(SPECIALTY_STATIONS.find((s) => s.id === "citiwaste")).toEqual({
+      id: "citiwaste",
+      name: "Citi Waste",
+    });
+    expect(specialtyDestinationsFor("citiwaste")).toEqual([
+      "Joyce Farms",
+      "Hodgkins",
+      "WCN MRF",
+      "Homewood",
+      "Pontiac",
+      "Loop",
+    ]);
+    expect(resolveSpecialtyStationId(undefined, "Citi Waste")).toBe("citiwaste");
+    expect(resolveSpecialtyStationId("citiwaste", "Citiwaste")).toBe("citiwaste");
+  });
+
+  it("lists only Homewood on Schererville specialty chips", () => {
+    expect(specialtyDestinationsFor("schererville")).toEqual(["Homewood"]);
+    expect(specialtyDestinationsFor("schererville")).not.toContain("Newton County");
+    expect(applyPickupCascade("schererville", "Trash (MSW)", "Newton County")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+    expect(applyPickupCascade("schererville", "Recycle", "Homewood")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+  });
+
+  it("lists only Christianson Farms on McCook specialty chips and log-load", () => {
+    expect(specialtyDestinationsFor("mccook")).toEqual(["Christianson Farms"]);
+    expect(specialtyDestinationsFor("mccook")).not.toContain("Hodgkins");
+    expect(applyPickupCascade("mccook", "Trash (MSW)", "Hodgkins")).toEqual({
+      commodity: "Trash (MSW)",
+      destination: "",
+      commodityValid: true,
+      destinationValid: false,
+    });
+    expect(applyPickupCascade("mccook", "Yard Waste", "Christianson Farms")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+  });
+
+  it("lists only Hodgkins and RSI on Dekalb Reload specialty chips and log-load", () => {
+    expect(specialtyDestinationsFor("dekalb-reload")).toEqual(["Hodgkins", "RSI"]);
+    expect(specialtyDestinationsFor("dekalb-reload")).not.toContain("Homewood");
+    expect(applyPickupCascade("dekalb-reload", "Recycle", "Organix")).toEqual({
+      commodity: "Recycle",
+      destination: "",
+      commodityValid: true,
+      destinationValid: false,
+    });
+    expect(applyPickupCascade("dekalb-reload", "Trash (MSW)", "Hodgkins")).toMatchObject({
       commodityValid: true,
       destinationValid: true,
     });

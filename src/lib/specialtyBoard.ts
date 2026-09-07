@@ -69,6 +69,18 @@ const SPECIALTY_DEST_OVERRIDES: Record<string, readonly string[]> = {
   melrose: ["Hodgkins", "RSI", "Willow Ranch", "Homewood"],
   batavia: ["Hodgkins", "Lake Co MRF", "RSI"],
   northlake: ["Hodgkins", "Thelens", "Organix"],
+  arc: ["Organix", "Hodgkins", "Thelens", "Resource MGT"],
+  citiwaste: [
+    "Joyce Farms",
+    "Hodgkins",
+    "WCN MRF",
+    "Homewood",
+    "Pontiac",
+    "Loop",
+  ],
+  schererville: ["Homewood"],
+  mccook: ["Christianson Farms"],
+  "dekalb-reload": ["Hodgkins", "RSI"],
 };
 
 /** Per-station dest chips; restricted yards match (or subset) log-load dests. */
@@ -98,6 +110,21 @@ export function specialtyDestHint(stationId: string): string {
   }
   if (stationId === "northlake") {
     return "Hodgkins · Thelens · Organix";
+  }
+  if (stationId === "arc") {
+    return "Organix · Hodgkins · Thelens · Resource MGT";
+  }
+  if (stationId === "citiwaste") {
+    return "Joyce Farms · Hodgkins · WCN MRF · Homewood · Pontiac · Loop";
+  }
+  if (stationId === "schererville") {
+    return "Homewood destination for new open load";
+  }
+  if (stationId === "mccook") {
+    return "Christianson Farms destination for new open load";
+  }
+  if (stationId === "dekalb-reload") {
+    return "Hodgkins · RSI";
   }
   return "Destination for new open load";
 }

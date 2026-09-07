@@ -70,6 +70,7 @@ export const STATIONS: Station[] = [
       "Thelens",
       "Pontiac",
       "Resource",
+      "Resource MGT",
     ],
   },
   {
@@ -248,13 +249,13 @@ export const STATIONS: Station[] = [
     id: "mccook",
     name: "McCook",
     commodities: ["Trash (MSW)", "Recycle", "Yard Waste", "Cardboard"],
-    destinations: ["RSI", "Hodgkins", "Homewood", "DeKalb", "CID", "Kankakee", "Rockford", "Prairie Hill", "Pontiac", "Liberty", "Newton County", "Covanta", "Loop", "Willow Ranch", "Organix"],
+    destinations: ["Christianson Farms"],
   },
   {
     id: "dekalb-reload",
     name: "Dekalb Reload",
     commodities: ["Trash (MSW)", "Recycle", "Yard Waste", "Cardboard"],
-    destinations: ["RSI", "Hodgkins", "Homewood", "DeKalb", "CID", "Kankakee", "Rockford", "Prairie Hill", "Pontiac", "Liberty", "Newton County", "Covanta", "Loop", "Willow Ranch", "Organix"],
+    destinations: ["Hodgkins", "RSI"],
   },
   {
     id: "ford",
