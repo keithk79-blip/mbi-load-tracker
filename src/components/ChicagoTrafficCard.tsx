@@ -46,7 +46,7 @@ function AlertRow({
 }
 
 export function ChicagoTrafficCard() {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [snap, setSnap] = useState<ChicagoTrafficSnapshot | null>(null);
