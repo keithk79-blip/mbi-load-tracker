@@ -3,10 +3,29 @@ import { applyPickupCascade } from "./cascade";
 import {
   SPECIALTY_DESTINATIONS,
   SPECIALTY_STATIONS,
+  addSpecialtySlot,
+  consumeSpecialtyOpens,
+  countSpecialtyOpens,
   isSpecialtyStationId,
+  mergeSpecialtyStores,
   resolveSpecialtyStationId,
+  slotsForStation,
   specialtyDestinationsFor,
+  type SpecialtyStore,
 } from "./specialtyBoard";
+
+function logLoadConsume(
+  store: SpecialtyStore,
+  date: string,
+  stationId: string,
+  pickup: string,
+  destination: string,
+  qty = 1,
+): SpecialtyStore {
+  const specialtyId = resolveSpecialtyStationId(stationId, pickup);
+  if (!specialtyId) return store;
+  return consumeSpecialtyOpens(store, date, specialtyId, destination, qty);
+}
 
 describe("specialty walking-floor catalog", () => {
   it("includes Liberty as a specialty card with the liberty-tank station id", () => {
@@ -288,5 +307,65 @@ describe("specialty walking-floor catalog", () => {
     expect(resolveSpecialtyStationId("custom", "Liberty")).toBe("liberty-tank");
     expect(resolveSpecialtyStationId("liberty", "Liberty")).toBeNull();
     expect(resolveSpecialtyStationId("wheeling", "Wheeling")).toBe("wheeling");
+    expect(resolveSpecialtyStationId("Wheeling")).toBe("wheeling");
+  });
+});
+
+describe("specialty consume on logged loads", () => {
+  it("consumes a Wheeling → Groot open when a Recycle load is logged for that day", () => {
+    const date = "2026-09-08";
+    let store: SpecialtyStore = {};
+    store = addSpecialtySlot(store, date, "wheeling", "Groot");
+    expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(1);
+    expect(applyPickupCascade("wheeling", "Recycle", "Groot")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+
+    store = logLoadConsume(store, date, "wheeling", "Wheeling", "Groot");
+    expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(0);
+    expect(slotsForStation(store[date] ?? [], "wheeling")).toEqual([]);
+  });
+
+  it("consumes a Melrose → Hodgkins open and leaves a different dest", () => {
+    const date = "2026-09-08";
+    let store: SpecialtyStore = {};
+    store = addSpecialtySlot(store, date, "melrose", "Hodgkins");
+    store = addSpecialtySlot(store, date, "melrose", "RSI");
+    store = logLoadConsume(store, date, "melrose", "Melrose", "Hodgkins");
+    expect(countSpecialtyOpens(store, date, "melrose", "Hodgkins")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "melrose", "RSI")).toBe(1);
+  });
+
+  it("matches Wheeling opens stored under the display name or a timestamped date key", () => {
+    const date = "2026-09-08";
+    let store: SpecialtyStore = {
+      "2026-09-08T00:00:00.000Z": [
+        {
+          id: "sp-wheeling-groot",
+          stationId: "Wheeling",
+          destination: "Groot Recycling",
+          createdAt: "2026-09-08T12:00:00.000Z",
+        },
+      ],
+    };
+    expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(1);
+    store = logLoadConsume(store, date, "wheeling", "Wheeling", "Groot");
+    expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(0);
+  });
+
+  it("does not resurrect a consumed Wheeling → Groot open from a stale remote merge", () => {
+    const date = "2026-09-08";
+    let local = addSpecialtySlot({}, date, "wheeling", "Groot");
+    const slotId = local[date][0].id;
+    const remote = local;
+    local = consumeSpecialtyOpens(local, date, "wheeling", "Groot", 1);
+    expect(countSpecialtyOpens(local, date, "wheeling", "Groot")).toBe(0);
+
+    const restored = mergeSpecialtyStores(local, remote);
+    expect(countSpecialtyOpens(restored, date, "wheeling", "Groot")).toBe(1);
+
+    const kept = mergeSpecialtyStores(local, remote, [slotId]);
+    expect(countSpecialtyOpens(kept, date, "wheeling", "Groot")).toBe(0);
   });
 });
