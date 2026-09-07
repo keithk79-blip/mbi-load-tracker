@@ -17,6 +17,7 @@ import {
   matchingSpecialtySlotIds,
   mergeSpecialtyStores,
   notifySpecialtyBoardChanged,
+  omitSpecialtyIds,
   readSpecialtyDeletedIds,
   readSpecialtyStore,
   removeSpecialtySlot,
@@ -90,14 +91,18 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
   const deletedIdsRef = useRef<Set<string>>(new Set(readSpecialtyDeletedIds()));
 
   const persistLocal = useCallback((next: SpecialtyStore) => {
-    writeSpecialtyStore(next, [...deletedIdsRef.current]);
-    setStore(next);
+    const ids = [...deletedIdsRef.current];
+    // Strip tombstones at persist so a stale refresh cannot restore − / consume.
+    writeSpecialtyStore(next, ids);
+    setStore(omitSpecialtyIds(next, ids));
     notifySpecialtyBoardChanged();
   }, []);
 
   const rememberDeleted = useCallback((ids: string[]) => {
     if (!ids.length) return;
     for (const id of ids) deletedIdsRef.current.add(id);
+    // Flush tombstones immediately so an in-flight cloud pull cannot miss them.
+    writeSpecialtyStore(storeRef.current, [...deletedIdsRef.current]);
   }, []);
 
   const gcDeleted = useCallback((remote: SpecialtyStore) => {
@@ -176,30 +181,30 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
 
         if (!inserts.length) {
           // Nothing to upload — remote is authority (cross-device deletes apply),
-          // but locally consumed ids must not come back from a stale pull.
-          return mergeSpecialtyStores({}, remote, deleted);
+          // but locally consumed/minused ids must not come back from a stale pull.
+          return mergeSpecialtyStores({}, remote, deletedIdsRef.current);
         }
 
         const { error } = await supabase.from("specialty_opens").upsert(inserts);
         if (error) {
           console.warn("specialty upload failed", error.message);
           // Never persist empty remote alone after a failed upload.
-          return mergeSpecialtyStores(local, remote, deleted);
+          return mergeSpecialtyStores(local, remote, deletedIdsRef.current);
         }
 
         const pulled = await pullRemote();
         if (!pulled) {
-          return mergeSpecialtyStores(local, remote, deleted);
+          return mergeSpecialtyStores(local, remote, deletedIdsRef.current);
         }
 
         const pulledCount = Object.values(pulled).flat().length;
         if (pulledCount === 0 && inserts.length > 0) {
           // Pull came back empty but we still have local slots we tried to upload.
-          return mergeSpecialtyStores(local, remote, deleted);
+          return mergeSpecialtyStores(local, remote, deletedIdsRef.current);
         }
 
         // Successful upload + non-empty pull: remote/pulled is authority.
-        return mergeSpecialtyStores({}, pulled, deleted);
+        return mergeSpecialtyStores({}, pulled, deletedIdsRef.current);
       } finally {
         uploadingRef.current = false;
       }

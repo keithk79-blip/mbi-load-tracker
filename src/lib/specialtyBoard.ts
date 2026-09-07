@@ -153,7 +153,11 @@ export function readSpecialtyStore(): SpecialtyStore {
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return {};
-    const parsed = JSON.parse(raw) as { version?: number; days?: SpecialtyStore };
+    const parsed = JSON.parse(raw) as {
+      version?: number;
+      days?: SpecialtyStore;
+      deletedIds?: unknown;
+    };
     if (parsed?.version !== 1 || typeof parsed.days !== "object" || !parsed.days) {
       return {};
     }
@@ -180,7 +184,12 @@ export function readSpecialtyStore(): SpecialtyStore {
       for (const slot of mapped) byId.set(slot.id, slot);
       out[key] = [...byId.values()];
     }
-    return out;
+    const deleted = Array.isArray(parsed.deletedIds)
+      ? parsed.deletedIds.filter(
+          (id): id is string => typeof id === "string" && id.length > 0,
+        )
+      : [];
+    return omitSpecialtyIds(out, deleted);
   } catch {
     return {};
   }
@@ -205,9 +214,11 @@ export function writeSpecialtyStore(
   deletedIds?: string[],
 ): void {
   const ids = deletedIds ?? readSpecialtyDeletedIds();
+  // Tombstones always win at persist so a stale cloud merge cannot bounce − / consume.
+  const days = omitSpecialtyIds(store, ids);
   localStorage.setItem(
     STORE_KEY,
-    JSON.stringify({ version: 1, days: store, deletedIds: ids }),
+    JSON.stringify({ version: 1, days, deletedIds: ids }),
   );
 }
 
@@ -348,7 +359,9 @@ export function notifySpecialtyBoardChanged(): void {
   window.dispatchEvent(new Event("specialty-board-changed"));
 }
 
+/** Extra labels → specialty card id. Catalog `liberty` (leachate) still maps here for consume. */
 const SPECIALTY_NAME_ALIASES: Record<string, string> = {
+  "n lake": "northlake",
   "n. lake": "northlake",
   "north lake": "northlake",
   northlake: "northlake",
@@ -365,6 +378,10 @@ const SPECIALTY_NAME_ALIASES: Record<string, string> = {
   liberty: "liberty-tank",
 };
 
+function normalizeSpecialtyLabel(raw: string): string {
+  return raw.trim().toLowerCase().replace(/[._-]+/g, " ").replace(/\s+/g, " ");
+}
+
 /** Log-load dest labels that should match a specialty dest chip. */
 const SPECIALTY_DEST_ALIASES: Record<string, string> = {
   "groot recycling": "groot",
@@ -377,22 +394,33 @@ const SPECIALTY_DEST_ALIASES: Record<string, string> = {
 };
 
 function lookupSpecialtyIdByName(raw: string): string | null {
-  const name = raw.trim().toLowerCase();
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (isSpecialtyStationId(trimmed)) return trimmed;
+  const name = normalizeSpecialtyLabel(trimmed);
   if (!name) return null;
-  const aliased = SPECIALTY_NAME_ALIASES[name];
+  if (isSpecialtyStationId(name)) return name;
+  const aliased =
+    SPECIALTY_NAME_ALIASES[name] ?? SPECIALTY_NAME_ALIASES[trimmed.toLowerCase()];
   if (aliased && isSpecialtyStationId(aliased)) return aliased;
-  const hit = SPECIALTY_STATIONS.find((s) => s.name.toLowerCase() === name);
+  const hit = SPECIALTY_STATIONS.find(
+    (s) =>
+      normalizeSpecialtyLabel(s.name) === name ||
+      normalizeSpecialtyLabel(s.id) === name,
+  );
   return hit?.id ?? null;
 }
 
-/** Map a logged pickup to a specialty board station id, if any. */
+/**
+ * Map a logged pickup to a specialty board station id, if any.
+ * Catalog `liberty` is not a card id (that's `liberty-tank`), but Liberty / Liberty Tank
+ * logs still resolve to the Liberty card so consume-on-log matches.
+ */
 export function resolveSpecialtyStationId(
   stationId: string | undefined,
   pickupName?: string,
 ): string | null {
   if (stationId && isSpecialtyStationId(stationId)) return stationId;
-  // Catalog "liberty" is the leachate pickup, not the walking-floor Liberty card.
-  if (stationId === "liberty") return null;
   return (
     lookupSpecialtyIdByName(pickupName ?? "") ??
     lookupSpecialtyIdByName(stationId ?? "")

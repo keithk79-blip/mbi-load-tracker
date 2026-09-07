@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { STATION_BY_ID } from "../data/stations";
 import { applyPickupCascade } from "./cascade";
 import {
   SPECIALTY_DESTINATIONS,
@@ -8,11 +9,28 @@ import {
   countSpecialtyOpens,
   isSpecialtyStationId,
   mergeSpecialtyStores,
+  omitSpecialtyIds,
+  removeSpecialtySlot,
   resolveSpecialtyStationId,
   slotsForStation,
   specialtyDestinationsFor,
   type SpecialtyStore,
 } from "./specialtyBoard";
+
+function catalogLogPickup(
+  specialtyId: string,
+  displayName: string,
+): { stationId: string; pickup: string } {
+  // Liberty card id is liberty-tank; drivers log the catalog Liberty chip (leachate id).
+  if (specialtyId === "liberty-tank") {
+    return { stationId: "liberty", pickup: "Liberty" };
+  }
+  const catalog = STATION_BY_ID[specialtyId];
+  return {
+    stationId: catalog?.id ?? specialtyId,
+    pickup: catalog?.name ?? displayName,
+  };
+}
 
 function logLoadConsume(
   store: SpecialtyStore,
@@ -301,13 +319,19 @@ describe("specialty walking-floor catalog", () => {
     });
   });
 
-  it("maps Liberty Tank labels to liberty-tank without treating leachate Liberty as the card", () => {
+  it("maps Liberty catalog and Liberty Tank labels to liberty-tank without a separate card id", () => {
+    expect(isSpecialtyStationId("liberty-tank")).toBe(true);
+    expect(isSpecialtyStationId("liberty")).toBe(false);
     expect(resolveSpecialtyStationId("liberty-tank")).toBe("liberty-tank");
+    expect(resolveSpecialtyStationId("liberty", "Liberty")).toBe("liberty-tank");
     expect(resolveSpecialtyStationId(undefined, "Liberty Tank")).toBe("liberty-tank");
     expect(resolveSpecialtyStationId("custom", "Liberty")).toBe("liberty-tank");
-    expect(resolveSpecialtyStationId("liberty", "Liberty")).toBeNull();
     expect(resolveSpecialtyStationId("wheeling", "Wheeling")).toBe("wheeling");
     expect(resolveSpecialtyStationId("Wheeling")).toBe("wheeling");
+    expect(resolveSpecialtyStationId("herthside", "Hearthside")).toBe("herthside");
+    expect(resolveSpecialtyStationId("grayslake", "GraysLake")).toBeNull();
+    expect(resolveSpecialtyStationId("laraway", "Laraway")).toBeNull();
+    expect(resolveSpecialtyStationId("prairie-hill-rfd", "Prairie Hill RFD")).toBeNull();
   });
 });
 
@@ -368,4 +392,78 @@ describe("specialty consume on logged loads", () => {
     const kept = mergeSpecialtyStores(local, remote, [slotId]);
     expect(countSpecialtyOpens(kept, date, "wheeling", "Groot")).toBe(0);
   });
+
+  it.each(SPECIALTY_STATIONS)(
+    "consumes $id opens when a matching load is logged with qty=2",
+    ({ id, name }) => {
+      const dest = specialtyDestinationsFor(id)[0];
+      expect(dest).toBeTruthy();
+      const date = "2026-09-08";
+      let store: SpecialtyStore = {};
+      store = addSpecialtySlot(store, date, id, dest);
+      store = addSpecialtySlot(store, date, id, dest);
+      expect(countSpecialtyOpens(store, date, id, dest)).toBe(2);
+
+      const log = catalogLogPickup(id, name);
+      expect(resolveSpecialtyStationId(log.stationId, log.pickup)).toBe(id);
+      store = logLoadConsume(store, date, log.stationId, log.pickup, dest, 2);
+      expect(countSpecialtyOpens(store, date, id, dest)).toBe(0);
+    },
+  );
+
+  it.each([
+    { stationId: "liberty", pickup: "Liberty" },
+    { stationId: "liberty-tank", pickup: "Liberty" },
+    { stationId: "custom", pickup: "Liberty Tank" },
+  ])("consumes Liberty → CID qty=2 from $stationId / $pickup", ({ stationId, pickup }) => {
+    const date = "2026-09-08";
+    let store: SpecialtyStore = {};
+    store = addSpecialtySlot(store, date, "liberty-tank", "CID");
+    store = addSpecialtySlot(store, date, "liberty-tank", "CID");
+    expect(countSpecialtyOpens(store, date, "liberty-tank", "CID")).toBe(2);
+
+    store = logLoadConsume(store, date, stationId, pickup, "CID", 2);
+    expect(countSpecialtyOpens(store, date, "liberty-tank", "CID")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "liberty", "CID")).toBe(0);
+  });
+
+  it("consumes Gray Tank → CID without touching a Liberty CID open", () => {
+    const date = "2026-09-08";
+    let store: SpecialtyStore = {};
+    store = addSpecialtySlot(store, date, "gray-tank", "CID");
+    store = addSpecialtySlot(store, date, "liberty-tank", "CID");
+    store = logLoadConsume(store, date, "gray-tank", "Gray Tank", "CID");
+    expect(countSpecialtyOpens(store, date, "gray-tank", "CID")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "liberty-tank", "CID")).toBe(1);
+  });
+
+  it.each(SPECIALTY_STATIONS)(
+    "keeps $id minus after a stale remote merge when tombstones are applied",
+    ({ id }) => {
+      const dest = specialtyDestinationsFor(id)[0];
+      const date = "2026-09-08";
+      let local = addSpecialtySlot({}, date, id, dest);
+      local = addSpecialtySlot(local, date, id, dest);
+      expect(countSpecialtyOpens(local, date, id, dest)).toBe(2);
+      const slotId = local[date][local[date].length - 1].id;
+      const remote: SpecialtyStore = {
+        [date]: local[date].map((s) => ({ ...s })),
+      };
+
+      // UI − button: no dest, most recent slot for the station.
+      local = removeSpecialtySlot(local, date, id);
+      expect(countSpecialtyOpens(local, date, id, dest)).toBe(1);
+
+      const bounced = mergeSpecialtyStores(local, remote);
+      expect(countSpecialtyOpens(bounced, date, id, dest)).toBe(2);
+
+      const kept = mergeSpecialtyStores(local, remote, [slotId]);
+      expect(countSpecialtyOpens(kept, date, id, dest)).toBe(1);
+
+      // Persist path: even if merge ran without tombstones, omit at write wins.
+      expect(
+        countSpecialtyOpens(omitSpecialtyIds(bounced, [slotId]), date, id, dest),
+      ).toBe(1);
+    },
+  );
 });
