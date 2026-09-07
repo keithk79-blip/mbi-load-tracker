@@ -57,6 +57,15 @@ const SPECIALTY_CATALOG_DEST_IDS = new Set(["gray-tank", "herthside", "hodgkins"
 /** Apollo specialty dests are a subset of log-load dests (no Newton County). */
 const SPECIALTY_DEST_OVERRIDES: Record<string, readonly string[]> = {
   apollo: ["Pontiac", "Christianson Farms", "Organix", "Homewood"],
+  elgin: [
+    "Hodgkins",
+    "DeKalb",
+    "Covanta",
+    "RSI",
+    "Prairie Hill",
+    "Lake Co MRF",
+    "DuPage",
+  ],
 };
 
 /** Per-station dest chips; restricted yards match (or subset) log-load dests. */
@@ -74,6 +83,9 @@ export function specialtyDestHint(stationId: string): string {
   }
   if (stationId === "apollo") {
     return "Pontiac · Christianson Farms · Organix · Homewood";
+  }
+  if (stationId === "elgin") {
+    return "Hodgkins · DeKalb · Covanta · RSI · Prairie Hill · Lake Co MRF · DuPage";
   }
   return "Destination for new open load";
 }

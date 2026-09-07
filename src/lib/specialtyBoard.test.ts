@@ -32,7 +32,7 @@ describe("specialty walking-floor catalog", () => {
     ]);
     expect(specialtyDestinationsFor("gray-tank")).not.toContain("Hodgkins");
     expect(specialtyDestinationsFor("gray-tank")).not.toContain("RSI");
-    expect(specialtyDestinationsFor("elgin")).toEqual([...SPECIALTY_DESTINATIONS]);
+    expect(specialtyDestinationsFor("mccook")).toEqual([...SPECIALTY_DESTINATIONS]);
   });
 
   it("cascades Gray Tank log-load to leachate dests only", () => {
@@ -123,6 +123,25 @@ describe("specialty walking-floor catalog", () => {
       destinationValid: true,
     });
     expect(applyPickupCascade("apollo", "Yard Waste", "Organix")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+  });
+
+  it("lists only Hodgkins, DeKalb, Covanta, RSI, Prairie Hill, Lake Co MRF, DuPage on Elgin specialty chips", () => {
+    expect(specialtyDestinationsFor("elgin")).toEqual([
+      "Hodgkins",
+      "DeKalb",
+      "Covanta",
+      "RSI",
+      "Prairie Hill",
+      "Lake Co MRF",
+      "DuPage",
+    ]);
+    expect(specialtyDestinationsFor("elgin")).not.toContain("Rockford");
+    expect(specialtyDestinationsFor("elgin")).not.toContain("Homewood");
+    expect(specialtyDestinationsFor("elgin")).not.toContain("Newton County");
+    expect(applyPickupCascade("elgin", "Trash (MSW)", "Rockford")).toMatchObject({
       commodityValid: true,
       destinationValid: true,
     });
