@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatHeaderDate } from "../lib/chicagoDate";
 import { getSupabase } from "../lib/supabase";
 import { useAuth } from "../store/AuthContext";
 import {
   STATION_CALL_HOURS,
   STATION_CALL_YARDS,
+  adjacentStationId,
   boardFillScore,
   boardForDate,
   fetchStationCallStoreFromCloud,
@@ -19,6 +20,9 @@ import {
   type StationHourKey,
 } from "../lib/stationCalls";
 
+/** Editable columns only: hour keys plus Close. Start is a read-only span. */
+type StationCallCol = StationHourKey | "close";
+
 function parseCell(raw: string): number | null {
   const t = raw.trim();
   if (t === "") return null;
@@ -27,34 +31,71 @@ function parseCell(raw: string): number | null {
   return Math.floor(n);
 }
 
+function focusStationCallCell(stationId: string, col: StationCallCol): boolean {
+  const next = document.querySelector<HTMLInputElement>(
+    `input.station-call-input[data-station="${CSS.escape(stationId)}"][data-col="${CSS.escape(col)}"]`,
+  );
+  if (!next) return false;
+  next.focus();
+  next.select();
+  return true;
+}
+
 function CellInput({
   value,
   onCommit,
   ariaLabel,
+  stationId,
+  col,
 }: {
   value: number | null | undefined;
   onCommit: (next: number | null) => void;
   ariaLabel: string;
+  stationId: string;
+  col: StationCallCol;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const shown = draft !== null ? draft : value === null || value === undefined ? "" : String(value);
   const isZero = draft === null && value === 0;
+  const committedRef = useRef(false);
+
+  const commit = () => {
+    if (committedRef.current) return;
+    committedRef.current = true;
+    const next = parseCell(draft ?? shown);
+    setDraft(null);
+    onCommit(next);
+  };
 
   return (
     <input
       className={`station-call-input${isZero ? " is-zero" : ""}`}
       inputMode="numeric"
       aria-label={ariaLabel}
+      data-station={stationId}
+      data-col={col}
       value={shown}
-      onChange={(e) => setDraft(e.target.value)}
+      onChange={(e) => {
+        committedRef.current = false;
+        setDraft(e.target.value);
+      }}
       onFocus={(e) => e.target.select()}
       onBlur={() => {
-        const next = parseCell(draft ?? shown);
-        setDraft(null);
-        onCommit(next);
+        commit();
+        committedRef.current = false;
       }}
       onKeyDown={(e) => {
-        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        commit();
+        const nextStation = adjacentStationId(stationId, e.shiftKey ? -1 : 1);
+        if (!nextStation) {
+          (e.target as HTMLInputElement).blur();
+          return;
+        }
+        requestAnimationFrame(() => {
+          focusStationCallCell(nextStation, col);
+        });
       }}
     />
   );
@@ -179,6 +220,8 @@ export function StationCallsCard({ date }: { date: string }) {
                     <td key={h.key}>
                       <CellInput
                         value={row.hours[h.key]}
+                        stationId={yard.id}
+                        col={h.key}
                         ariaLabel={`${yard.label} ${h.label}`}
                         onCommit={(next) => onHour(yard.id, h.key, next)}
                       />
@@ -187,6 +230,8 @@ export function StationCallsCard({ date }: { date: string }) {
                   <td>
                     <CellInput
                       value={row.close}
+                      stationId={yard.id}
+                      col="close"
                       ariaLabel={`${yard.label} Close`}
                       onCommit={(next) => onClose(yard.id, next)}
                     />
