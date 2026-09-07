@@ -28,7 +28,7 @@ export const SPECIALTY_STATIONS: SpecialtyStation[] = [
   { id: "hodgkins", name: "Hodgkins" },
   { id: "gray-tank", name: "Gray Tank" },
   { id: "liberty-tank", name: "Liberty" },
-  { id: "herthside", name: "Herthside" },
+  { id: "herthside", name: "Hearthside" },
 ];
 
 /** Quick destinations for specialty / walking-floor opens. */
@@ -51,10 +51,22 @@ export const SPECIALTY_DESTINATIONS = [
   "Organix",
 ] as const;
 
-/** Per-station dest chips; Gray Tank is leachate-only (matches log-load cascade). */
+/** Stations whose dest chips follow the pickup catalog instead of the global list. */
+const SPECIALTY_CATALOG_DEST_IDS = new Set(["gray-tank", "herthside", "hodgkins"]);
+
+/** Per-station dest chips; restricted yards match log-load cascade dests. */
 export function specialtyDestinationsFor(stationId: string): readonly string[] {
-  if (stationId === "gray-tank") return destinationsFor("gray-tank");
+  if (SPECIALTY_CATALOG_DEST_IDS.has(stationId)) return destinationsFor(stationId);
   return SPECIALTY_DESTINATIONS;
+}
+
+export function specialtyDestHint(stationId: string): string {
+  if (stationId === "gray-tank") return "Leachate destination for new open load";
+  if (stationId === "herthside") return "Trash destination for new open load";
+  if (stationId === "hodgkins") {
+    return "Residual · Pontiac/Liberty · Glass · Strategic/Resource MGT";
+  }
+  return "Destination for new open load";
 }
 
 export type SpecialtySlot = {
@@ -247,6 +259,8 @@ export function resolveSpecialtyStationId(
     prairiehill: "prairie-hill",
     "prairie hill": "prairie-hill",
     "gray tank": "gray-tank",
+    hearthside: "herthside",
+    herthside: "herthside",
     "liberty tank": "liberty-tank",
     liberty: "liberty-tank",
   };

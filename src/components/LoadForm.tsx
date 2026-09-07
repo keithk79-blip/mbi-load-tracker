@@ -48,7 +48,7 @@ export function LoadForm({
   const visibleStations = showAllStations ? [...frequent, ...rest] : frequent;
 
   const commodities = commoditiesFor(value.stationId);
-  const destinations = destinationsFor(value.stationId);
+  const destinations = destinationsFor(value.stationId, value.commodity);
   const isCustom = value.stationId === CUSTOM_ID;
 
   const cascadeNote = useMemo(() => {
@@ -177,9 +177,19 @@ export function LoadForm({
                 label={item}
                 selected={value.commodity === item}
                 muted={!value.stationId}
-                onClick={() =>
-                  value.stationId && onChange({ ...value, commodity: item })
-                }
+                onClick={() => {
+                  if (!value.stationId) return;
+                  const cascaded = applyPickupCascade(
+                    value.stationId,
+                    item,
+                    value.destination,
+                  );
+                  onChange({
+                    ...value,
+                    commodity: item,
+                    destination: cascaded.destination,
+                  });
+                }}
               />
             ))}
             {!value.stationId ? (

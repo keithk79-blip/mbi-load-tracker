@@ -5,6 +5,7 @@ import {
   SPECIALTY_STATIONS,
   destSummary,
   slotsForStation,
+  specialtyDestHint,
   specialtyDestinationsFor,
 } from "../lib/specialtyBoard";
 import { useSpecialty } from "../store/SpecialtyContext";
@@ -103,11 +104,7 @@ export function SpecialtyBoardCard({ date }: { date: string }) {
 
                   {picking ? (
                     <div className="specialty-picker">
-                      <p className="field-hint tight">
-                        {station.id === "gray-tank"
-                          ? "Leachate destination for new open load"
-                          : "Destination for new open load"}
-                      </p>
+                      <p className="field-hint tight">{specialtyDestHint(station.id)}</p>
                       <div className="chip-row">
                         {specialtyDestinationsFor(station.id).map((dest) => (
                           <Chip

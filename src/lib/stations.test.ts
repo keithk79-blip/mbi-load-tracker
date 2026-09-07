@@ -2,6 +2,7 @@
 import {
   FREQUENT_STATION_IDS,
   STATIONS,
+  STATION_BY_NAME,
   commoditiesFor,
   destinationsFor,
 } from "../data/stations";
@@ -48,6 +49,29 @@ describe("pickup stations", () => {
   it("restricts Gray Tank to leachate → FRWRD, CID, Dekalb Sanitary", () => {
     expect(commoditiesFor("gray-tank")).toEqual(["Leachate (tanker)"]);
     expect(destinationsFor("gray-tank")).toEqual(["FRWRD", "CID", "Dekalb Sanitary"]);
+  });
+
+  it("restricts Hearthside to Trash (MSW) → Newton County", () => {
+    expect(STATION_BY_NAME.hearthside?.id).toBe("herthside");
+    expect(STATION_BY_NAME.herthside?.id).toBe("herthside");
+    expect(commoditiesFor("herthside")).toEqual(["Trash (MSW)"]);
+    expect(destinationsFor("herthside")).toEqual(["Newton County"]);
+    expect(destinationsFor("herthside", "Trash (MSW)")).toEqual(["Newton County"]);
+  });
+
+  it("restricts Hodgkins residual/glass dests", () => {
+    expect(commoditiesFor("hodgkins")).toEqual(["Residual", "Glass"]);
+    expect(destinationsFor("hodgkins")).toEqual([
+      "Pontiac",
+      "Liberty",
+      "Strategic",
+      "Resource MGT",
+    ]);
+    expect(destinationsFor("hodgkins", "Residual")).toEqual(["Pontiac", "Liberty"]);
+    expect(destinationsFor("hodgkins", "Glass")).toEqual([
+      "Strategic",
+      "Resource MGT",
+    ]);
   });
 });
 

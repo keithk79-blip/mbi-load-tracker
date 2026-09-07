@@ -56,6 +56,59 @@ describe("specialty walking-floor catalog", () => {
     ).toMatchObject({ destinationValid: true });
   });
 
+  it("lists only Newton County on the Hearthside specialty card", () => {
+    expect(SPECIALTY_STATIONS.find((s) => s.id === "herthside")).toEqual({
+      id: "herthside",
+      name: "Hearthside",
+    });
+    expect(specialtyDestinationsFor("herthside")).toEqual(["Newton County"]);
+    expect(specialtyDestinationsFor("herthside")).not.toContain("RSI");
+    expect(resolveSpecialtyStationId(undefined, "Hearthside")).toBe("herthside");
+    expect(resolveSpecialtyStationId(undefined, "Herthside")).toBe("herthside");
+    expect(applyPickupCascade("herthside", "Recycle", "Hodgkins")).toEqual({
+      commodity: "",
+      destination: "",
+      commodityValid: false,
+      destinationValid: false,
+    });
+    expect(applyPickupCascade("herthside", "Trash (MSW)", "Newton County")).toEqual({
+      commodity: "Trash (MSW)",
+      destination: "Newton County",
+      commodityValid: true,
+      destinationValid: true,
+    });
+  });
+
+  it("lists Hodgkins residual/glass dests on specialty chips and cascade", () => {
+    expect(specialtyDestinationsFor("hodgkins")).toEqual([
+      "Pontiac",
+      "Liberty",
+      "Strategic",
+      "Resource MGT",
+    ]);
+    expect(specialtyDestinationsFor("hodgkins")).not.toContain("RSI");
+    expect(applyPickupCascade("hodgkins", "Residual", "Pontiac")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+    expect(applyPickupCascade("hodgkins", "Residual", "Strategic")).toEqual({
+      commodity: "Residual",
+      destination: "",
+      commodityValid: true,
+      destinationValid: false,
+    });
+    expect(applyPickupCascade("hodgkins", "Glass", "Resource MGT")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
+    });
+    expect(applyPickupCascade("hodgkins", "Glass", "Liberty")).toEqual({
+      commodity: "Glass",
+      destination: "",
+      commodityValid: true,
+      destinationValid: false,
+    });
+  });
+
   it("maps Liberty Tank labels to liberty-tank without treating leachate Liberty as the card", () => {
     expect(resolveSpecialtyStationId("liberty-tank")).toBe("liberty-tank");
     expect(resolveSpecialtyStationId(undefined, "Liberty Tank")).toBe("liberty-tank");
