@@ -3,5 +3,14 @@
   "identifier": "default",
   "description": "Capability for the main Load Tracker window",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://travelmidwest.com/**" },
+        { "url": "https://*.travelmidwest.com/**" }
+      ]
+    }
+  ]
 }
