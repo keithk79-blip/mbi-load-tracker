@@ -11,6 +11,7 @@ import {
   fetchChicagoTraffic,
   formatRelativeUpdated,
   totalAlerts,
+  truncateTrafficError,
   type ChicagoTrafficSnapshot,
   type TrafficAlert,
 } from "../lib/chicagoTraffic";
@@ -57,7 +58,7 @@ export function ChicagoTrafficCard() {
     try {
       const next = await fetchChicagoTraffic();
       setSnap(next);
-    } catch {
+    } catch (err) {
       setSnap((prev) =>
         prev ?? {
           incidents: [],
@@ -65,7 +66,7 @@ export function ChicagoTrafficCard() {
           travelTimes: [],
           updatedAt: null,
           fetchedAt: Date.now(),
-          errors: ["all"],
+          errors: [truncateTrafficError(err instanceof Error ? err.message : String(err))],
         },
       );
     } finally {
@@ -87,15 +88,16 @@ export function ChicagoTrafficCard() {
   }, []);
 
   const count = snap ? totalAlerts(snap) : 0;
-  const allFailed = !!snap && snap.errors.length === 3;
+  const failDetail = snap?.errors[0] ? truncateTrafficError(snap.errors[0]) : "";
+  const allFailed = !!snap && snap.errors.length > 0 && count === 0;
   const empty = !!snap && count === 0 && !allFailed && !loading;
 
   const meta = useMemo(() => {
     void tick;
-    const when = formatRelativeUpdated(snap?.updatedAt ?? snap?.fetchedAt ?? null);
+    const when = formatRelativeUpdated(snap?.fetchedAt ?? snap?.updatedAt ?? null);
     const bits = [
       corridorChipsLabel(),
-      "Travel Midwest / IDOT",
+      "SigAlert · Chicago",
       when,
     ];
     if (snap && count > 0) bits.unshift(`${count} alert${count === 1 ? "" : "s"}`);
@@ -150,16 +152,16 @@ export function ChicagoTrafficCard() {
             <p className="traffic-status">Loading corridor alerts…</p>
           ) : allFailed ? (
             <p className="traffic-status error">
-              Could not reach Travel Midwest. Try again in a
-              minute.
+              Could not reach SigAlert{failDetail ? `: ${failDetail}` : "."} Try
+              again in a minute.
             </p>
           ) : empty ? (
             <p className="traffic-empty">No major corridor alerts right now.</p>
           ) : (
             <>
-              {snap && snap.errors.length > 0 && snap.errors.length < 3 ? (
+              {snap && snap.errors.length > 0 && count > 0 ? (
                 <p className="traffic-status warn">
-                  Partial update — missing {snap.errors.join(", ")}.
+                  Partial update — {failDetail || snap.errors.join(", ")}.
                 </p>
               ) : null}
 
@@ -204,7 +206,7 @@ export function ChicagoTrafficCard() {
             </>
           )}
 
-          <p className="traffic-attrib">Data: Travel Midwest</p>
+          <p className="traffic-attrib">Data: SigAlert</p>
         </div>
       ) : null}
     </article>
