@@ -84,6 +84,11 @@ describe("pickup stations", () => {
       "Organix",
     ]);
   });
+
+  it("tightens McCook and Dekalb Reload dests off the open-ended walking-floor list", () => {
+    expect(destinationsFor("mccook")).toEqual(["Christianson Farms"]);
+    expect(destinationsFor("dekalb-reload")).toEqual(["Hodgkins", "RSI"]);
+  });
 });
 
 
