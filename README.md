@@ -126,9 +126,11 @@ npx supabase db push
    - **Add user** with email + password is fastest for yard phones: they sign in on the Login screen.
 4. There is **no self-serve Sign up** in the app. Only invited emails can get in.
 
-#### 4. Upload existing local rows (once)
+#### 4. Upload existing local rows / recover desktop-only loads
 
-After sign-in, if this device still has non-sample localStorage loads, the session bar shows **Upload N local**. Tap it to push them to the shared table. Seeds are skipped.
+After sign-in the app **merges** this device’s `chitrader.load-tracker.v1` store and the signed-in `chitrader.load-tracker.cloud-cache.v1` into Supabase (upsert missing ids), then refreshes. Seeds are skipped. That covers the usual “logged on desktop, missing on the phone web app” case.
+
+The session bar always shows **Push all to cloud** while signed in (label becomes **Sync now** if the queue still has ops or the last flush failed). Tap it to force-upsert every non-seeded load currently in memory/cloud-cache — not only the older local key. If this device still has non-sample rows in `chitrader.load-tracker.v1` that are not in the cloud cache, **Upload N local** also appears.
 
 #### 5. Verify two devices
 

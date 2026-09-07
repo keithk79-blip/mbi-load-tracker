@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { Load } from "../types";
 import { loadToRow, rowToLoad, type LoadRow } from "../lib/cloud";
+import { collectDeviceLoads, mergeCloudLoads } from "../lib/cloudMerge";
 import { loadsToCsv } from "../lib/commodity";
 import {
   enqueueDelete,
@@ -47,6 +48,7 @@ type LoadsContextValue = {
   queuedCount: number;
   localPendingCount: number;
   uploadLocalLoads: () => Promise<number>;
+  pushAllLoadsToCloud: () => Promise<number>;
 };
 
 const CACHE_KEY = "chitrader.load-tracker.cloud-cache.v1";
@@ -111,6 +113,8 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
   );
   const [queuedCount, setQueuedCount] = useState(() => readQueue().length);
   const flushing = useRef(false);
+  const flushPromise = useRef<Promise<boolean> | null>(null);
+  const flushQueueRef = useRef<() => Promise<void>>(async () => {});
   const storeRef = useRef(store);
 
   useEffect(() => {
@@ -127,40 +131,106 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
     setStore(next);
   }, []);
 
-  const flushQueue = useCallback(async () => {
-    const supabase = getSupabase();
-    if (!supabase || !session || flushing.current) return;
+  const applyQueueStatus = useCallback((remaining: number, failed: boolean) => {
+    setQueuedCount(remaining);
     if (!navigator.onLine) {
       setSyncStatus("offline");
       return;
     }
-    flushing.current = true;
-    setSyncStatus("syncing");
-    try {
-      for (;;) {
-        const ops = readQueue();
-        if (!ops.length) break;
-        const op = ops[0];
-        if (op.kind === "upsert") {
-          const { error } = await supabase
-            .from("loads")
-            .upsert(loadToRow(op.load, user?.id ?? null));
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from("loads").delete().eq("id", op.loadId);
-          if (error) throw error;
-        }
-        const rest = readQueue().filter((item) => item.opId !== op.opId);
-        writeQueue(rest);
-        setQueuedCount(rest.length);
-      }
-      setSyncStatus("live");
-    } catch {
-      setSyncStatus(navigator.onLine ? "error" : "offline");
-    } finally {
-      flushing.current = false;
+    if (remaining > 0 || failed) {
+      setSyncStatus("error");
+      return;
     }
-  }, [session, user]);
+    setSyncStatus("live");
+  }, []);
+
+  const flushQueue = useCallback(async () => {
+    const supabase = getSupabase();
+    if (!supabase || !session) return;
+    if (flushPromise.current) {
+      const priorFailed = await flushPromise.current;
+      if (priorFailed) return;
+      if (readQueue().length && !flushing.current) return flushQueueRef.current();
+      return;
+    }
+    if (!navigator.onLine) {
+      applyQueueStatus(readQueue().length, false);
+      return;
+    }
+
+    const run = async () => {
+      flushing.current = true;
+      setSyncStatus("syncing");
+      let failed = false;
+      try {
+        for (;;) {
+          const ops = readQueue();
+          if (!ops.length) break;
+          const op = ops[0];
+          let attempts = 0;
+          for (;;) {
+            try {
+              if (op.kind === "upsert") {
+                const { error } = await supabase
+                  .from("loads")
+                  .upsert(loadToRow(op.load, user?.id ?? null));
+                if (error) throw error;
+              } else {
+                const { error } = await supabase.from("loads").delete().eq("id", op.loadId);
+                if (error) throw error;
+              }
+              break;
+            } catch (error) {
+              attempts += 1;
+              if (attempts >= 3 || !navigator.onLine) throw error;
+              await new Promise((resolve) => setTimeout(resolve, 400 * attempts));
+            }
+          }
+          const rest = readQueue().filter((item) => item.opId !== op.opId);
+          writeQueue(rest);
+          setQueuedCount(rest.length);
+        }
+      } catch {
+        failed = true;
+      } finally {
+        flushing.current = false;
+        applyQueueStatus(readQueue().length, failed);
+      }
+      return failed;
+    };
+
+    flushPromise.current = run();
+    let failed = true;
+    try {
+      failed = await flushPromise.current;
+    } finally {
+      flushPromise.current = null;
+    }
+    if (!failed && readQueue().length && !flushing.current) {
+      await flushQueueRef.current();
+    }
+  }, [applyQueueStatus, session, user]);
+
+  useEffect(() => {
+    flushQueueRef.current = flushQueue;
+  }, [flushQueue]);
+
+  const enqueueMissing = useCallback(
+    (loads: Load[]) => {
+      let queued = readQueue();
+      for (const load of loads) {
+        queued = enqueueUpsert({
+          ...load,
+          seeded: false,
+          displayName: load.displayName ?? displayName,
+          createdBy: load.createdBy ?? user?.id,
+        });
+      }
+      setQueuedCount(queued.length);
+      return queued.length;
+    },
+    [displayName, user?.id],
+  );
 
   const refreshFromCloud = useCallback(async () => {
     const supabase = getSupabase();
@@ -170,19 +240,20 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
       .select("*")
       .order("updated_at", { ascending: false });
     if (error) {
-      setSyncStatus(navigator.onLine ? "error" : "offline");
+      applyQueueStatus(readQueue().length, true);
       return;
     }
     const remote = (data as LoadRow[]).map(rowToLoad);
-    const pending = pendingIds();
-    let next = snapshotFromLoads(remote);
-    const local = storeRef.current;
-    for (const load of allLoads(local)) {
-      if (pending.has(load.id)) next = upsertLoad(next, load);
-    }
-    persistCloudCache(next);
+    const { merged, toUpsert } = mergeCloudLoads({
+      remote,
+      cache: storeRef.current,
+      local: readStore(),
+      pending: readQueue(),
+    });
+    persistCloudCache(snapshotFromLoads(merged));
+    if (toUpsert.length) enqueueMissing(toUpsert);
     await flushQueue();
-  }, [flushQueue, persistCloudCache, session]);
+  }, [applyQueueStatus, enqueueMissing, flushQueue, persistCloudCache, session]);
 
   useEffect(() => {
     if (!cloud) {
@@ -278,15 +349,18 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
 
   const uploadLocalLoads = useCallback(async () => {
     const local = allLoads(readStore()).filter((load) => !load.seeded);
-    for (const load of local) {
-      saveLoad({
-        ...load,
-        displayName: load.displayName ?? displayName,
-        createdBy: load.createdBy ?? user?.id,
-      });
-    }
+    if (local.length) enqueueMissing(local);
+    await flushQueue();
     return local.length;
-  }, [displayName, saveLoad, user?.id]);
+  }, [enqueueMissing, flushQueue]);
+
+  const pushAllLoadsToCloud = useCallback(async () => {
+    if (!cloud) return 0;
+    const deviceLoads = collectDeviceLoads(storeRef.current, readStore());
+    if (deviceLoads.length) enqueueMissing(deviceLoads);
+    await flushQueue();
+    return deviceLoads.length;
+  }, [cloud, enqueueMissing, flushQueue]);
 
   const localPendingCount = useMemo(() => {
     if (!cloud) return 0;
@@ -322,12 +396,14 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
       queuedCount,
       localPendingCount,
       uploadLocalLoads,
+      pushAllLoadsToCloud,
     };
   }, [
     clearSampleLoads,
     cloud,
     deleteLoad,
     localPendingCount,
+    pushAllLoadsToCloud,
     queuedCount,
     saveLoad,
     store,
