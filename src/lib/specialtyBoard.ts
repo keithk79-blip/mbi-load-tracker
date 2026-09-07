@@ -25,6 +25,7 @@ export const SPECIALTY_STATIONS: SpecialtyStation[] = [
   { id: "prairie-hill", name: "PrairieHill" },
   { id: "hodgkins", name: "Hodgkins" },
   { id: "gray-tank", name: "Gray Tank" },
+  { id: "liberty-tank", name: "Liberty" },
   { id: "herthside", name: "Herthside" },
 ];
 
@@ -33,6 +34,7 @@ export const SPECIALTY_DESTINATIONS = [
   "RSI",
   "Hodgkins",
   "Homewood",
+  "Groot",
   "DeKalb",
   "CID",
   "Kankakee",
@@ -222,6 +224,8 @@ export function resolveSpecialtyStationId(
   pickupName?: string,
 ): string | null {
   if (stationId && isSpecialtyStationId(stationId)) return stationId;
+  // Catalog "liberty" is the leachate pickup, not the walking-floor Liberty card.
+  if (stationId === "liberty") return null;
   const name = (pickupName ?? "").trim().toLowerCase();
   if (!name) return null;
   const aliases: Record<string, string> = {
@@ -236,8 +240,10 @@ export function resolveSpecialtyStationId(
     "prairie hill": "prairie-hill",
     "gray tank": "gray-tank",
     "liberty tank": "liberty-tank",
+    liberty: "liberty-tank",
   };
-  if (aliases[name]) return aliases[name];
+  const aliased = aliases[name];
+  if (aliased && isSpecialtyStationId(aliased)) return aliased;
   const hit = SPECIALTY_STATIONS.find((s) => s.name.toLowerCase() === name);
   return hit?.id ?? null;
 }

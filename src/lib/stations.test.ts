@@ -8,7 +8,7 @@ import {
 
 describe("pickup stations", () => {
   it("includes Liberty leachate plus DeKalb, Prairie Hill RFD, GraysLake, and Laraway", () => {
-    expect(STATIONS).toHaveLength(22);
+    expect(STATIONS).toHaveLength(30);
     expect(FREQUENT_STATION_IDS).toContain("liberty");
     expect(FREQUENT_STATION_IDS).toContain("dekalb");
     expect(FREQUENT_STATION_IDS).toContain("prairie-hill-rfd");
@@ -38,6 +38,11 @@ describe("pickup stations", () => {
 
     expect(commoditiesFor("laraway")).toEqual(["Leachate (tanker)"]);
     expect(destinationsFor("laraway")).toEqual(["CID", "Kankakee"]);
+  });
+
+  it("allows Wheeling recycle to Groot", () => {
+    expect(commoditiesFor("wheeling")).toContain("Recycle");
+    expect(destinationsFor("wheeling")).toContain("Groot");
   });
 });
 
