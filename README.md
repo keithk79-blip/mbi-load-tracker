@@ -77,7 +77,9 @@ After a successful build you should have:
 | NSIS installer | `src-tauri/target/release/bundle/nsis/Load Tracker_1.0.0_x64-setup.exe` |
 | MSI | `src-tauri/target/release/bundle/msi/Load Tracker_1.0.0_x64_en-US.msi` |
 
-This Linux/cloud environment scaffolds the Tauri project and can compile the frontend, but it does **not** produce a Windows installer (no MSVC/WiX/NSIS Windows toolchain here). Build the `.exe` / installer on Windows with the commands above.
+This Linux/cloud environment scaffolds the Tauri project and can compile the frontend, but it does **not** produce a Windows installer (no MSVC/WiX/NSIS Windows toolchain here). After merging native-shell changes (including the HTTP plugin used by the Chicago traffic card), run **`npm run tauri:build` on a Windows machine** — a cloud VM typically cannot complete the full Tauri NSIS/MSI bundle.
+
+The desktop Chicago traffic card POSTs to Travel Midwest through `@tauri-apps/plugin-http` / `tauri-plugin-http` (scoped in `src-tauri/capabilities/default.json`) so the WebView CORS restriction does not apply. The browser web app still omits that card.
 
 Optional last-resort cross-compile from Linux (NSIS only, not the recommended path): see [Tauri Windows installer — build on Linux](https://v2.tauri.app/distribute/windows-installer/#build-windows-apps-on-linux-and-macos) (`cargo-xwin` + `x86_64-pc-windows-msvc`).
 

@@ -1,5 +1,5 @@
 /** Chicago hot-corridor traffic from Travel Midwest / IDOT Gateway.
- * Desktop (Tauri) only — fetches upstream directly (no browser CORS).
+ * Desktop (Tauri) only — POSTs via `@tauri-apps/plugin-http` (no WebView CORS).
  */
 
 export const CHICAGO_BBOX: [number, number, number, number] = [
@@ -113,8 +113,20 @@ export function trafficEndpoint(kind: TrafficKind): string {
   return KIND_UPSTREAM[kind];
 }
 
+/** Browser `fetch` hits CORS in the Tauri WebView; the HTTP plugin does not. */
+async function trafficFetch(
+  input: string,
+  init: RequestInit,
+): Promise<Response> {
+  if (isTauriDesktop()) {
+    const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
+    return tauriFetch(input, init);
+  }
+  return fetch(input, init);
+}
+
 async function postMap(kind: TrafficKind): Promise<FeatureCollection> {
-  const res = await fetch(trafficEndpoint(kind), {
+  const res = await trafficFetch(trafficEndpoint(kind), {
     method: "POST",
     headers: {
       Accept: "application/json",
