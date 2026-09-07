@@ -23,6 +23,13 @@ export const STATION_CALL_YARDS = [
 
 export type StationCallId = (typeof STATION_CALL_YARDS)[number]["id"];
 
+/** Next/previous yard in table order. Null at either end (Enter should blur). */
+export function adjacentStationId(stationId: string, delta: 1 | -1): string | null {
+  const i = STATION_CALL_YARDS.findIndex((y) => y.id === stationId);
+  if (i < 0) return null;
+  return STATION_CALL_YARDS[i + delta]?.id ?? null;
+}
+
 /** Hour slots after Start, before Close. */
 export const STATION_CALL_HOURS = [
   { key: "6", label: "6am" },
