@@ -10,7 +10,12 @@ import {
 } from "react";
 import type { Load } from "../types";
 import { loadToRow, rowToLoad, type LoadRow } from "../lib/cloud";
-import { collectDeviceLoads, mergeCloudLoads } from "../lib/cloudMerge";
+import {
+  collectDeviceLoads,
+  mergeCloudLoads,
+  restoreDeviceLoads,
+  snapshotLosesDeviceDates,
+} from "../lib/cloudMerge";
 import { loadsToCsv } from "../lib/commodity";
 import {
   enqueueDelete,
@@ -27,6 +32,7 @@ import {
   loadsForDate,
   readStore,
   removeLoad,
+  snapshotFromLoads,
   upsertLoad,
   writeStore,
   type Persisted,
@@ -61,16 +67,6 @@ function sortLoads(loads: Load[]): Load[] {
     if (byUpdated !== 0) return byUpdated;
     return b.createdAt.localeCompare(a.createdAt);
   });
-}
-
-function snapshotFromLoads(loads: Load[]): Persisted {
-  const loadsByDate: Record<string, Load[]> = {};
-  for (const load of loads) {
-    const bucket = loadsByDate[load.date] ?? [];
-    bucket.push(load);
-    loadsByDate[load.date] = bucket;
-  }
-  return { version: 1, loadsByDate };
 }
 
 function readCloudCache(): Persisted {
@@ -116,9 +112,11 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
   const flushPromise = useRef<Promise<boolean> | null>(null);
   const flushQueueRef = useRef<() => Promise<void>>(async () => {});
   const storeRef = useRef(store);
+  const lastGoodRef = useRef<Persisted>(store);
 
   useEffect(() => {
     storeRef.current = store;
+    if (allLoads(store).some((load) => !load.seeded)) lastGoodRef.current = store;
   }, [store]);
 
   const persistLocal = useCallback((next: Persisted) => {
@@ -126,10 +124,38 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
     setStore(next);
   }, []);
 
+  const backupLocalStore = useCallback((next: Persisted) => {
+    const local = readStore();
+    const union = collectDeviceLoads(next, local).filter((load) => !load.seeded);
+    const existingReal = allLoads(local).filter((load) => !load.seeded);
+    if (union.length === 0 && existingReal.length > 0) return;
+    if (union.length === 0) return;
+    writeStore(snapshotFromLoads(union));
+  }, []);
+
   const persistCloudCache = useCallback((next: Persisted) => {
+    const pending = readQueue();
+    const cache = readCloudCache();
+    const local = readStore();
+    const lastGood = lastGoodRef.current;
+    if (
+      snapshotLosesDeviceDates(allLoads(next), cache, local, pending) ||
+      snapshotLosesDeviceDates(allLoads(next), lastGood, local, pending)
+    ) {
+      const recovered = restoreDeviceLoads(
+        allLoads(next),
+        Object.keys(cache.loadsByDate).length ? cache : lastGood,
+        local,
+        pending,
+      );
+      if (!recovered.length) return;
+      next = snapshotFromLoads(recovered);
+    }
     writeCloudCache(next);
     setStore(next);
-  }, []);
+    if (allLoads(next).some((load) => !load.seeded)) lastGoodRef.current = next;
+    backupLocalStore(next);
+  }, [backupLocalStore]);
 
   const applyQueueStatus = useCallback((remaining: number, failed: boolean) => {
     setQueuedCount(remaining);
@@ -239,16 +265,23 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
       .from("loads")
       .select("*")
       .order("updated_at", { ascending: false });
-    if (error) {
+    if (error || !Array.isArray(data)) {
       applyQueueStatus(readQueue().length, true);
       return;
     }
     const remote = (data as LoadRow[]).map(rowToLoad);
+    const cache = readCloudCache();
+    const local = readStore();
+    const pending = readQueue();
+    const deviceCache =
+      Object.keys(cache.loadsByDate).length > 0
+        ? cache
+        : lastGoodRef.current;
     const { merged, toUpsert } = mergeCloudLoads({
       remote,
-      cache: storeRef.current,
-      local: readStore(),
-      pending: readQueue(),
+      cache: deviceCache,
+      local,
+      pending,
     });
     persistCloudCache(snapshotFromLoads(merged));
     if (toUpsert.length) enqueueMissing(toUpsert);
@@ -277,7 +310,9 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
           setStore((prev) => {
             if (payload.eventType === "DELETE") {
               const row = payload.old as Partial<LoadRow>;
-              if (!row.id || pending.has(row.id)) return prev;
+              // Only honor deletes this device queued. An empty/stale remote
+              // must not wipe dates that still have real cache/local loads.
+              if (!row.id || !pending.has(row.id)) return prev;
               const next = removeLoad(prev, row.id);
               writeCloudCache(next);
               return next;
