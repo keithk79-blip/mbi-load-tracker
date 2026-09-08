@@ -6,7 +6,7 @@ import {
   formatHeaderDate,
   weekStartingMonday,
 } from "../lib/chicagoDate";
-import { tallyLabel } from "../lib/commodity";
+import { daySummaryCards } from "../lib/totals";
 import { useDrivers } from "../store/DriversContext";
 import { useLoads } from "../store/LoadsContext";
 import { BrandMark } from "../components/BrandMark";
@@ -53,12 +53,7 @@ export function TodayScreen({
     return map;
   }, [loads, date]);
 
-  const counts = new Map<string, number>();
-  for (const load of dayLoads) {
-    const key = tallyLabel(load.commodity);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  const topCommodities = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const summaryCards = daySummaryCards(dayLoads);
   const loadWord = dayLoads.length === 1 ? "load" : "loads";
 
   return (
@@ -88,16 +83,15 @@ export function TodayScreen({
       ) : null}
 
       <div className="tally-row">
-        {topCommodities.slice(0, 2).map(([label, count]) => (
-          <article key={label} className="tally-card">
-            <span className="tally-label">{label}</span>
-            <span className="tally-value">{count}</span>
+        {summaryCards.map((card) => (
+          <article
+            key={card.key}
+            className={card.emphasis ? "tally-card tally-loads" : "tally-card"}
+          >
+            <span className="tally-label">{card.label}</span>
+            <span className="tally-value">{card.count}</span>
           </article>
         ))}
-        <article className="tally-card tally-loads">
-          <span className="tally-label">LOADS</span>
-          <span className="tally-value">{dayLoads.length}</span>
-        </article>
       </div>
 
       <ChicagoTrafficCard />

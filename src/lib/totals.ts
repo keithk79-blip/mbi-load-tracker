@@ -1,5 +1,6 @@
 import { CUSTOM_ID } from "../data/stations";
 import { commodityRankLabel, tallyLabel } from "./commodity";
+import { isBrokerTruck } from "./truck";
 import type { Load } from "../types";
 
 export type RankRow = {
@@ -85,4 +86,71 @@ export function filterCaption(filter: TotalsFilter): string {
   if (filter.kind === "pickup") return `Pickup · ${filter.key}`;
   if (filter.kind === "destination") return `Delivery · ${filter.key}`;
   return `Commodity · ${commodityRankLabel(filter.key)}`;
+}
+
+export function countBrokerLoads(loads: Load[]): number {
+  return loads.filter((load) => isBrokerTruck(load.truck)).length;
+}
+
+/** Yard waste, recycle, residual/residue, cardboard, or Groot-related hauls. */
+export function isWalkingFloorLoad(load: Load): boolean {
+  const commodityKey = tallyLabel(load.commodity);
+  if (
+    commodityKey === "YARD" ||
+    commodityKey === "RECYCLE" ||
+    commodityKey === "RESIDUAL" ||
+    commodityKey === "CARDBOARD"
+  ) {
+    return true;
+  }
+  const fields = [load.commodity, load.destination, load.pickup];
+  return fields.some((field) => field.toLowerCase().includes("groot"));
+}
+
+export function countWalkingFloorLoads(loads: Load[]): number {
+  return loads.filter(isWalkingFloorLoad).length;
+}
+
+export type DaySummaryCard = {
+  key: string;
+  label: string;
+  count: number;
+  emphasis?: boolean;
+};
+
+export function topCommodityTallies(
+  loads: Load[],
+  limit = 2,
+): { label: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const load of loads) {
+    const key = tallyLabel(load.commodity);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([label, count]) => ({ label, count }));
+}
+
+/** Today header cards: top commodities, LOADS, SUBS, WALKING-FLOOR. */
+export function daySummaryCards(loads: Load[]): DaySummaryCard[] {
+  const cards: DaySummaryCard[] = topCommodityTallies(loads, 2).map((row) => ({
+    key: `commodity:${row.label}`,
+    label: row.label,
+    count: row.count,
+  }));
+  cards.push({
+    key: "loads",
+    label: "LOADS",
+    count: loads.length,
+    emphasis: true,
+  });
+  cards.push({ key: "subs", label: "SUBS", count: countBrokerLoads(loads) });
+  cards.push({
+    key: "walking-floor",
+    label: "WALKING-FLOOR",
+    count: countWalkingFloorLoads(loads),
+  });
+  return cards;
 }

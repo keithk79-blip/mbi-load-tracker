@@ -172,7 +172,7 @@ export function EditLoadScreen({
           }}
           submitLabel="Use"
           autoFocus
-          hint="Type the new unit number or use the pad."
+          hint="Type the new unit number or broker code, or use the pad."
         />
       </div>
     );
