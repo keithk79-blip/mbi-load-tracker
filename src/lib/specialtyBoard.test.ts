@@ -18,7 +18,6 @@ import {
   resolveSpecialtyBoardLane,
   resolveSpecialtyBoardMatch,
   resolveSpecialtyStationId,
-  slotsForStation,
   specialtyChipMode,
   specialtyDestinationsFor,
   unkeptSpecialtyIds,
