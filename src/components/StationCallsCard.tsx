@@ -8,28 +8,23 @@ import {
   adjacentStationId,
   boardFillScore,
   boardForDate,
+  commitStationCell,
   fetchStationCallStoreFromCloud,
   mergeBoardCells,
   mergeStationCallStores,
+  parseNumericCell,
   pushStationCallDay,
   readStationCallStore,
   setStationClose,
   setStationHour,
   startForStation,
   writeStationCallStore,
+  type StationCellValue,
   type StationHourKey,
 } from "../lib/stationCalls";
 
 /** Editable columns only: hour keys plus Close. Start is a read-only span. */
 type StationCallCol = StationHourKey | "close";
-
-function parseCell(raw: string): number | null {
-  const t = raw.trim();
-  if (t === "") return null;
-  const n = Number(t);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return Math.floor(n);
-}
 
 function focusStationCallCell(stationId: string, col: StationCallCol): boolean {
   const next = document.querySelector<HTMLInputElement>(
@@ -48,21 +43,21 @@ function CellInput({
   stationId,
   col,
 }: {
-  value: number | null | undefined;
-  onCommit: (next: number | null) => void;
+  value: StationCellValue | null | undefined;
+  onCommit: (next: StationCellValue | null) => void;
   ariaLabel: string;
   stationId: string;
   col: StationCallCol;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const shown = draft !== null ? draft : value === null || value === undefined ? "" : String(value);
-  const isZero = draft === null && value === 0;
+  const isZero = draft === null && parseNumericCell(value) === 0;
   const committedRef = useRef(false);
 
   const commit = () => {
     if (committedRef.current) return;
     committedRef.current = true;
-    const next = parseCell(draft ?? shown);
+    const next = commitStationCell(draft ?? shown);
     setDraft(null);
     onCommit(next);
   };
@@ -70,7 +65,10 @@ function CellInput({
   return (
     <input
       className={`station-call-input${isZero ? " is-zero" : ""}`}
-      inputMode="numeric"
+      type="text"
+      inputMode="text"
+      autoComplete="off"
+      spellCheck={false}
       aria-label={ariaLabel}
       data-station={stationId}
       data-col={col}
@@ -168,14 +166,14 @@ export function StationCallsCard({ date }: { date: string }) {
   );
 
   const onHour = useCallback(
-    (stationId: string, hour: StationHourKey, value: number | null) => {
+    (stationId: string, hour: StationHourKey, value: StationCellValue | null) => {
       persist(setStationHour(store, date, stationId, hour, value));
     },
     [persist, store, date],
   );
 
   const onClose = useCallback(
-    (stationId: string, value: number | null) => {
+    (stationId: string, value: StationCellValue | null) => {
       persist(setStationClose(store, date, stationId, value));
     },
     [persist, store, date],

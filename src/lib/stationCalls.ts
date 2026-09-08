@@ -46,12 +46,17 @@ export const STATION_CALL_HOURS = [
 
 export type StationHourKey = (typeof STATION_CALL_HOURS)[number]["key"];
 
+/** Hour/Close cell: free text (empty, decimals, letters). Numeric summaries parse when possible. */
+export type StationCellValue = string;
+
 export type StationDayRow = {
-  /** Blank until the dispatcher types a count. */
-  hours: Partial<Record<StationHourKey, number>>;
-  /** Blank until set; otherwise carries to next day's Start. */
-  close: number | null;
+  /** Blank until the dispatcher types a value. */
+  hours: Partial<Record<StationHourKey, StationCellValue>>;
+  /** Blank until set; otherwise carries to next day's Start when numeric. */
+  close: StationCellValue | null;
 };
+
+export type StationCellInput = string | number | null;
 
 export type StationDayBoard = Record<string, StationDayRow>;
 export type StationCallStore = Record<string, StationDayBoard>;
@@ -68,11 +73,31 @@ export function emptyBoard(): StationDayBoard {
   return board;
 }
 
-function cleanCount(raw: unknown): number | undefined {
-  if (raw === null || raw === undefined || raw === "") return undefined;
-  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
-  if (!Number.isFinite(n) || n < 0) return undefined;
-  return Math.floor(n);
+/** Persist empty as blank; keep decimals and letters. Numbers from older stores become strings. */
+export function normalizeStationCell(raw: unknown): StationCellValue | undefined {
+  if (raw === null || raw === undefined) return undefined;
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw)) return undefined;
+    return String(raw);
+  }
+  const t = String(raw).trim();
+  if (t === "") return undefined;
+  return t;
+}
+
+/** Trimmed cell for save: empty/whitespace → null so the grid stays blank. */
+export function commitStationCell(raw: string): StationCellValue | null {
+  return normalizeStationCell(raw) ?? null;
+}
+
+/** Numeric Close/Start/summaries: parse when the whole value is a finite number. */
+export function parseNumericCell(raw: unknown): number | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+  const t = String(raw).trim();
+  if (t === "") return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
 }
 
 function cleanRow(raw: unknown): StationDayRow {
@@ -81,12 +106,11 @@ function cleanRow(raw: unknown): StationDayRow {
   const obj = raw as { hours?: Record<string, unknown>; close?: unknown };
   if (obj.hours && typeof obj.hours === "object") {
     for (const hour of STATION_CALL_HOURS) {
-      const n = cleanCount(obj.hours[hour.key]);
-      if (n !== undefined) row.hours[hour.key] = n;
+      const cell = normalizeStationCell(obj.hours[hour.key]);
+      if (cell !== undefined) row.hours[hour.key] = cell;
     }
   }
-  const close = cleanCount(obj.close);
-  row.close = close === undefined ? null : close;
+  row.close = normalizeStationCell(obj.close) ?? null;
   return row;
 }
 
@@ -130,13 +154,13 @@ export function boardForDate(store: StationCallStore, date: string): StationDayB
   return store[date] ?? emptyBoard();
 }
 
-/** Effective Close for carry-over: explicit Close, else last filled hour, else Start. */
+/** Effective Close for carry-over: numeric Close, else last numeric hour, else Start. */
 export function effectiveClose(row: StationDayRow, start: number): number {
-  if (row.close !== null && row.close !== undefined) return row.close;
+  const closeN = parseNumericCell(row.close);
+  if (closeN !== null) return closeN;
   for (let i = STATION_CALL_HOURS.length - 1; i >= 0; i--) {
-    const key = STATION_CALL_HOURS[i].key;
-    const n = row.hours[key];
-    if (n !== undefined) return n;
+    const n = parseNumericCell(row.hours[STATION_CALL_HOURS[i].key]);
+    if (n !== null) return n;
   }
   return start;
 }
@@ -159,12 +183,13 @@ export function setStationHour(
   date: string,
   stationId: string,
   hour: StationHourKey,
-  value: number | null,
+  value: StationCellInput,
 ): StationCallStore {
   const board = { ...(store[date] ?? emptyBoard()) };
   const row = { ...(board[stationId] ?? emptyRow()), hours: { ...(board[stationId] ?? emptyRow()).hours } };
-  if (value === null) delete row.hours[hour];
-  else row.hours[hour] = value;
+  const cell = value === null ? undefined : normalizeStationCell(value);
+  if (cell === undefined) delete row.hours[hour];
+  else row.hours[hour] = cell;
   board[stationId] = row;
   return { ...store, [date]: board };
 }
@@ -173,11 +198,15 @@ export function setStationClose(
   store: StationCallStore,
   date: string,
   stationId: string,
-  value: number | null,
+  value: StationCellInput,
 ): StationCallStore {
   const board = { ...(store[date] ?? emptyBoard()) };
   const prev = board[stationId] ?? emptyRow();
-  board[stationId] = { ...prev, hours: { ...prev.hours }, close: value };
+  board[stationId] = {
+    ...prev,
+    hours: { ...prev.hours },
+    close: value === null ? null : (normalizeStationCell(value) ?? null),
+  };
   return { ...store, [date]: board };
 }
 
@@ -193,7 +222,14 @@ export async function fetchStationCallStoreFromCloud(): Promise<StationCallStore
   }
   const out: StationCallStore = {};
   for (const row of data as { date: string; board: StationDayBoard }[]) {
-    out[row.date] = row.board ?? emptyBoard();
+    const day = emptyBoard();
+    const board = row.board;
+    if (board && typeof board === "object") {
+      for (const yard of STATION_CALL_YARDS) {
+        day[yard.id] = cleanRow(board[yard.id]);
+      }
+    }
+    out[row.date] = day;
   }
   return out;
 }
@@ -223,7 +259,7 @@ export function mergeBoardCells(
   for (const yard of STATION_CALL_YARDS) {
     const l = local[yard.id] ?? emptyRow();
     const r = remote[yard.id] ?? emptyRow();
-    const hours: Partial<Record<StationHourKey, number>> = {};
+    const hours: Partial<Record<StationHourKey, StationCellValue>> = {};
     for (const hour of STATION_CALL_HOURS) {
       const rv = r.hours[hour.key];
       const lv = l.hours[hour.key];

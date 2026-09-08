@@ -97,7 +97,7 @@ button {
 }
 
 .screen {
-  padding: 18px 16px 108px;
+  padding: 18px 16px 28px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -372,23 +372,25 @@ button {
   text-transform: uppercase;
 }
 
-.fab {
-  position: sticky;
-  bottom: 8px;
-  margin-top: 8px;
-  width: 100%;
-  min-height: 56px;
+button.log-load-top {
+  width: max-content;
+  max-width: max-content;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  min-height: 36px;
+  padding: 6px 14px;
   border: 0;
-  border-radius: 18px;
+  border-radius: 10px;
   background: var(--amber);
   color: var(--amber-ink);
   font-weight: 800;
-  font-size: 17px;
-  display: flex;
+  font-size: 14px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  box-shadow: 0 10px 28px rgba(219, 44, 51, 0.32);
+  gap: 6px;
+  margin: 0;
 }
 
 .tab-bar {
@@ -1030,6 +1032,10 @@ button {
   gap: 8px;
 }
 
+[data-layout="desktop"] .eod-stat-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .eod-stat {
   background: var(--surface-2);
   border: 1px solid var(--line);
@@ -1051,6 +1057,7 @@ button {
   letter-spacing: 0.1em;
   font-weight: 700;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 
 .eod-stat-value {
@@ -2019,11 +2026,6 @@ body.app-ready .splash {
 
 [data-layout="desktop"] .numpad-key {
   min-height: 52px;
-}
-
-[data-layout="desktop"] .fab {
-  position: sticky;
-  bottom: 12px;
 }
 
 @media (max-width: 480px) {

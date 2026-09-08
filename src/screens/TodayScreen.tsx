@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Plus } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { dailyCounts } from "../lib/analytics";
 import {
   chicagoToday,
@@ -94,6 +94,10 @@ export function TodayScreen({
         ))}
       </div>
 
+      <button type="button" className="log-load-top" onClick={() => onLog(date)}>
+        + Log load
+      </button>
+
       <ChicagoTrafficCard />
 
       <DriversCard compact date={date} />
@@ -112,8 +116,8 @@ export function TodayScreen({
         <div className="empty">
           <h2>No loads {viewingToday ? "yet today" : `on ${formatHeaderDate(date)}`}</h2>
           <p>
-            Log the first haul for this Chicago calendar day with the button
-            below. You can keep adding more without losing this date. Use the
+            Log the first haul for this Chicago calendar day with + Log load
+            above. You can keep adding more without losing this date. Use the
             week list to change days.
           </p>
         </div>
@@ -157,10 +161,6 @@ export function TodayScreen({
         </section>
       )}
 
-      <button type="button" className="fab" onClick={() => onLog(date)}>
-        <Plus size={22} strokeWidth={2.6} />
-        Log load
-      </button>
     </div>
   );
 }
