@@ -372,9 +372,11 @@ button {
   text-transform: uppercase;
 }
 
-.fab,
-.log-load-top {
-  width: fit-content;
+button.log-load-top {
+  width: max-content;
+  max-width: max-content;
+  min-width: 0;
+  flex: 0 0 auto;
   align-self: flex-start;
   min-height: 36px;
   padding: 6px 14px;
@@ -384,7 +386,7 @@ button {
   color: var(--amber-ink);
   font-weight: 800;
   font-size: 14px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
