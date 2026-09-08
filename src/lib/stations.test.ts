@@ -17,7 +17,20 @@ describe("pickup stations", () => {
     expect(FREQUENT_STATION_IDS).toContain("laraway");
 
     expect(commoditiesFor("liberty")).toEqual(["Leachate (tanker)"]);
-    expect(destinationsFor("liberty")).toEqual(["CID", "Kankakee", "Reworld"]);
+    expect(destinationsFor("liberty")).toEqual([
+      "CID",
+      "Kankakee",
+      "Reworld",
+      "KanSpcl",
+      "Sun Chem",
+    ]);
+    expect(destinationsFor("liberty", "Leachate (tanker)")).toEqual([
+      "CID",
+      "Kankakee",
+      "Reworld",
+      "KanSpcl",
+      "Sun Chem",
+    ]);
 
     expect(commoditiesFor("dekalb")).toEqual(["Leachate (tanker)"]);
     expect(destinationsFor("dekalb")).toEqual(["Dekalb Sanitary", "Rochelle WWTP"]);

@@ -12,7 +12,7 @@ import { pickupLabel } from "../lib/cascade";
 import { chicagoToday, formatCreatedStamp } from "../lib/chicagoDate";
 import { findNearDuplicate } from "../lib/duplicates";
 import { batchCreatedAt, clampLoadQty } from "../lib/quantity";
-import { resolveSpecialtyBoardLane } from "../lib/specialtyBoard";
+import { resolveSpecialtyBoardMatch } from "../lib/specialtyBoard";
 import { useSpecialty } from "../store/SpecialtyContext";
 import { newLoadId } from "../lib/storage";
 import { useLoads } from "../store/LoadsContext";
@@ -89,14 +89,14 @@ export function LogLoadScreen({
       });
     }
 
-    const specialtyId = resolveSpecialtyBoardLane(
+    const lane = resolveSpecialtyBoardMatch(
       form.stationId,
       pickup,
       destination,
       form.commodity,
     );
-    if (specialtyId) {
-      void consumeOpens(targetDate, specialtyId, destination, qty);
+    if (lane) {
+      void consumeOpens(targetDate, lane.specialtyId, lane.chip, qty);
     }
 
     setDuplicate(null);
@@ -130,20 +130,20 @@ export function LogLoadScreen({
       }
     }
 
-    const specialtyId = resolveSpecialtyBoardLane(
+    const lane = resolveSpecialtyBoardMatch(
       form.stationId,
       pickup,
       destination,
       form.commodity,
     );
-    if (!forceSpecialty && specialtyId) {
-      const opens = opensFor(targetDate, specialtyId, destination);
+    if (!forceSpecialty && lane) {
+      const opens = opensFor(targetDate, lane.specialtyId, lane.chip);
       if (opens < qty) {
         setDuplicate(null);
         setSpecialtyWarn({
           opens,
-          stationId: specialtyId,
-          destination,
+          stationId: lane.specialtyId,
+          destination: lane.chip,
           pickup,
         });
         return;

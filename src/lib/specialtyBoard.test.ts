@@ -16,8 +16,10 @@ import {
   remainingSpecialtySlotIds,
   removeSpecialtySlot,
   resolveSpecialtyBoardLane,
+  resolveSpecialtyBoardMatch,
   resolveSpecialtyStationId,
   slotsForStation,
+  specialtyChipMode,
   specialtyDestinationsFor,
   unkeptSpecialtyIds,
   type SpecialtyStore,
@@ -38,11 +40,16 @@ function catalogLogPickup(
   };
 }
 
-function boardCommodityFor(specialtyId: string | null): string {
+function boardCommodityFor(specialtyId: string | null, chip?: string): string {
   if (specialtyId === "gray-tank" || specialtyId === "liberty-tank") {
     return "Leachate (tanker)";
   }
   if (specialtyId === "hodgkins") return "Residual";
+  if (specialtyId && specialtyChipMode(specialtyId) === "commodity") {
+    if (chip && specialtyDestinationsFor(specialtyId).some((c) => c === chip)) {
+      return chip === "Trash" ? "Trash (MSW)" : chip;
+    }
+  }
   return "Recycle";
 }
 
@@ -56,14 +63,14 @@ function logLoadConsume(
   commodity?: string,
 ): SpecialtyStore {
   const resolved = resolveSpecialtyStationId(stationId, pickup);
-  const lane = resolveSpecialtyBoardLane(
+  const match = resolveSpecialtyBoardMatch(
     stationId,
     pickup,
     destination,
-    commodity ?? boardCommodityFor(resolved),
+    commodity ?? boardCommodityFor(resolved, destination),
   );
-  if (!lane) return store;
-  return consumeSpecialtyOpens(store, date, lane, destination, qty);
+  if (!match) return store;
+  return consumeSpecialtyOpens(store, date, match.specialtyId, match.chip, qty);
 }
 
 describe("specialty walking-floor catalog", () => {
@@ -77,14 +84,18 @@ describe("specialty walking-floor catalog", () => {
     expect(SPECIALTY_STATIONS.some((s) => s.id === "newton-tank")).toBe(false);
   });
 
-  it("offers Groot as a specialty destination chip (Wheeling recycle)", () => {
+  it("lists only Recycle, Yard Waste, Cardboard on Wheeling specialty chips", () => {
+    expect(specialtyDestinationsFor("wheeling")).toEqual([
+      "Recycle",
+      "Yard Waste",
+      "Cardboard",
+    ]);
+    expect(specialtyChipMode("wheeling")).toBe("commodity");
+    expect(specialtyDestinationsFor("wheeling")).not.toContain("Hodgkins");
+    expect(specialtyDestinationsFor("wheeling")).not.toContain("GraysLake");
+    expect(specialtyDestinationsFor("wheeling")).not.toContain("Groot");
+    expect(specialtyDestinationsFor("wheeling")).not.toContain("RSI");
     expect(SPECIALTY_DESTINATIONS).toContain("Groot");
-    expect(specialtyDestinationsFor("wheeling")).toContain("Groot");
-  });
-
-  it("offers GraysLake as a Wheeling-only specialty dest (recycle)", () => {
-    expect(specialtyDestinationsFor("wheeling")).toContain("GraysLake");
-    expect(specialtyDestinationsFor("wheeling")).toContain("Groot");
     expect(SPECIALTY_DESTINATIONS).not.toContain("GraysLake");
     expect(applyPickupCascade("wheeling", "Recycle", "GraysLake")).toMatchObject({
       commodity: "Recycle",
@@ -99,9 +110,57 @@ describe("specialty walking-floor catalog", () => {
       destinationValid: false,
     });
     for (const station of SPECIALTY_STATIONS) {
-      if (station.id === "wheeling") continue;
       expect(specialtyDestinationsFor(station.id)).not.toContain("GraysLake");
     }
+  });
+
+  it("lists walking-floor commodity chips on Rockdale, Dekalb, Roscoe, Ford, Prairie Hill", () => {
+    expect(specialtyDestinationsFor("rockdale")).toEqual([
+      "Recycle",
+      "Yard Waste",
+      "Cardboard",
+    ]);
+    expect(specialtyDestinationsFor("dekalb")).toEqual([
+      "Wood",
+      "Recycle",
+      "Yard Waste",
+      "C&D",
+    ]);
+    expect(specialtyDestinationsFor("roscoe")).toEqual(["Recycle"]);
+    expect(specialtyDestinationsFor("ford")).toEqual(["Cardboard", "Trash", "Recycle"]);
+    expect(specialtyDestinationsFor("prairie-hill")).toEqual(["C&D", "Yard Waste"]);
+    for (const id of [
+      "wheeling",
+      "rockdale",
+      "dekalb",
+      "roscoe",
+      "ford",
+      "prairie-hill",
+    ]) {
+      expect(specialtyChipMode(id)).toBe("commodity");
+    }
+  });
+
+  it("lists only CID, Kankakee, Reworld, KanSpcl, Sun Chem on Liberty specialty chips", () => {
+    expect(specialtyDestinationsFor("liberty-tank")).toEqual([
+      "CID",
+      "Kankakee",
+      "Reworld",
+      "KanSpcl",
+      "Sun Chem",
+    ]);
+    expect(specialtyChipMode("liberty-tank")).toBe("destination");
+    expect(specialtyDestinationsFor("liberty-tank")).not.toContain("Hodgkins");
+    expect(specialtyDestinationsFor("liberty-tank")).not.toContain("RSI");
+    expect(applyPickupCascade("liberty", "Leachate (tanker)", "KanSpcl")).toEqual({
+      commodity: "Leachate (tanker)",
+      destination: "KanSpcl",
+      commodityValid: true,
+      destinationValid: true,
+    });
+    expect(applyPickupCascade("liberty", "Leachate (tanker)", "Sun Chem")).toMatchObject({
+      destinationValid: true,
+    });
   });
 
   it("lists only leachate dests on the Gray Tank specialty card", () => {
@@ -112,7 +171,8 @@ describe("specialty walking-floor catalog", () => {
     ]);
     expect(specialtyDestinationsFor("gray-tank")).not.toContain("Hodgkins");
     expect(specialtyDestinationsFor("gray-tank")).not.toContain("RSI");
-    expect(specialtyDestinationsFor("ford")).toEqual([...SPECIALTY_DESTINATIONS]);
+    expect(specialtyDestinationsFor("gray-tank")).not.toContain("KanSpcl");
+    expect(specialtyChipMode("gray-tank")).toBe("destination");
   });
 
   it("cascades Gray Tank log-load to leachate dests only", () => {
@@ -453,8 +513,9 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
     ).toBeNull();
   });
 
-  it("never warns for Trash (MSW) from any specialty pickup, even with empty opens", () => {
+  it("never warns for Trash (MSW) from specialty pickups except Ford", () => {
     for (const station of SPECIALTY_STATIONS) {
+      if (station.id === "ford") continue;
       const dest = specialtyDestinationsFor(station.id)[0];
       expect(dest).toBeTruthy();
       const log = catalogLogPickup(station.id, station.name);
@@ -509,7 +570,37 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
     ).toBeNull();
   });
 
-  it("still warns for Wheeling Recycle → GraysLake with zero opens", () => {
+  it("treats Ford Trash as a specialty lane and leaves other trash off the board", () => {
+    expect(
+      resolveSpecialtyBoardLane("ford", "Ford", "RSI", "Trash (MSW)"),
+    ).toBe("ford");
+    expect(
+      resolveSpecialtyBoardMatch("ford", "Ford", "RSI", "Trash (MSW)"),
+    ).toEqual({ specialtyId: "ford", chip: "Trash" });
+    expect(
+      missingSpecialtyOpensWarn({}, date, "ford", "Ford", "RSI", "Trash (MSW)"),
+    ).toEqual({ specialtyId: "ford", opens: 0 });
+    expect(
+      resolveSpecialtyBoardLane("ford", "Ford", "Hodgkins", "Recycle"),
+    ).toBe("ford");
+    expect(
+      resolveSpecialtyBoardLane("wheeling", "Wheeling", "Groot", "Trash (MSW)"),
+    ).toBeNull();
+    expect(
+      resolveSpecialtyBoardLane("melrose", "Melrose", "Hodgkins", "Trash (MSW)"),
+    ).toBeNull();
+  });
+
+  it("warns for Wheeling Recycle on the Recycle chip regardless of dest", () => {
+    expect(
+      resolveSpecialtyBoardMatch("wheeling", "Wheeling", "Groot", "Recycle"),
+    ).toEqual({ specialtyId: "wheeling", chip: "Recycle" });
+    expect(
+      resolveSpecialtyBoardMatch("wheeling", "Wheeling", "GraysLake", "Recycle"),
+    ).toEqual({ specialtyId: "wheeling", chip: "Recycle" });
+    expect(
+      resolveSpecialtyBoardLane("wheeling", "Wheeling", "Hodgkins", "Recycle"),
+    ).toBe("wheeling");
     expect(
       missingSpecialtyOpensWarn(
         {},
@@ -520,6 +611,9 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
         "Recycle",
       ),
     ).toEqual({ specialtyId: "wheeling", opens: 0 });
+    expect(
+      resolveSpecialtyBoardLane("wheeling", "Wheeling", "Groot", "Yard Waste"),
+    ).toBe("wheeling");
   });
 
   it("still warns for Liberty leachate → CID and Gray Tank leachate → CID with zero opens", () => {
@@ -547,29 +641,69 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
 });
 
 describe("specialty consume on logged loads", () => {
-  it("consumes a Wheeling → Groot open when a Recycle load is logged for that day", () => {
+  it("consumes a Wheeling Recycle open when Recycle → Groot is logged", () => {
     const date = "2026-09-08";
     let store: SpecialtyStore = {};
-    store = addSpecialtySlot(store, date, "wheeling", "Groot");
-    expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(1);
+    store = addSpecialtySlot(store, date, "wheeling", "Recycle");
+    store = addSpecialtySlot(store, date, "wheeling", "Yard Waste");
+    expect(countSpecialtyOpens(store, date, "wheeling", "Recycle")).toBe(1);
     expect(applyPickupCascade("wheeling", "Recycle", "Groot")).toMatchObject({
       commodityValid: true,
       destinationValid: true,
     });
 
     store = logLoadConsume(store, date, "wheeling", "Wheeling", "Groot", 1, "Recycle");
+    expect(countSpecialtyOpens(store, date, "wheeling", "Recycle")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "wheeling", "Yard Waste")).toBe(1);
     expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(0);
-    expect(slotsForStation(store[date] ?? [], "wheeling")).toEqual([]);
   });
 
-  it("consumes a Wheeling → GraysLake open from Recycle logs and Grays Lake aliases", () => {
+  it("does not consume a Wheeling Recycle open from a Yard Waste log to the same dest", () => {
     const date = "2026-09-08";
-    let store: SpecialtyStore = {};
-    store = addSpecialtySlot(store, date, "wheeling", "GraysLake");
-    expect(countSpecialtyOpens(store, date, "wheeling", "Grays Lake")).toBe(1);
-    expect(countSpecialtyOpens(store, date, "wheeling", "Grayslake")).toBe(1);
-    store = logLoadConsume(store, date, "wheeling", "Wheeling", "Grays Lake", 1, "Recycle");
-    expect(countSpecialtyOpens(store, date, "wheeling", "GraysLake")).toBe(0);
+    let store = addSpecialtySlot({}, date, "wheeling", "Recycle");
+    store = logLoadConsume(store, date, "wheeling", "Wheeling", "Groot", 1, "Yard Waste");
+    expect(countSpecialtyOpens(store, date, "wheeling", "Recycle")).toBe(1);
+  });
+
+  it("consumes Ford Trash (MSW) against a Trash chip and leaves other stations ungated", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "ford", "Trash");
+    store = addSpecialtySlot(store, date, "wheeling", "Recycle");
+    store = addSpecialtySlot(store, date, "melrose", "Hodgkins");
+    store = logLoadConsume(store, date, "ford", "Ford", "RSI", 1, "Trash (MSW)");
+    expect(countSpecialtyOpens(store, date, "ford", "Trash")).toBe(0);
+    store = logLoadConsume(store, date, "wheeling", "Wheeling", "Groot", 1, "Trash (MSW)");
+    store = logLoadConsume(store, date, "melrose", "Melrose", "Hodgkins", 1, "Trash (MSW)");
+    expect(countSpecialtyOpens(store, date, "wheeling", "Recycle")).toBe(1);
+    expect(countSpecialtyOpens(store, date, "melrose", "Hodgkins")).toBe(1);
+  });
+
+  it("consumes Liberty KanSpcl and Sun Chem dest chips from leachate logs and aliases", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "liberty-tank", "KanSpcl");
+    store = addSpecialtySlot(store, date, "liberty-tank", "Sun Chem");
+    store = addSpecialtySlot(store, date, "liberty-tank", "CID");
+    store = logLoadConsume(
+      store,
+      date,
+      "liberty",
+      "Liberty",
+      "Kan Special",
+      1,
+      "Leachate (tanker)",
+    );
+    expect(countSpecialtyOpens(store, date, "liberty-tank", "KanSpcl")).toBe(0);
+    store = logLoadConsume(
+      store,
+      date,
+      "liberty",
+      "Liberty",
+      "Sun Chemical",
+      1,
+      "Leachate (tanker)",
+    );
+    expect(countSpecialtyOpens(store, date, "liberty-tank", "Sun Chem")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "liberty-tank", "CID")).toBe(1);
   });
 
   it("consumes a Melrose → Hodgkins open and leaves a different dest", () => {
@@ -587,31 +721,31 @@ describe("specialty consume on logged loads", () => {
     let store: SpecialtyStore = {
       "2026-09-08T00:00:00.000Z": [
         {
-          id: "sp-wheeling-groot",
+          id: "sp-wheeling-recycle",
           stationId: "Wheeling",
-          destination: "Groot Recycling",
+          destination: "Recycle",
           createdAt: "2026-09-08T12:00:00.000Z",
         },
       ],
     };
-    expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(1);
-    store = logLoadConsume(store, date, "wheeling", "Wheeling", "Groot");
-    expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "wheeling", "Recycle")).toBe(1);
+    store = logLoadConsume(store, date, "wheeling", "Wheeling", "Groot", 1, "Recycle");
+    expect(countSpecialtyOpens(store, date, "wheeling", "Recycle")).toBe(0);
   });
 
-  it("does not resurrect a consumed Wheeling → Groot open from a stale remote merge", () => {
+  it("does not resurrect a consumed Wheeling Recycle open from a stale remote merge", () => {
     const date = "2026-09-08";
-    let local = addSpecialtySlot({}, date, "wheeling", "Groot");
+    let local = addSpecialtySlot({}, date, "wheeling", "Recycle");
     const slotId = local[date][0].id;
     const remote = local;
-    local = consumeSpecialtyOpens(local, date, "wheeling", "Groot", 1);
-    expect(countSpecialtyOpens(local, date, "wheeling", "Groot")).toBe(0);
+    local = consumeSpecialtyOpens(local, date, "wheeling", "Recycle", 1);
+    expect(countSpecialtyOpens(local, date, "wheeling", "Recycle")).toBe(0);
 
     const restored = mergeSpecialtyStores(local, remote);
-    expect(countSpecialtyOpens(restored, date, "wheeling", "Groot")).toBe(1);
+    expect(countSpecialtyOpens(restored, date, "wheeling", "Recycle")).toBe(1);
 
     const kept = mergeSpecialtyStores(local, remote, [slotId]);
-    expect(countSpecialtyOpens(kept, date, "wheeling", "Groot")).toBe(0);
+    expect(countSpecialtyOpens(kept, date, "wheeling", "Recycle")).toBe(0);
   });
 
   it("keeps Liberty CID dest-chip remove gone when remote still has that open", () => {
@@ -753,7 +887,15 @@ describe("specialty consume on logged loads", () => {
 
       const log = catalogLogPickup(id, name);
       expect(resolveSpecialtyStationId(log.stationId, log.pickup)).toBe(id);
-      store = logLoadConsume(store, date, log.stationId, log.pickup, dest, 2);
+      store = logLoadConsume(
+        store,
+        date,
+        log.stationId,
+        log.pickup,
+        dest,
+        2,
+        boardCommodityFor(id, dest),
+      );
       expect(countSpecialtyOpens(store, date, id, dest)).toBe(0);
     },
   );
@@ -814,6 +956,26 @@ describe("specialty consume on logged loads", () => {
     const keep = destKeepAfterChange(local, date, "liberty-tank", "CID");
     const gone = mergeSpecialtyStores(local, remote, [slotId], [keep]);
     expect(countSpecialtyOpens(gone, date, "liberty-tank", "CID")).toBe(0);
+  });
+
+  it("consumes Dekalb Wood and Prairie Hill C&D chips from the load commodity", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "dekalb", "Wood");
+    store = addSpecialtySlot(store, date, "dekalb", "Recycle");
+    store = addSpecialtySlot(store, date, "prairie-hill", "C&D");
+    store = logLoadConsume(store, date, "dekalb", "Dekalb", "CID", 1, "Wood");
+    expect(countSpecialtyOpens(store, date, "dekalb", "Wood")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "dekalb", "Recycle")).toBe(1);
+    store = logLoadConsume(
+      store,
+      date,
+      "prairie-hill",
+      "PrairieHill",
+      "Hodgkins",
+      1,
+      "C&D",
+    );
+    expect(countSpecialtyOpens(store, date, "prairie-hill", "C&D")).toBe(0);
   });
 
   it("consumes Gray Tank → CID without touching a Liberty CID open", () => {

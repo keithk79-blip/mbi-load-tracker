@@ -17,7 +17,7 @@ import {
   isValidISODate,
 } from "../lib/chicagoDate";
 import { findNearDuplicate } from "../lib/duplicates";
-import { resolveSpecialtyBoardLane } from "../lib/specialtyBoard";
+import { resolveSpecialtyBoardMatch } from "../lib/specialtyBoard";
 import { useSpecialty } from "../store/SpecialtyContext";
 import { useLoads } from "../store/LoadsContext";
 import type { Load } from "../types";
@@ -81,7 +81,7 @@ export function EditLoadScreen({
       seeded: false,
     });
 
-    const specialtyId = resolveSpecialtyBoardLane(
+    const lane = resolveSpecialtyBoardMatch(
       form.stationId,
       pickup,
       destination,
@@ -94,8 +94,8 @@ export function EditLoadScreen({
       load.pickup.trim().toLowerCase() !== pickup.toLowerCase() ||
       load.commodity.trim().toLowerCase() !== form.commodity.trim().toLowerCase();
 
-    if (specialtyId && routeChanged) {
-      void consumeOpens(date, specialtyId, destination, 1);
+    if (lane && routeChanged) {
+      void consumeOpens(date, lane.specialtyId, lane.chip, 1);
     }
 
     setDuplicate(null);
@@ -127,7 +127,7 @@ export function EditLoadScreen({
       }
     }
 
-    const specialtyId = resolveSpecialtyBoardLane(
+    const lane = resolveSpecialtyBoardMatch(
       form.stationId,
       pickup,
       destination,
@@ -140,11 +140,16 @@ export function EditLoadScreen({
       load.pickup.trim().toLowerCase() !== pickup.toLowerCase() ||
       load.commodity.trim().toLowerCase() !== form.commodity.trim().toLowerCase();
 
-    if (!forceSpecialty && specialtyId && routeChanged) {
-      const opens = opensFor(date, specialtyId, destination);
+    if (!forceSpecialty && lane && routeChanged) {
+      const opens = opensFor(date, lane.specialtyId, lane.chip);
       if (opens < 1) {
         setDuplicate(null);
-        setSpecialtyWarn({ opens, pickup, destination, specialtyId });
+        setSpecialtyWarn({
+          opens,
+          pickup,
+          destination: lane.chip,
+          specialtyId: lane.specialtyId,
+        });
         return;
       }
     }
