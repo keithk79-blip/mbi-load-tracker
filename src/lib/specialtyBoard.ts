@@ -82,6 +82,8 @@ const SPECIALTY_DEST_OVERRIDES: Record<string, readonly string[]> = {
   schererville: ["Homewood"],
   mccook: ["Christianson Farms"],
   "dekalb-reload": ["Hodgkins", "RSI"],
+  // Global walking-floor dests plus GraysLake for Wheeling recycle only.
+  wheeling: [...SPECIALTY_DESTINATIONS, "GraysLake"],
 };
 
 /** Per-station dest chips; restricted yards match (or subset) log-load dests. */
@@ -126,6 +128,9 @@ export function specialtyDestHint(stationId: string): string {
   }
   if (stationId === "dekalb-reload") {
     return "Hodgkins · RSI";
+  }
+  if (stationId === "wheeling") {
+    return "Walking-floor dests plus GraysLake recycle";
   }
   return "Destination for new open load";
 }
@@ -526,6 +531,7 @@ const SPECIALTY_DEST_ALIASES: Record<string, string> = {
   resource: "resource mgt",
   "resource management": "resource mgt",
   prairiehill: "prairie hill",
+  "grays lake": "grayslake",
 };
 
 function lookupSpecialtyIdByName(raw: string): string | null {

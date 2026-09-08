@@ -65,6 +65,28 @@ describe("specialty walking-floor catalog", () => {
     expect(specialtyDestinationsFor("wheeling")).toContain("Groot");
   });
 
+  it("offers GraysLake as a Wheeling-only specialty dest (recycle)", () => {
+    expect(specialtyDestinationsFor("wheeling")).toContain("GraysLake");
+    expect(specialtyDestinationsFor("wheeling")).toContain("Groot");
+    expect(SPECIALTY_DESTINATIONS).not.toContain("GraysLake");
+    expect(applyPickupCascade("wheeling", "Recycle", "GraysLake")).toMatchObject({
+      commodity: "Recycle",
+      destination: "GraysLake",
+      commodityValid: true,
+      destinationValid: true,
+    });
+    expect(applyPickupCascade("wheeling", "Trash (MSW)", "GraysLake")).toEqual({
+      commodity: "Trash (MSW)",
+      destination: "",
+      commodityValid: true,
+      destinationValid: false,
+    });
+    for (const station of SPECIALTY_STATIONS) {
+      if (station.id === "wheeling") continue;
+      expect(specialtyDestinationsFor(station.id)).not.toContain("GraysLake");
+    }
+  });
+
   it("lists only leachate dests on the Gray Tank specialty card", () => {
     expect(specialtyDestinationsFor("gray-tank")).toEqual([
       "FRWRD",
@@ -353,6 +375,16 @@ describe("specialty consume on logged loads", () => {
     store = logLoadConsume(store, date, "wheeling", "Wheeling", "Groot");
     expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(0);
     expect(slotsForStation(store[date] ?? [], "wheeling")).toEqual([]);
+  });
+
+  it("consumes a Wheeling → GraysLake open from Recycle logs and Grays Lake aliases", () => {
+    const date = "2026-09-08";
+    let store: SpecialtyStore = {};
+    store = addSpecialtySlot(store, date, "wheeling", "GraysLake");
+    expect(countSpecialtyOpens(store, date, "wheeling", "Grays Lake")).toBe(1);
+    expect(countSpecialtyOpens(store, date, "wheeling", "Grayslake")).toBe(1);
+    store = logLoadConsume(store, date, "wheeling", "Wheeling", "Grays Lake");
+    expect(countSpecialtyOpens(store, date, "wheeling", "GraysLake")).toBe(0);
   });
 
   it("consumes a Melrose → Hodgkins open and leaves a different dest", () => {

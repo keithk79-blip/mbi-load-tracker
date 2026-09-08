@@ -206,6 +206,21 @@ export const STATIONS: Station[] = [
       "Thelens",
       "Zion",
     ],
+    destinationsByCommodity: {
+      Recycle: [
+        "Groot",
+        "GraysLake",
+        "DeKalb",
+        "Rockford",
+        "Hodgkins",
+        "Lake Co MRF",
+        "Liberty",
+        "Willow Ranch",
+        "Prairie Hill",
+        "Thelens",
+        "Zion",
+      ],
+    },
   },
   {
     id: "tri-state",
@@ -308,6 +323,7 @@ export const STATION_BY_NAME: Record<string, Station> = Object.fromEntries(
   STATIONS.map((station) => [station.name.toLowerCase(), station]),
 );
 STATION_BY_NAME.herthside = STATION_BY_ID.herthside;
+STATION_BY_NAME["grays lake"] = STATION_BY_ID.grayslake;
 
 /** Shortcut chips shown before "+ more". */
 export const FREQUENT_STATION_IDS = [

@@ -46,6 +46,23 @@ describe("pickup stations", () => {
     expect(destinationsFor("wheeling")).toContain("Groot");
   });
 
+  it("allows Wheeling recycle to GraysLake without adding it to other pickups", () => {
+    expect(STATION_BY_NAME["grays lake"]?.id).toBe("grayslake");
+    expect(STATION_BY_NAME.grayslake?.id).toBe("grayslake");
+    expect(commoditiesFor("wheeling")).toContain("Recycle");
+    expect(destinationsFor("wheeling", "Recycle")).toContain("Groot");
+    expect(destinationsFor("wheeling", "Recycle")).toContain("GraysLake");
+    expect(destinationsFor("wheeling", "Trash (MSW)")).not.toContain("GraysLake");
+    expect(destinationsFor("wheeling", "Yard Waste")).not.toContain("GraysLake");
+    expect(destinationsFor("wheeling")).not.toContain("GraysLake");
+
+    for (const station of STATIONS) {
+      if (station.id === "wheeling") continue;
+      expect(destinationsFor(station.id)).not.toContain("GraysLake");
+      expect(destinationsFor(station.id, "Recycle")).not.toContain("GraysLake");
+    }
+  });
+
   it("restricts Gray Tank to leachate → FRWRD, CID, Dekalb Sanitary", () => {
     expect(commoditiesFor("gray-tank")).toEqual(["Leachate (tanker)"]);
     expect(destinationsFor("gray-tank")).toEqual(["FRWRD", "CID", "Dekalb Sanitary"]);
