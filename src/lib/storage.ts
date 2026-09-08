@@ -58,6 +58,16 @@ export function allLoads(store: Persisted): Load[] {
   return Object.values(store.loadsByDate).flat();
 }
 
+export function snapshotFromLoads(loads: Load[]): Persisted {
+  const loadsByDate: Record<string, Load[]> = {};
+  for (const load of loads) {
+    const bucket = loadsByDate[load.date] ?? [];
+    bucket.push(load);
+    loadsByDate[load.date] = bucket;
+  }
+  return { version: 1, loadsByDate };
+}
+
 export function loadsForDate(store: Persisted, date: string): Load[] {
   return store.loadsByDate[date] ?? [];
 }

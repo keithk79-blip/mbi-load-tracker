@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectDeviceLoads, mergeCloudLoads } from "./cloudMerge";
+import { collectDeviceLoads, mergeCloudLoads, snapshotLosesDeviceDates } from "./cloudMerge";
 import type { QueueOp } from "./queue";
 import type { Persisted } from "./storage";
 import type { Load } from "../types";
@@ -51,6 +51,30 @@ describe("mergeCloudLoads", () => {
 
     expect(merged.map((row) => row.id).sort()).toEqual(["hooker-msw", "other-msw"]);
     expect(toUpsert.map((row) => row.id).sort()).toEqual(["hooker-msw", "other-msw"]);
+  });
+
+  it("remote empty, local has Sep 8 loads → Sep 8 survives", () => {
+    const sep8 = Array.from({ length: 82 }, (_, i) =>
+      load(`sep8-${i}`, "2026-09-08", {
+        truck: String(100 + (i % 50)),
+        commodity: i % 3 === 0 ? "Leachate (tanker)" : "Trash (MSW)",
+      }),
+    );
+
+    const { merged, toUpsert } = mergeCloudLoads({
+      remote: [],
+      cache: store([]),
+      local: store(sep8),
+      pending: [],
+    });
+
+    const kept = merged.filter((row) => row.date === "2026-09-08");
+    expect(kept).toHaveLength(82);
+    expect(toUpsert).toHaveLength(82);
+    expect(snapshotLosesDeviceDates(merged, store([]), store(sep8), [])).toBe(
+      false,
+    );
+    expect(snapshotLosesDeviceDates([], store([]), store(sep8), [])).toBe(true);
   });
 
   it("does not drop cache-only rows that are not in the pending queue", () => {
@@ -184,5 +208,21 @@ describe("collectDeviceLoads", () => {
     const collected = collectDeviceLoads(store([older]), store([newer]));
     expect(collected).toHaveLength(1);
     expect(collected[0].truck).toBe("55");
+  });
+});
+
+describe("snapshotLosesDeviceDates", () => {
+  it("flags an empty snapshot when STORAGE_KEY still has Sep 8 loads", () => {
+    const sep8 = [load("keep-me", "2026-09-08")];
+    expect(
+      snapshotLosesDeviceDates([], store([]), store(sep8), []),
+    ).toBe(true);
+  });
+
+  it("does not flag a union snapshot that still has that date", () => {
+    const sep8 = [load("keep-me", "2026-09-08")];
+    expect(
+      snapshotLosesDeviceDates(sep8, store([]), store(sep8), []),
+    ).toBe(false);
   });
 });
