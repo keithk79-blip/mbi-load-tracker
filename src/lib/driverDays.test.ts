@@ -145,7 +145,7 @@ describe("applyLiveSheet lock", () => {
     });
   });
 
-  it("does not subtract manuals from the Saturday yard sum", () => {
+  it("subtracts manual offs from the Saturday yard sum (sheet Saturday offs still ignored)", () => {
     const next = applyLiveSheet(
       {},
       {
@@ -158,8 +158,9 @@ describe("applyLiveSheet lock", () => {
       "t1",
     );
     expect(next["2026-09-05"]).toMatchObject({
-      available: 33,
-      offs: 0,
+      base: 33,
+      offs: 1,
+      available: 32,
       source: "saturday",
     });
   });

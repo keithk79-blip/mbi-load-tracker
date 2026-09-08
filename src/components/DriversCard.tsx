@@ -134,7 +134,11 @@ export function DriversCard({
             </p>
           ) : dayAvail && viewingFuture && saturday ? (
             <p className="grand-sub">
-              Projected sat yards · {formatHeaderDate(viewed)} · from live sheet
+              Projected sat yards
+              {dayAvail.offs
+                ? ` − ${dayAvail.offs} full-day off${dayAvail.offs === 1 ? "" : "s"}`
+                : ""}{" "}
+              · {formatHeaderDate(viewed)} · from live sheet
             </p>
           ) : dayAvail && viewingFuture ? (
             <p className="grand-sub">
@@ -143,8 +147,11 @@ export function DriversCard({
             </p>
           ) : dayAvail && saturday ? (
             <p className="grand-sub">
-              Sat yards: Burnham + Rockford + Pontiac + Arc + Zion ·{" "}
-              {formatHeaderDate(viewed)}
+              Sat yards: Burnham + Rockford + Pontiac + Arc + Zion
+              {dayAvail.offs
+                ? ` − ${dayAvail.offs} full-day off${dayAvail.offs === 1 ? "" : "s"}`
+                : ""}{" "}
+              · {formatHeaderDate(viewed)}
               {dayAvail.locked ? " · locked" : " · live today, locks at midnight"}
             </p>
           ) : dayAvail ? (

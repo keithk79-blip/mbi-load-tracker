@@ -201,4 +201,18 @@ describe("fullDayOffEntries + manuals", () => {
       available: 140,
     });
   });
+
+  it("subtracts all four manual kinds and does not double-count a sheet name", () => {
+    const rows = withManualOffs(sheet, [
+      { name: "Call Off Driver", kind: "call-off" },
+      { name: "P Day Driver", kind: "p-day" },
+      { name: "Okd Driver", kind: "okd-off" },
+      { name: "Ncns Driver", kind: "ncns" },
+      { name: "Pablo Cruz", kind: "ncns" },
+    ], "2026-09-08");
+    expect(availableDrivers(143, rows, "2026-09-08")).toMatchObject({
+      offs: 6,
+      available: 137,
+    });
+  });
 });

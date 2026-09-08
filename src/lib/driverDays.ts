@@ -6,6 +6,8 @@
 } from "./chicagoDate";
 import {
   availableDrivers,
+  fullDayOffCount,
+  manualsToRows,
   withManualOffs,
   type CallOffRow,
   type DayAvailability,
@@ -58,8 +60,9 @@ export function projectFutureDay(live: LiveSheet, date: string, today: string): 
 
 export function computeAvailability(live: LiveSheet, day: string): DayAvailability {
   if (isChicagoSaturday(day)) {
-    const available = Math.max(0, Math.floor(live.saturdayBase));
-    return { date: day, base: available, offs: 0, available };
+    const base = Math.max(0, Math.floor(live.saturdayBase));
+    const offs = fullDayOffCount(manualsToRows(live.manualOffs, day), day);
+    return { date: day, base, offs, available: Math.max(0, base - offs) };
   }
   const rows = withManualOffs(live.offs, live.manualOffs, day);
   return availableDrivers(live.base, rows, day);
