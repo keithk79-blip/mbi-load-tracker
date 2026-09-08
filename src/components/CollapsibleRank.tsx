@@ -11,6 +11,8 @@ type CollapsibleRankProps = {
   onSelect?: (filter: TotalsFilter) => void;
   defaultOpen?: boolean;
   emptyText?: string;
+  /** Compact numbers/table — no full-width bars. */
+  compact?: boolean;
 };
 
 export function CollapsibleRank({
@@ -22,6 +24,7 @@ export function CollapsibleRank({
   onSelect,
   defaultOpen = true,
   emptyText = "Nothing logged in this group.",
+  compact = false,
 }: CollapsibleRankProps) {
   const [open, setOpen] = useState(defaultOpen);
   const max = rows[0]?.count ?? 0;
@@ -64,14 +67,20 @@ export function CollapsibleRank({
                     {onSelect ? (
                       <button
                         type="button"
-                        className={selected ? "rank-row rank-row-active" : "rank-row"}
+                        className={
+                          selected
+                            ? `rank-row rank-row-active${compact ? " rank-row-compact" : ""}`
+                            : `rank-row${compact ? " rank-row-compact" : ""}`
+                        }
                         onClick={() => onSelect({ kind: filterKind, key: row.key })}
                       >
-                        <RankInner row={row} pct={pct} />
+                        <RankInner row={row} pct={pct} showBar={!compact} />
                       </button>
                     ) : (
-                      <div className="rank-row rank-row-static">
-                        <RankInner row={row} pct={pct} />
+                      <div
+                        className={`rank-row rank-row-static${compact ? " rank-row-compact" : ""}`}
+                      >
+                        <RankInner row={row} pct={pct} showBar={!compact} />
                       </div>
                     )}
                   </li>
@@ -85,7 +94,15 @@ export function CollapsibleRank({
   );
 }
 
-function RankInner({ row, pct }: { row: RankRow; pct: number }) {
+function RankInner({
+  row,
+  pct,
+  showBar,
+}: {
+  row: RankRow;
+  pct: number;
+  showBar: boolean;
+}) {
   return (
     <>
       <div className="rank-row-top">
@@ -95,9 +112,11 @@ function RankInner({ row, pct }: { row: RankRow; pct: number }) {
         </span>
         <strong className="rank-count">{row.count}</strong>
       </div>
-      <div className="rank-track" aria-hidden>
-        <div className="rank-fill" style={{ width: `${pct}%` }} />
-      </div>
+      {showBar ? (
+        <div className="rank-track" aria-hidden>
+          <div className="rank-fill" style={{ width: `${pct}%` }} />
+        </div>
+      ) : null}
     </>
   );
 }

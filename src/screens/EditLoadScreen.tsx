@@ -7,6 +7,7 @@ import {
   sameForm,
   type FormState,
 } from "../components/LoadForm";
+import { ConfirmOverlay } from "../components/ConfirmOverlay";
 import { BrandMark } from "../components/BrandMark";
 import { TruckEntry } from "../components/TruckEntry";
 import { pickupLabel } from "../lib/cascade";
@@ -257,7 +258,7 @@ export function EditLoadScreen({
       />
 
       {confirmDelete ? (
-        <div className="delete-confirm">
+        <ConfirmOverlay onDismiss={() => setConfirmDelete(false)}>
           <p>Delete this load? Totals drop it immediately. This cannot be undone.</p>
           <div className="overlay-footer tight">
             <button
@@ -278,7 +279,7 @@ export function EditLoadScreen({
               Delete load
             </button>
           </div>
-        </div>
+        </ConfirmOverlay>
       ) : duplicate ? (
         <div className="delete-confirm warn-confirm">
           <p>

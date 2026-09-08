@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { CollapsibleRank } from "../components/CollapsibleRank";
 import { DayPicker } from "../components/DayPicker";
@@ -11,6 +11,15 @@ import {
   weekStartingMonday,
 } from "../lib/chicagoDate";
 import {
+  boardForDate,
+  fetchStationCallStoreFromCloud,
+  mergeStationCallStores,
+  readStationCallStore,
+  subscribeStationCallStore,
+  writeStationCallStore,
+} from "../lib/stationCalls";
+import {
+  endOfDaySummary,
   filterCaption,
   filterLoads,
   rankCommodities,
@@ -18,6 +27,7 @@ import {
   rankPickups,
   type TotalsFilter,
 } from "../lib/totals";
+import { useAuth } from "../store/AuthContext";
 import { useDrivers } from "../store/DriversContext";
 import { useLoads } from "../store/LoadsContext";
 
@@ -28,6 +38,29 @@ type TotalsScreenProps = {
   onLog: (date: string) => void;
   embedded?: boolean;
 };
+
+function useStationCallBoard(date: string) {
+  const { configured, session } = useAuth();
+  const cloud = configured && !!session;
+  const [store, setStore] = useState(readStationCallStore);
+
+  useEffect(() => subscribeStationCallStore(() => setStore(readStationCallStore())), []);
+
+  useEffect(() => {
+    if (!cloud) return;
+    let alive = true;
+    void fetchStationCallStoreFromCloud().then((remote) => {
+      if (!alive || !remote) return;
+      const merged = mergeStationCallStores(readStationCallStore(), remote);
+      writeStationCallStore(merged);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [cloud]);
+
+  return boardForDate(store, date);
+}
 
 export function TotalsScreen({
   date,
@@ -40,6 +73,7 @@ export function TotalsScreen({
   const { loads, loadsOn, exportCsv, hasSampleLoads, clearSampleLoads } = useLoads();
   const { availabilityOn } = useDrivers();
   const [filter, setFilter] = useState<TotalsFilter | null>(null);
+  const board = useStationCallBoard(date);
 
   const dayLoads = loadsOn(date);
   const countByDate = useMemo(() => {
@@ -53,9 +87,9 @@ export function TotalsScreen({
   const byPickup = useMemo(() => rankPickups(dayLoads), [dayLoads]);
   const byDestination = useMemo(() => rankDestinations(dayLoads), [dayLoads]);
   const byCommodity = useMemo(() => rankCommodities(dayLoads), [dayLoads]);
+  const eod = useMemo(() => endOfDaySummary(dayLoads, board), [dayLoads, board]);
 
   const matching = filter ? filterLoads(dayLoads, filter) : [];
-  const loadWord = dayLoads.length === 1 ? "load" : "loads";
   const dayPhrase = date === today ? "today" : `on ${formatShortDate(date)}`;
 
   const toggle = (next: TotalsFilter) => {
@@ -98,15 +132,45 @@ export function TotalsScreen({
         driverCountFor={(iso) => availabilityOn(iso)?.available ?? null}
       />
 
-      <article className="grand-total">
-        <div>
-          <p className="grand-headline">
-            {dayLoads.length} {loadWord} {dayPhrase}
-          </p>
-          <p className="grand-sub">{formatHeaderDate(date)} · America/Chicago</p>
+      <section className="eod-block">
+        <h2 className="section-title">End of day</h2>
+        <p className="eod-sub">
+          {formatHeaderDate(date)} · overall, SUBS, pickups, and Close left
+        </p>
+        <div className="eod-stat-row">
+          <article className="eod-stat eod-stat-loads">
+            <span className="eod-stat-label">Loads</span>
+            <span className="eod-stat-value">{eod.loads}</span>
+          </article>
+          <article className="eod-stat">
+            <span className="eod-stat-label">SUBS</span>
+            <span className="eod-stat-value">{eod.subs}</span>
+          </article>
         </div>
-        <span className="grand-value">{dayLoads.length}</span>
-      </article>
+        <div className="eod-table-wrap">
+          <table className="eod-table">
+            <thead>
+              <tr>
+                <th>Station</th>
+                <th>Picked up</th>
+                <th>Left</th>
+              </tr>
+            </thead>
+            <tbody>
+              {eod.stations.map((row) => (
+                <tr key={row.id}>
+                  <th scope="row">{row.label}</th>
+                  <td>{row.pickedUp}</td>
+                  <td>{row.left === null ? "—" : row.left}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="eod-legend">
+          Left is the Close column from Load Count By Hour for this Chicago day.
+        </p>
+      </section>
 
       {dayLoads.length === 0 ? (
         <div className="empty compact">
@@ -126,6 +190,7 @@ export function TotalsScreen({
             active={filter}
             onSelect={toggle}
             defaultOpen
+            compact
             emptyText="Nothing logged this day."
           />
           <CollapsibleRank
@@ -136,6 +201,7 @@ export function TotalsScreen({
             active={filter}
             onSelect={toggle}
             defaultOpen={false}
+            compact
             emptyText="Nothing logged this day."
           />
           <CollapsibleRank
@@ -146,6 +212,7 @@ export function TotalsScreen({
             active={filter}
             onSelect={toggle}
             defaultOpen={false}
+            compact
             emptyText="Nothing logged this day."
           />
 
@@ -176,7 +243,7 @@ export function TotalsScreen({
               </div>
             </section>
           ) : (
-            <p className="field-hint">Tap a bar to list those loads.</p>
+            <p className="field-hint">Tap a row to list those loads.</p>
           )}
 
           <button type="button" className="btn-primary" onClick={() => onLog(date)}>

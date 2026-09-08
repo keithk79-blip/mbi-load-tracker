@@ -111,8 +111,19 @@ export function readStationCallStore(): StationCallStore {
   }
 }
 
+type StationCallListener = () => void;
+const stationCallListeners = new Set<StationCallListener>();
+
+export function subscribeStationCallStore(listener: StationCallListener): () => void {
+  stationCallListeners.add(listener);
+  return () => {
+    stationCallListeners.delete(listener);
+  };
+}
+
 export function writeStationCallStore(store: StationCallStore): void {
   localStorage.setItem(STORE_KEY, JSON.stringify({ version: 1, days: store }));
+  for (const listener of stationCallListeners) listener();
 }
 
 export function boardForDate(store: StationCallStore, date: string): StationDayBoard {

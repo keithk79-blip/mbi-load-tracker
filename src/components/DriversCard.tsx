@@ -116,61 +116,32 @@ export function DriversCard({
     <article className={compact ? "drivers-card drivers-card-compact" : "drivers-card"}>
       <div className="drivers-card-top">
         <div>
-          <p className="tally-label">Available drivers</p>
+          <p className="section-title">Available drivers</p>
           {sunday ? (
-            <p className="grand-headline">No Sunday tally</p>
+            <p className="drivers-avail">No Sunday tally</p>
           ) : dayAvail ? (
-            <p className="grand-headline">
+            <p className="drivers-avail">
               {dayAvail.available} available {whenLabel}
             </p>
           ) : viewingToday ? (
-            <p className="grand-headline">Roster not loaded</p>
+            <p className="drivers-avail">Roster not loaded</p>
           ) : (
-            <p className="grand-headline">No snapshot for {formatHeaderDate(viewed)}</p>
+            <p className="drivers-avail">No snapshot for {formatHeaderDate(viewed)}</p>
           )}
           {sunday ? (
             <p className="grand-sub">
               Sundays are not tallied. {formatHeaderDate(viewed)}
             </p>
-          ) : dayAvail && viewingFuture && saturday ? (
-            <p className="grand-sub">
-              Projected sat yards
-              {dayAvail.offs
-                ? ` − ${dayAvail.offs} full-day off${dayAvail.offs === 1 ? "" : "s"}`
-                : ""}{" "}
-              · {formatHeaderDate(viewed)} · from live sheet
-            </p>
-          ) : dayAvail && viewingFuture ? (
-            <p className="grand-sub">
-              Projected {dayAvail.base} roster − {dayAvail.offs} full-day off
-              {dayAvail.offs === 1 ? "" : "s"} · {formatHeaderDate(viewed)}
-            </p>
-          ) : dayAvail && saturday ? (
-            <p className="grand-sub">
-              Sat yards: Burnham + Rockford + Pontiac + Arc + Zion
-              {dayAvail.offs
-                ? ` − ${dayAvail.offs} full-day off${dayAvail.offs === 1 ? "" : "s"}`
-                : ""}{" "}
-              · {formatHeaderDate(viewed)}
-              {dayAvail.locked ? " · locked" : " · live today, locks at midnight"}
-            </p>
-          ) : dayAvail ? (
-            <p className="grand-sub">
-              {dayAvail.base} Chicago roster (Burnham!L13) − {dayAvail.offs}{" "}
-              full-day off{dayAvail.offs === 1 ? "" : "s"} ·{" "}
-              {formatHeaderDate(viewed)}
-              {dayAvail.locked ? " · locked" : " · live today, locks at midnight"}
-            </p>
-          ) : viewingToday ? (
+          ) : !dayAvail && viewingToday ? (
             <p className="grand-sub">
               Share both sheets as Anyone with the link (Viewer), then refresh.
             </p>
-          ) : (
+          ) : !dayAvail ? (
             <p className="grand-sub">
               This Chicago day was never snapshotted. Today’s live sheet is not
               written back onto past dates.
             </p>
-          )}
+          ) : null}
         </div>
         <span className="grand-value">{dayAvail ? dayAvail.available : "—"}</span>
       </div>
