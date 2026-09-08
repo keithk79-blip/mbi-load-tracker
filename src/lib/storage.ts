@@ -8,9 +8,45 @@ export type Persisted = {
   version: 1;
   /** Loads keyed by America/Chicago calendar date `YYYY-MM-DD`. */
   loadsByDate: Record<string, Load[]>;
+  /**
+   * Durable tombstones for intentional deletes. Survive queue flush so a
+   * STORAGE_KEY backup or Push all cannot resurrect the id.
+   */
+  deletedIds?: string[];
 };
 
 const EMPTY: Persisted = { version: 1, loadsByDate: {} };
+
+export function parseDeletedIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return [
+    ...new Set(
+      raw.filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ];
+}
+
+export function persistedDeletedIds(
+  ...stores: Array<Persisted | null | undefined>
+): string[] {
+  const ids = new Set<string>();
+  for (const store of stores) {
+    for (const id of parseDeletedIds(store?.deletedIds)) ids.add(id);
+  }
+  return [...ids];
+}
+
+function withDeletedIds(
+  loadsByDate: Record<string, Load[]>,
+  deletedIds?: Iterable<string>,
+): Persisted {
+  const ids = parseDeletedIds(deletedIds ? [...deletedIds] : undefined);
+  return ids.length ? { version: 1, loadsByDate, deletedIds: ids } : { version: 1, loadsByDate };
+}
+
+function copyMeta(store: Persisted, loadsByDate: Record<string, Load[]>): Persisted {
+  return withDeletedIds(loadsByDate, store.deletedIds);
+}
 
 function isLoad(value: unknown): value is Load {
   if (!value || typeof value !== "object") return false;
@@ -44,7 +80,7 @@ export function readStore(): Persisted {
         date,
       }));
     }
-    return { version: 1, loadsByDate };
+    return withDeletedIds(loadsByDate, parsed.deletedIds);
   } catch {
     return EMPTY;
   }
@@ -58,14 +94,55 @@ export function allLoads(store: Persisted): Load[] {
   return Object.values(store.loadsByDate).flat();
 }
 
-export function snapshotFromLoads(loads: Load[]): Persisted {
+export function snapshotFromLoads(
+  loads: Load[],
+  deletedIds?: Iterable<string>,
+): Persisted {
   const loadsByDate: Record<string, Load[]> = {};
   for (const load of loads) {
     const bucket = loadsByDate[load.date] ?? [];
     bucket.push(load);
     loadsByDate[load.date] = bucket;
   }
-  return { version: 1, loadsByDate };
+  return withDeletedIds(loadsByDate, deletedIds);
+}
+
+/** Remove ids from the store and record durable tombstones. */
+export function rememberDeletedIds(
+  store: Persisted,
+  ids: Iterable<string>,
+): Persisted {
+  const deleted = new Set(parseDeletedIds(store.deletedIds));
+  let next = store;
+  for (const id of ids) {
+    if (!id) continue;
+    deleted.add(id);
+    next = removeLoad(next, id);
+  }
+  return withDeletedIds(next.loadsByDate, deleted);
+}
+
+/** Drop a tombstone when the same id is saved again. */
+export function forgetDeletedId(store: Persisted, id: string): Persisted {
+  const deleted = parseDeletedIds(store.deletedIds).filter((item) => item !== id);
+  return withDeletedIds(store.loadsByDate, deleted);
+}
+
+/**
+ * Keep tombstones only while a live copy still exists on remote, cache, or
+ * the device backup — same GC idea as specialty deletedIds.
+ */
+export function gcLoadDeletedIds(
+  deletedIds: Iterable<string>,
+  remote: Load[],
+  cache: Persisted,
+  local: Persisted,
+): string[] {
+  const live = new Set<string>();
+  for (const load of remote) live.add(load.id);
+  for (const load of allLoads(cache)) live.add(load.id);
+  for (const load of allLoads(local)) live.add(load.id);
+  return parseDeletedIds([...deletedIds]).filter((id) => live.has(id));
 }
 
 export function loadsForDate(store: Persisted, date: string): Load[] {
@@ -87,7 +164,8 @@ export function upsertLoadIntoRef(
 }
 
 export function upsertLoad(store: Persisted, load: Load): Persisted {
-  const next: Persisted = { version: 1, loadsByDate: { ...store.loadsByDate } };
+  const cleared = forgetDeletedId(store, load.id);
+  const next: Persisted = copyMeta(cleared, { ...cleared.loadsByDate });
 
   for (const [date, loads] of Object.entries(next.loadsByDate)) {
     const filtered = loads.filter((item) => item.id !== load.id);
@@ -103,7 +181,7 @@ export function upsertLoad(store: Persisted, load: Load): Persisted {
 }
 
 export function removeLoad(store: Persisted, id: string): Persisted {
-  const next: Persisted = { version: 1, loadsByDate: { ...store.loadsByDate } };
+  const next: Persisted = copyMeta(store, { ...store.loadsByDate });
   for (const [date, loads] of Object.entries(next.loadsByDate)) {
     const filtered = loads.filter((item) => item.id !== id);
     if (filtered.length !== loads.length) {
@@ -115,7 +193,7 @@ export function removeLoad(store: Persisted, id: string): Persisted {
 }
 
 export function clearSeeded(store: Persisted): Persisted {
-  const next: Persisted = { version: 1, loadsByDate: {} };
+  const next: Persisted = copyMeta(store, {});
   for (const [date, loads] of Object.entries(store.loadsByDate)) {
     const kept = loads.filter((load) => !load.seeded);
     if (kept.length) next.loadsByDate[date] = kept;

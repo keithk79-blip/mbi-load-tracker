@@ -11,9 +11,12 @@ import {
 import type { Load } from "../types";
 import { loadToRow, rowToLoad, type LoadRow } from "../lib/cloud";
 import {
-  collectDeviceLoads,
+  deletedLoadIds,
+  deviceLoadsForPush,
   mergeCloudLoads,
+  pendingDeleteIds,
   restoreDeviceLoads,
+  snapshotForDeviceBackup,
   snapshotLosesDeviceDates,
 } from "../lib/cloudMerge";
 import { loadsToCsv } from "../lib/commodity";
@@ -29,8 +32,12 @@ import { getSupabase, isCloudConfigured } from "../lib/supabase";
 import {
   allLoads,
   clearSeeded,
+  gcLoadDeletedIds,
   loadsForDate,
+  parseDeletedIds,
+  persistedDeletedIds,
   readStore,
+  rememberDeletedIds,
   removeLoad,
   snapshotFromLoads,
   upsertLoad,
@@ -78,7 +85,10 @@ function readCloudCache(): Persisted {
     if (parsed?.version !== 1 || typeof parsed.loadsByDate !== "object") {
       return { version: 1, loadsByDate: {} };
     }
-    return parsed;
+    const deletedIds = parseDeletedIds(parsed.deletedIds);
+    return deletedIds.length
+      ? { version: 1, loadsByDate: parsed.loadsByDate, deletedIds }
+      : { version: 1, loadsByDate: parsed.loadsByDate };
   } catch {
     return { version: 1, loadsByDate: {} };
   }
@@ -117,7 +127,9 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     storeRef.current = store;
-    if (allLoads(store).some((load) => !load.seeded)) lastGoodRef.current = store;
+    if (allLoads(store).some((load) => !load.seeded) || (store.deletedIds?.length ?? 0) > 0) {
+      lastGoodRef.current = store;
+    }
   }, [store]);
 
   const persistLocal = useCallback((next: Persisted) => {
@@ -127,12 +139,9 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const backupLocalStore = useCallback((next: Persisted) => {
-    const local = readStore();
-    const union = collectDeviceLoads(next, local).filter((load) => !load.seeded);
-    const existingReal = allLoads(local).filter((load) => !load.seeded);
-    if (union.length === 0 && existingReal.length > 0) return;
-    if (union.length === 0) return;
-    writeStore(snapshotFromLoads(union));
+    const snapshot = snapshotForDeviceBackup(next, readStore(), readQueue());
+    if (!snapshot) return;
+    writeStore(snapshot);
   }, []);
 
   const persistCloudCache = useCallback((next: Persisted) => {
@@ -140,23 +149,34 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
     const cache = readCloudCache();
     const local = readStore();
     const lastGood = lastGoodRef.current;
+    const tombstones = persistedDeletedIds(next, cache, local, lastGood);
     if (
-      snapshotLosesDeviceDates(allLoads(next), cache, local, pending) ||
-      snapshotLosesDeviceDates(allLoads(next), lastGood, local, pending)
+      snapshotLosesDeviceDates(allLoads(next), cache, local, pending, tombstones) ||
+      snapshotLosesDeviceDates(allLoads(next), lastGood, local, pending, tombstones)
     ) {
       const recovered = restoreDeviceLoads(
         allLoads(next),
         Object.keys(cache.loadsByDate).length ? cache : lastGood,
         local,
         pending,
+        tombstones,
       );
-      if (!recovered.length) return;
-      next = snapshotFromLoads(recovered);
+      // Empty recover is OK when every remaining device row is a tombstone
+      // (intentional delete of the last loads). Do not bail — persist that.
+      if (recovered.length) {
+        next = snapshotFromLoads(recovered, tombstones);
+      } else if (!tombstones.length && pendingDeleteIds(pending).size === 0) {
+        return;
+      } else {
+        next = snapshotFromLoads([], tombstones);
+      }
     }
     writeCloudCache(next);
     storeRef.current = next;
     setStore(next);
-    if (allLoads(next).some((load) => !load.seeded)) lastGoodRef.current = next;
+    if (allLoads(next).some((load) => !load.seeded) || (next.deletedIds?.length ?? 0) > 0) {
+      lastGoodRef.current = next;
+    }
     backupLocalStore(next);
   }, [backupLocalStore]);
 
@@ -246,8 +266,10 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
 
   const enqueueMissing = useCallback(
     (loads: Load[]) => {
+      const deleted = deletedLoadIds(readQueue(), storeRef.current, readStore());
       let queued = readQueue();
       for (const load of loads) {
+        if (deleted.has(load.id)) continue;
         queued = enqueueUpsert({
           ...load,
           seeded: false,
@@ -286,7 +308,12 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
       local,
       pending,
     });
-    persistCloudCache(snapshotFromLoads(merged));
+    const deleted = deletedLoadIds(pending, deviceCache, local);
+    for (const row of remote) {
+      if (deleted.has(row.id)) enqueueDelete(row.id);
+    }
+    const keptTombstones = gcLoadDeletedIds(deleted, remote, deviceCache, local);
+    persistCloudCache(snapshotFromLoads(merged, keptTombstones));
     if (toUpsert.length) enqueueMissing(toUpsert);
     await flushQueue();
   }, [applyQueueStatus, enqueueMissing, flushQueue, persistCloudCache, session]);
@@ -321,7 +348,8 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
               return next;
             }
             const row = payload.new as LoadRow;
-            if (!row?.id || pending.has(row.id)) return prev;
+            const tombstoned = new Set(prev.deletedIds ?? []);
+            if (!row?.id || pending.has(row.id) || tombstoned.has(row.id)) return prev;
             const incoming = rowToLoad(row);
             const existing = allLoads(prev).find((item) => item.id === incoming.id);
             if (existing && existing.updatedAt > incoming.updatedAt) return prev;
@@ -369,9 +397,11 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
   const deleteLoad = useCallback(
     (id: string) => {
       if (cloud) {
-        const next = removeLoad(storeRef.current, id);
-        persistCloudCache(next);
+        const next = rememberDeletedIds(storeRef.current, [id]);
+        storeRef.current = next;
+        // Enqueue the delete before persist so backup/merge see it immediately.
         setQueuedCount(enqueueDelete(id).length);
+        persistCloudCache(next);
         void flushQueue();
         return;
       }
@@ -385,7 +415,7 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
   }, [persistLocal]);
 
   const uploadLocalLoads = useCallback(async () => {
-    const local = allLoads(readStore()).filter((load) => !load.seeded);
+    const local = deviceLoadsForPush(storeRef.current, readStore(), readQueue());
     if (local.length) enqueueMissing(local);
     await flushQueue();
     return local.length;
@@ -393,7 +423,7 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
 
   const pushAllLoadsToCloud = useCallback(async () => {
     if (!cloud) return 0;
-    const deviceLoads = collectDeviceLoads(storeRef.current, readStore());
+    const deviceLoads = deviceLoadsForPush(storeRef.current, readStore(), readQueue());
     if (deviceLoads.length) enqueueMissing(deviceLoads);
     await flushQueue();
     return deviceLoads.length;
@@ -401,9 +431,11 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
 
   const localPendingCount = useMemo(() => {
     if (!cloud) return 0;
+    const deleted = deletedLoadIds(readQueue(), store, readStore());
     const cloudIds = new Set(allLoads(store).map((load) => load.id));
-    return allLoads(readStore()).filter((load) => !load.seeded && !cloudIds.has(load.id))
-      .length;
+    return allLoads(readStore()).filter(
+      (load) => !load.seeded && !cloudIds.has(load.id) && !deleted.has(load.id),
+    ).length;
   }, [cloud, store]);
 
   const value = useMemo<LoadsContextValue>(() => {

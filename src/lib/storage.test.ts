@@ -5,8 +5,11 @@ import { batchCreatedAt } from "./quantity";
 import {
   allLoads,
   commitStoreRef,
+  forgetDeletedId,
+  gcLoadDeletedIds,
   loadsForDate,
   readStore,
+  rememberDeletedIds,
   STORAGE_KEY,
   upsertLoad,
   upsertLoadIntoRef,
@@ -122,5 +125,39 @@ describe("qty batch upsert through store ref", () => {
     ]);
     expect(memory.has(STORAGE_KEY)).toBe(true);
     expect(memory.has(QUEUE_KEY)).toBe(true);
+  });
+});
+
+describe("deletedIds tombstones", () => {
+  it("round-trips deletedIds through STORAGE_KEY", () => {
+    const next = rememberDeletedIds(
+      { version: 1, loadsByDate: { "2026-09-08": [load("A", "2026-09-08"), load("B", "2026-09-08")] } },
+      ["A"],
+    );
+    writeStore(next);
+    const read = readStore();
+    expect(allLoads(read).map((row) => row.id)).toEqual(["B"]);
+    expect(read.deletedIds).toEqual(["A"]);
+  });
+
+  it("upserting a tombstoned id forgets the tombstone", () => {
+    const afterDelete = rememberDeletedIds(
+      { version: 1, loadsByDate: { "2026-09-08": [load("A", "2026-09-08")] } },
+      ["A"],
+    );
+    expect(afterDelete.deletedIds).toEqual(["A"]);
+    const saved = upsertLoad(afterDelete, load("A", "2026-09-08"));
+    expect(saved.deletedIds).toBeUndefined();
+    expect(allLoads(saved).map((row) => row.id)).toEqual(["A"]);
+    expect(forgetDeletedId(afterDelete, "A").deletedIds).toBeUndefined();
+  });
+
+  it("gc keeps a tombstone while any live copy remains", () => {
+    const a = load("A", "2026-09-08");
+    const empty: Persisted = { version: 1, loadsByDate: {} };
+    const localWithA: Persisted = { version: 1, loadsByDate: { "2026-09-08": [a] } };
+    expect(gcLoadDeletedIds(["A"], [], empty, localWithA)).toEqual(["A"]);
+    expect(gcLoadDeletedIds(["A"], [a], empty, empty)).toEqual(["A"]);
+    expect(gcLoadDeletedIds(["A"], [], empty, empty)).toEqual([]);
   });
 });
