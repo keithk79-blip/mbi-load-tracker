@@ -1,6 +1,11 @@
 import type { Load } from "../types";
 import type { QueueOp } from "./queue";
-import { allLoads, type Persisted } from "./storage";
+import {
+  allLoads,
+  persistedDeletedIds,
+  snapshotFromLoads,
+  type Persisted,
+} from "./storage";
 
 function newerWins(a: Load, b: Load): Load {
   return a.updatedAt >= b.updatedAt ? a : b;
@@ -22,12 +27,68 @@ export function pendingDeleteIds(pending: QueueOp[]): Set<string> {
   return deleted;
 }
 
+/** Pending deletes plus durable tombstones from cache/local (and extras). */
+export function deletedLoadIds(
+  pending: QueueOp[],
+  ...tombstones: Array<Persisted | Iterable<string> | null | undefined>
+): Set<string> {
+  const deleted = pendingDeleteIds(pending);
+  for (const extra of tombstones) {
+    if (!extra) continue;
+    if (typeof extra === "object" && "loadsByDate" in extra) {
+      for (const id of persistedDeletedIds(extra)) deleted.add(id);
+      continue;
+    }
+    for (const id of extra) deleted.add(id);
+  }
+  return deleted;
+}
+
 /** Non-seeded loads from cloud-cache and the device STORAGE_KEY store. */
-export function collectDeviceLoads(cache: Persisted, local: Persisted): Load[] {
+export function collectDeviceLoads(
+  cache: Persisted,
+  local: Persisted,
+  tombstones: Iterable<string> = [],
+): Load[] {
+  const deleted = deletedLoadIds([], cache, local, tombstones);
   const map = new Map<string, Load>();
   putUnseeded(map, allLoads(cache));
   putUnseeded(map, allLoads(local));
+  for (const id of deleted) map.delete(id);
   return [...map.values()];
+}
+
+/**
+ * Loads Push all / upload should enqueue. Tombstones and pending deletes win
+ * over a leftover STORAGE_KEY copy of the same id.
+ */
+export function deviceLoadsForPush(
+  cache: Persisted,
+  local: Persisted,
+  pending: QueueOp[] = [],
+): Load[] {
+  const deleted = deletedLoadIds(pending, cache, local);
+  return collectDeviceLoads(cache, local, deleted).filter((load) => !load.seeded);
+}
+
+/**
+ * What `backupLocalStore` should write to STORAGE_KEY.
+ * Excludes tombstoned ids even if the previous backup still has the row.
+ * Returns null only for the empty-cloud wipe case: union is empty but
+ * non-deleted local rows still exist (should be unreachable if union includes local).
+ */
+export function snapshotForDeviceBackup(
+  cache: Persisted,
+  local: Persisted,
+  pending: QueueOp[] = [],
+): Persisted | null {
+  const deleted = deletedLoadIds(pending, cache, local);
+  const union = collectDeviceLoads(cache, local, deleted).filter((load) => !load.seeded);
+  const existingReal = allLoads(local).filter(
+    (load) => !load.seeded && !deleted.has(load.id),
+  );
+  if (union.length === 0 && existingReal.length > 0) return null;
+  return snapshotFromLoads(union, deleted);
 }
 
 export type CloudMergeInput = {
@@ -43,21 +104,28 @@ export type CloudMergeResult = {
   toUpsert: Load[];
 };
 
-function realDeviceLoads(cache: Persisted, local: Persisted, deleted: Set<string>): Load[] {
-  return collectDeviceLoads(cache, local).filter((load) => !deleted.has(load.id));
+function realDeviceLoads(
+  cache: Persisted,
+  local: Persisted,
+  deleted: Set<string>,
+): Load[] {
+  return collectDeviceLoads(cache, local, deleted).filter((load) => !deleted.has(load.id));
 }
 
 /**
  * True when `snapshot` would drop every real load on a date that cache/local
  * still has. Empty remote must never produce that wipe.
+ * Tombstoned / pending-deleted ids are not "real" — deleting every load on a
+ * day must be allowed to stick.
  */
 export function snapshotLosesDeviceDates(
   snapshot: Load[],
   cache: Persisted,
   local: Persisted,
   pending: QueueOp[],
+  tombstones: Iterable<string> = [],
 ): boolean {
-  const deleted = pendingDeleteIds(pending);
+  const deleted = deletedLoadIds(pending, cache, local, tombstones);
   const device = realDeviceLoads(cache, local, deleted);
   if (device.length === 0) return false;
 
@@ -78,14 +146,15 @@ export function snapshotLosesDeviceDates(
   return false;
 }
 
-/** Put back any real cache/local rows the snapshot dropped (except pending deletes). */
+/** Put back any real cache/local rows the snapshot dropped (except deletes). */
 export function restoreDeviceLoads(
   snapshot: Load[],
   cache: Persisted,
   local: Persisted,
   pending: QueueOp[],
+  tombstones: Iterable<string> = [],
 ): Load[] {
-  const deleted = pendingDeleteIds(pending);
+  const deleted = deletedLoadIds(pending, cache, local, tombstones);
   const map = new Map<string, Load>();
   putUnseeded(map, snapshot);
   putUnseeded(map, realDeviceLoads(cache, local, deleted));
@@ -95,14 +164,15 @@ export function restoreDeviceLoads(
 
 /**
  * Union remote + cloud-cache + local STORAGE_KEY + pending queue.
- * Never drops a cache-only or local-only load unless a pending delete says so.
+ * Never drops a cache-only or local-only load unless a pending delete or
+ * durable tombstone says so.
  * An empty remote array is not a delete of device dates.
  */
 export function mergeCloudLoads(input: CloudMergeInput): CloudMergeResult {
-  const deleted = pendingDeleteIds(input.pending);
+  const deleted = deletedLoadIds(input.pending, input.cache, input.local);
   const pendingUpserts: Load[] = [];
   for (const op of input.pending) {
-    if (op.kind === "upsert") pendingUpserts.push(op.load);
+    if (op.kind === "upsert" && !deleted.has(op.load.id)) pendingUpserts.push(op.load);
   }
 
   const map = new Map<string, Load>();
@@ -120,10 +190,12 @@ export function mergeCloudLoads(input: CloudMergeInput): CloudMergeResult {
     input.cache,
     input.local,
     input.pending,
+    deleted,
   );
 
   const remoteById = new Map(input.remote.map((load) => [load.id, load]));
   const toUpsert = restored.filter((load) => {
+    if (deleted.has(load.id)) return false;
     const remote = remoteById.get(load.id);
     if (!remote) return true;
     return load.updatedAt > remote.updatedAt;
