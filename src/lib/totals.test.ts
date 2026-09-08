@@ -6,6 +6,7 @@ import {
   countByTallyLabel,
   countWalkingFloorLoads,
   daySummaryCards,
+  endOfDayCards,
   endOfDaySummary,
   isWalkingFloorLoad,
   loadMatchesCallYard,
@@ -211,19 +212,21 @@ describe("endOfDaySummary", () => {
     const summary = endOfDaySummary(loads, board);
     expect(summary.loads).toBe(4);
     expect(summary.subs).toBe(2);
+    expect(summary.tank).toBe(0);
+    expect(summary.walkingFloor).toBe(0);
 
     const byId = Object.fromEntries(summary.stations.map((row) => [row.id, row]));
     expect(byId.melrose).toEqual({
       id: "melrose",
       label: "Melrose",
       pickedUp: 2,
-      left: 6,
+      left: "6",
     });
     expect(byId["c-heights"]).toEqual({
       id: "c-heights",
       label: "C. Heights",
       pickedUp: 1,
-      left: 2,
+      left: "2",
     });
     expect(byId.calumet).toEqual({
       id: "calumet",
@@ -238,8 +241,54 @@ describe("endOfDaySummary", () => {
 
   it("carries a blank Close as null instead of falling back to hour cells", () => {
     const board = emptyBoard();
-    board.melrose = { hours: { "15": 9 }, close: null };
+    board.melrose = { hours: { "15": "9" }, close: null };
     const summary = endOfDaySummary([load({ pickup: "Melrose" })], board);
     expect(summary.stations.find((row) => row.id === "melrose")?.left).toBeNull();
+  });
+
+  it("tallies tank (leachate), walking-floor, all loads, and SUBS for EOD cards", () => {
+    const loads = [
+      load({ id: "1", truck: "418", commodity: "Trash (MSW)" }),
+      load({ id: "2", truck: "VZ", commodity: "Leachate (tanker)" }),
+      load({ id: "3", truck: "55", commodity: "Yard Waste" }),
+      load({ id: "4", truck: "CGH", commodity: "Recycle" }),
+    ];
+    const summary = endOfDaySummary(loads, emptyBoard());
+    expect(summary.tank).toBe(1);
+    expect(summary.walkingFloor).toBe(2);
+    expect(summary.loads).toBe(4);
+    expect(summary.subs).toBe(2);
+    expect(endOfDayCards(summary).map((card) => [card.label, card.count])).toEqual([
+      ["TANK", 1],
+      ["WALKING-FLOOR", 2],
+      ["LOADS", 4],
+      ["SUBS", 2],
+    ]);
+    expect(endOfDayCards(summary).find((card) => card.label === "LOADS")?.emphasis).toBe(
+      true,
+    );
+  });
+
+  it("keeps TANK and WALKING-FLOOR at zero on an empty day", () => {
+    const summary = endOfDaySummary([], emptyBoard());
+    expect(endOfDayCards(summary).map((card) => [card.label, card.count])).toEqual([
+      ["TANK", 0],
+      ["WALKING-FLOOR", 0],
+      ["LOADS", 0],
+      ["SUBS", 0],
+    ]);
+  });
+
+  it("shows decimal and letter Close values in Left", () => {
+    let board = emptyBoard();
+    board = setStationClose({ "2026-09-08": board }, "2026-09-08", "melrose", "1.5")[
+      "2026-09-08"
+    ]!;
+    board = setStationClose({ "2026-09-08": board }, "2026-09-08", "calumet", "late")[
+      "2026-09-08"
+    ]!;
+    const summary = endOfDaySummary([], board);
+    expect(summary.stations.find((row) => row.id === "melrose")?.left).toBe("1.5");
+    expect(summary.stations.find((row) => row.id === "calumet")?.left).toBe("late");
   });
 });

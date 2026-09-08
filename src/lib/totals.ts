@@ -204,16 +204,35 @@ export type StationEodRow = {
   label: string;
   pickedUp: number;
   /** Close column for that Chicago day; null when the dispatcher left it blank. */
-  left: number | null;
+  left: string | null;
 };
 
 export type EndOfDaySummary = {
   loads: number;
   subs: number;
+  tank: number;
+  walkingFloor: number;
   stations: StationEodRow[];
 };
 
-/** Overall loads, SUBS, per-station pickups, and Close/left for the call-grid yards. */
+export type EndOfDayCard = {
+  key: string;
+  label: string;
+  count: number;
+  emphasis?: boolean;
+};
+
+/** TANK (leachate), WALKING-FLOOR, LOADS, SUBS — Today-style EOD bubbles. */
+export function endOfDayCards(summary: EndOfDaySummary): EndOfDayCard[] {
+  return [
+    { key: "tank", label: "TANK", count: summary.tank },
+    { key: "walking-floor", label: "WALKING-FLOOR", count: summary.walkingFloor },
+    { key: "loads", label: "LOADS", count: summary.loads, emphasis: true },
+    { key: "subs", label: "SUBS", count: summary.subs },
+  ];
+}
+
+/** Overall loads, tank, walking-floor, SUBS, per-station pickups, and Close/left. */
 export function endOfDaySummary(
   loads: Load[],
   board: StationDayBoard,
@@ -221,6 +240,8 @@ export function endOfDaySummary(
   return {
     loads: loads.length,
     subs: countBrokerLoads(loads),
+    tank: countByTallyLabel(loads, "LEACHATE"),
+    walkingFloor: countWalkingFloorLoads(loads),
     stations: STATION_CALL_YARDS.map((yard) => {
       const pickedUp = loads.filter((load) => loadMatchesCallYard(load, yard)).length;
       const close = board[yard.id]?.close;
@@ -228,7 +249,7 @@ export function endOfDaySummary(
         id: yard.id,
         label: yard.label,
         pickedUp,
-        left: close === null || close === undefined ? null : close,
+        left: close === null || close === undefined || close === "" ? null : String(close),
       };
     }),
   };

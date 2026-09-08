@@ -19,6 +19,7 @@ import {
   writeStationCallStore,
 } from "../lib/stationCalls";
 import {
+  endOfDayCards,
   endOfDaySummary,
   filterCaption,
   filterLoads,
@@ -135,17 +136,18 @@ export function TotalsScreen({
       <section className="eod-block">
         <h2 className="section-title">End of day</h2>
         <p className="eod-sub">
-          {formatHeaderDate(date)} · overall, SUBS, pickups, and Close left
+          {formatHeaderDate(date)} · tank, walking-floor, overall, SUBS, pickups, and Close left
         </p>
         <div className="eod-stat-row">
-          <article className="eod-stat eod-stat-loads">
-            <span className="eod-stat-label">Loads</span>
-            <span className="eod-stat-value">{eod.loads}</span>
-          </article>
-          <article className="eod-stat">
-            <span className="eod-stat-label">SUBS</span>
-            <span className="eod-stat-value">{eod.subs}</span>
-          </article>
+          {endOfDayCards(eod).map((card) => (
+            <article
+              key={card.key}
+              className={card.emphasis ? "eod-stat eod-stat-loads" : "eod-stat"}
+            >
+              <span className="eod-stat-label">{card.label}</span>
+              <span className="eod-stat-value">{card.count}</span>
+            </article>
+          ))}
         </div>
         <div className="eod-table-wrap">
           <table className="eod-table">

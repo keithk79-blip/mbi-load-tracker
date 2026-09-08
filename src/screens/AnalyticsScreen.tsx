@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { CollapsibleRank } from "../components/CollapsibleRank";
-import { DriversCard } from "../components/DriversCard";
 import { StationPie } from "../components/StationPie";
 import {
   chicagoYearLabel,
@@ -67,8 +66,6 @@ export function AnalyticsScreen() {
         </div>
         <span className="grand-value">{ytdLoads.length}</span>
       </article>
-
-      <DriversCard />
 
       {loads.length === 0 ? (
         <div className="empty compact">
