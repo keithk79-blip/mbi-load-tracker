@@ -1,6 +1,40 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { Load } from "../types";
-import { loadsForDate, upsertLoad, type Persisted } from "./storage";
+import { enqueueUpsert, QUEUE_KEY, readQueue } from "./queue";
+import { batchCreatedAt } from "./quantity";
+import {
+  allLoads,
+  commitStoreRef,
+  loadsForDate,
+  readStore,
+  STORAGE_KEY,
+  upsertLoad,
+  upsertLoadIntoRef,
+  writeStore,
+  type Persisted,
+} from "./storage";
+
+const memory = new Map<string, string>();
+
+const localStorageMock = {
+  getItem: (key: string) => memory.get(key) ?? null,
+  setItem: (key: string, value: string) => {
+    memory.set(key, value);
+  },
+  removeItem: (key: string) => {
+    memory.delete(key);
+  },
+  clear: () => memory.clear(),
+};
+
+Object.defineProperty(globalThis, "localStorage", {
+  value: localStorageMock,
+  configurable: true,
+});
+
+afterEach(() => {
+  memory.clear();
+});
 
 function load(id: string, date: string): Load {
   return {
@@ -34,5 +68,59 @@ describe("loadsByDate isolation", () => {
     ]);
     expect(loadsForDate(store, "2026-09-05")).toHaveLength(2);
     expect(loadsForDate(store, "2026-09-03")).toHaveLength(0);
+  });
+});
+
+describe("qty batch upsert through store ref", () => {
+  const date = "2026-09-08";
+  const base = "2026-09-08T15:00:00.000Z";
+
+  function qtyLoad(index: number): Load {
+    const createdAt = batchCreatedAt(base, index);
+    return {
+      ...load(`qty-${index}`, date),
+      createdAt,
+      updatedAt: createdAt,
+    };
+  }
+
+  it("stale storeRef overwrites earlier qty saves so only the last load remains", () => {
+    const stale: Persisted = { version: 1, loadsByDate: {} };
+    let last = stale;
+    for (let i = 0; i < 3; i++) {
+      last = upsertLoad(stale, qtyLoad(i));
+    }
+    expect(allLoads(last).map((row) => row.id)).toEqual(["qty-2"]);
+  });
+
+  it("qty=3 saveLoad-style upserts keep 3 loads in the store and enqueue 3 queue ops", () => {
+    const storeRef = { current: { version: 1, loadsByDate: {} } as Persisted };
+
+    for (let i = 0; i < 3; i++) {
+      const row = qtyLoad(i);
+      const next = upsertLoadIntoRef(storeRef, row);
+      writeStore(commitStoreRef(storeRef, next));
+      enqueueUpsert(row);
+    }
+
+    const persisted = readStore();
+    expect(allLoads(storeRef.current)).toHaveLength(3);
+    expect(allLoads(persisted).map((row) => row.id)).toEqual([
+      "qty-0",
+      "qty-1",
+      "qty-2",
+    ]);
+    expect(allLoads(persisted).map((row) => row.createdAt)).toEqual([
+      "2026-09-08T15:00:00.000Z",
+      "2026-09-08T15:00:01.000Z",
+      "2026-09-08T15:00:02.000Z",
+    ]);
+    expect(readQueue().map((op) => (op.kind === "upsert" ? op.load.id : ""))).toEqual([
+      "qty-0",
+      "qty-1",
+      "qty-2",
+    ]);
+    expect(memory.has(STORAGE_KEY)).toBe(true);
+    expect(memory.has(QUEUE_KEY)).toBe(true);
   });
 });

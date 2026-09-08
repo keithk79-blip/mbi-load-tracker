@@ -34,6 +34,7 @@ import {
   removeLoad,
   snapshotFromLoads,
   upsertLoad,
+  upsertLoadIntoRef,
   writeStore,
   type Persisted,
 } from "../lib/storage";
@@ -121,6 +122,7 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
 
   const persistLocal = useCallback((next: Persisted) => {
     writeStore(next);
+    storeRef.current = next;
     setStore(next);
   }, []);
 
@@ -152,6 +154,7 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
       next = snapshotFromLoads(recovered);
     }
     writeCloudCache(next);
+    storeRef.current = next;
     setStore(next);
     if (allLoads(next).some((load) => !load.seeded)) lastGoodRef.current = next;
     backupLocalStore(next);
@@ -353,13 +356,12 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
         displayName: load.displayName ?? (cloud ? displayName : undefined),
       };
       if (cloud) {
-        const next = upsertLoad(storeRef.current, stamped);
-        persistCloudCache(next);
+        persistCloudCache(upsertLoadIntoRef(storeRef, stamped));
         setQueuedCount(enqueueUpsert(stamped).length);
         void flushQueue();
         return;
       }
-      persistLocal(upsertLoad(storeRef.current, stamped));
+      persistLocal(upsertLoadIntoRef(storeRef, stamped));
     },
     [cloud, displayName, flushQueue, persistCloudCache, persistLocal, user?.id],
   );

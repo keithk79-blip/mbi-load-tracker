@@ -1992,19 +1992,19 @@ body.app-ready .splash {
 }
 
 .modal-backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   background: rgba(6, 7, 10, 0.62);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
-  z-index: 20;
+  z-index: 40;
 }
 
 .modal-card {
   width: min(520px, 100%);
-  max-height: calc(100% - 24px);
+  max-height: min(calc(100dvh - 48px), 100%);
   overflow: auto;
   background: var(--phone);
   border: 1px solid var(--line);
