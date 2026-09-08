@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { BrandMark } from "./components/BrandMark";
 import { SessionBar } from "./components/SessionBar";
 import { TabBar } from "./components/TabBar";
@@ -24,10 +25,11 @@ type Overlay =
 
 function wrapOverlay(desktop: boolean, child: ReactNode) {
   if (!desktop) return child;
-  return (
+  return createPortal(
     <div className="modal-backdrop">
       <div className="modal-card">{child}</div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

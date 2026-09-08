@@ -72,6 +72,20 @@ export function loadsForDate(store: Persisted, date: string): Load[] {
   return store.loadsByDate[date] ?? [];
 }
 
+/** Keep the live store pointer in sync so back-to-back writes see prior results. */
+export function commitStoreRef<T>(storeRef: { current: T }, next: T): T {
+  storeRef.current = next;
+  return next;
+}
+
+/** `saveLoad` qty loops call this so each upsert includes the previous row. */
+export function upsertLoadIntoRef(
+  storeRef: { current: Persisted },
+  load: Load,
+): Persisted {
+  return commitStoreRef(storeRef, upsertLoad(storeRef.current, load));
+}
+
 export function upsertLoad(store: Persisted, load: Load): Persisted {
   const next: Persisted = { version: 1, loadsByDate: { ...store.loadsByDate } };
 
