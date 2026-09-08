@@ -185,7 +185,7 @@ export function StationCallsCard({ date }: { date: string }) {
     <article className="station-calls-card">
       <div className="station-calls-head">
         <div>
-          <p className="tally-label">Load Count By Hour</p>
+          <p className="section-title">Load Count By Hour</p>
           <p className="station-calls-sub">
             {formatHeaderDate(date)} · Start from prior Close · hour cells blank until you call
             {cloud ? " · synced" : " · this device only"}

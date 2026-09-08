@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { Load } from "../types";
+import { emptyBoard, setStationClose, type StationDayBoard } from "./stationCalls";
 import {
   countBrokerLoads,
   countByTallyLabel,
   countWalkingFloorLoads,
   daySummaryCards,
+  endOfDaySummary,
   isWalkingFloorLoad,
+  loadMatchesCallYard,
 } from "./totals";
 
 function load(partial: Partial<Load>): Load {
@@ -158,5 +161,85 @@ describe("daySummaryCards", () => {
       "SUBS",
       "WALKING-FLOOR",
     ]);
+  });
+});
+
+describe("endOfDaySummary", () => {
+  const heights = { id: "c-heights", label: "C. Heights" };
+  const hooker = { id: "hooker", label: "Hooker" };
+
+  it("matches Chicago Heights and Hooker Street to the call-grid yards", () => {
+    expect(
+      loadMatchesCallYard(
+        load({ stationId: "chicago-heights", pickup: "Chicago Heights" }),
+        heights,
+      ),
+    ).toBe(true);
+    expect(
+      loadMatchesCallYard(load({ stationId: "custom", pickup: "C. Heights" }), heights),
+    ).toBe(true);
+    expect(
+      loadMatchesCallYard(
+        load({ stationId: "hooker-street", pickup: "Hooker Street" }),
+        hooker,
+      ),
+    ).toBe(true);
+    expect(loadMatchesCallYard(load({ pickup: "Hooker" }), hooker)).toBe(true);
+    expect(loadMatchesCallYard(load({ pickup: "Melrose" }), heights)).toBe(false);
+  });
+
+  it("groups overall loads, SUBS, pickups, and Close/left per call-grid station", () => {
+    const loads = [
+      load({ id: "1", truck: "418", stationId: "melrose", pickup: "Melrose" }),
+      load({ id: "2", truck: "VZ", stationId: "melrose", pickup: "Melrose" }),
+      load({
+        id: "3",
+        truck: "CGH",
+        stationId: "chicago-heights",
+        pickup: "Chicago Heights",
+      }),
+      load({ id: "4", truck: "55", stationId: "calumet", pickup: "Calumet" }),
+    ];
+    let board: StationDayBoard = emptyBoard();
+    board = setStationClose({ "2026-09-08": board }, "2026-09-08", "melrose", 6)[
+      "2026-09-08"
+    ]!;
+    board = setStationClose({ "2026-09-08": board }, "2026-09-08", "c-heights", 2)[
+      "2026-09-08"
+    ]!;
+
+    const summary = endOfDaySummary(loads, board);
+    expect(summary.loads).toBe(4);
+    expect(summary.subs).toBe(2);
+
+    const byId = Object.fromEntries(summary.stations.map((row) => [row.id, row]));
+    expect(byId.melrose).toEqual({
+      id: "melrose",
+      label: "Melrose",
+      pickedUp: 2,
+      left: 6,
+    });
+    expect(byId["c-heights"]).toEqual({
+      id: "c-heights",
+      label: "C. Heights",
+      pickedUp: 1,
+      left: 2,
+    });
+    expect(byId.calumet).toEqual({
+      id: "calumet",
+      label: "Calumet",
+      pickedUp: 1,
+      left: null,
+    });
+    expect(byId.apollo?.pickedUp).toBe(0);
+    expect(byId.apollo?.left).toBeNull();
+    expect(summary.stations.map((row) => row.id)).toContain("roscoe");
+  });
+
+  it("carries a blank Close as null instead of falling back to hour cells", () => {
+    const board = emptyBoard();
+    board.melrose = { hours: { "15": 9 }, close: null };
+    const summary = endOfDaySummary([load({ pickup: "Melrose" })], board);
+    expect(summary.stations.find((row) => row.id === "melrose")?.left).toBeNull();
   });
 });

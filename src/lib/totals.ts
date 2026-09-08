@@ -1,5 +1,6 @@
-import { CUSTOM_ID } from "../data/stations";
+import { CUSTOM_ID, getStation } from "../data/stations";
 import { commodityRankLabel, tallyLabel } from "./commodity";
+import { STATION_CALL_YARDS, type StationDayBoard } from "./stationCalls";
 import { isBrokerTruck } from "./truck";
 import type { Load } from "../types";
 
@@ -148,4 +149,87 @@ export function daySummaryCards(loads: Load[]): DaySummaryCard[] {
       count: countWalkingFloorLoads(loads),
     },
   ];
+}
+
+/** Load Count By Hour yard ids that differ from the load-form station id. */
+const CALL_YARD_STATION_ID: Record<string, string> = {
+  "c-heights": "chicago-heights",
+  hooker: "hooker-street",
+};
+
+function normKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[.]/g, "")
+    .replace(/[-_/]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+export function callYardStationId(yardId: string): string {
+  return CALL_YARD_STATION_ID[yardId] ?? yardId;
+}
+
+export function callYardMatchKeys(yard: { id: string; label: string }): Set<string> {
+  const keys = new Set<string>();
+  const add = (value: string | undefined) => {
+    if (!value) return;
+    const key = normKey(value);
+    if (key) keys.add(key);
+  };
+  add(yard.id);
+  add(yard.label);
+  const stationId = callYardStationId(yard.id);
+  add(stationId);
+  add(getStation(stationId)?.name);
+  return keys;
+}
+
+/** True when this load was picked up from the given Load Count By Hour yard. */
+export function loadMatchesCallYard(
+  load: Load,
+  yard: { id: string; label: string },
+): boolean {
+  const keys = callYardMatchKeys(yard);
+  if (load.stationId && load.stationId !== CUSTOM_ID) {
+    if (keys.has(normKey(load.stationId))) return true;
+    const named = getStation(load.stationId);
+    if (named && keys.has(normKey(named.name))) return true;
+  }
+  return keys.has(normKey(load.pickup));
+}
+
+export type StationEodRow = {
+  id: string;
+  label: string;
+  pickedUp: number;
+  /** Close column for that Chicago day; null when the dispatcher left it blank. */
+  left: number | null;
+};
+
+export type EndOfDaySummary = {
+  loads: number;
+  subs: number;
+  stations: StationEodRow[];
+};
+
+/** Overall loads, SUBS, per-station pickups, and Close/left for the call-grid yards. */
+export function endOfDaySummary(
+  loads: Load[],
+  board: StationDayBoard,
+): EndOfDaySummary {
+  return {
+    loads: loads.length,
+    subs: countBrokerLoads(loads),
+    stations: STATION_CALL_YARDS.map((yard) => {
+      const pickedUp = loads.filter((load) => loadMatchesCallYard(load, yard)).length;
+      const close = board[yard.id]?.close;
+      return {
+        id: yard.id,
+        label: yard.label,
+        pickedUp,
+        left: close === null || close === undefined ? null : close,
+      };
+    }),
+  };
 }

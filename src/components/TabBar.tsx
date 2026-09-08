@@ -5,7 +5,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "today", label: "Today" },
   { id: "trucks", label: "Trucks" },
   { id: "totals", label: "Totals" },
-  { id: "analytics", label: "Analytics" },
+  { id: "analytics", label: "AnalyticsYTD" },
 ];
 
 export function TabBar({
