@@ -56,7 +56,20 @@ export const SPECIALTY_DESTINATIONS = [
 /** Stations whose dest chips follow the pickup catalog instead of the global list. */
 const SPECIALTY_CATALOG_DEST_IDS = new Set(["gray-tank", "herthside", "hodgkins"]);
 
-/** Apollo specialty dests are a subset of log-load dests (no Newton County). */
+/**
+ * Walking-floor cards whose + chips are commodities (stored in `destination`).
+ * Liberty leachate and other restricted cards stay destination-keyed.
+ */
+const SPECIALTY_COMMODITY_CHIP_IDS = new Set([
+  "wheeling",
+  "rockdale",
+  "dekalb",
+  "roscoe",
+  "ford",
+  "prairie-hill",
+]);
+
+/** Per-card + options. Commodity-keyed yards list commodities; others list dests. */
 const SPECIALTY_DEST_OVERRIDES: Record<string, readonly string[]> = {
   apollo: ["Pontiac", "Christianson Farms", "Organix", "Homewood"],
   elgin: [
@@ -83,9 +96,20 @@ const SPECIALTY_DEST_OVERRIDES: Record<string, readonly string[]> = {
   schererville: ["Homewood"],
   mccook: ["Christianson Farms"],
   "dekalb-reload": ["Hodgkins", "RSI"],
-  // Global walking-floor dests plus GraysLake for Wheeling recycle only.
-  wheeling: [...SPECIALTY_DESTINATIONS, "GraysLake"],
+  wheeling: ["Recycle", "Yard Waste", "Cardboard"],
+  rockdale: ["Recycle", "Yard Waste", "Cardboard"],
+  dekalb: ["Wood", "Recycle", "Yard Waste", "C&D"],
+  roscoe: ["Recycle"],
+  ford: ["Cardboard", "Trash", "Recycle"],
+  "prairie-hill": ["C&D", "Yard Waste"],
+  "liberty-tank": ["CID", "Kankakee", "Reworld", "KanSpcl", "Sun Chem"],
 };
+
+export function specialtyChipMode(
+  stationId: string,
+): "commodity" | "destination" {
+  return SPECIALTY_COMMODITY_CHIP_IDS.has(stationId) ? "commodity" : "destination";
+}
 
 /** Per-station dest chips; restricted yards match (or subset) log-load dests. */
 export function specialtyDestinationsFor(stationId: string): readonly string[] {
@@ -130,10 +154,27 @@ export function specialtyDestHint(stationId: string): string {
   if (stationId === "dekalb-reload") {
     return "Hodgkins · RSI";
   }
-  if (stationId === "wheeling") {
-    return "Walking-floor dests plus GraysLake recycle";
+  if (stationId === "wheeling" || stationId === "rockdale") {
+    return "Recycle · Yard Waste · Cardboard";
   }
-  return "Destination for new open load";
+  if (stationId === "dekalb") {
+    return "Wood · Recycle · Yard Waste · C&D";
+  }
+  if (stationId === "roscoe") {
+    return "Recycle commodity for new open load";
+  }
+  if (stationId === "ford") {
+    return "Cardboard · Trash · Recycle";
+  }
+  if (stationId === "prairie-hill") {
+    return "C&D · Yard Waste";
+  }
+  if (stationId === "liberty-tank") {
+    return "CID · Kankakee · Reworld · KanSpcl · Sun Chem";
+  }
+  return specialtyChipMode(stationId) === "commodity"
+    ? "Commodity for new open load"
+    : "Destination for new open load";
 }
 
 export type SpecialtySlot = {
@@ -523,7 +564,7 @@ function normalizeSpecialtyLabel(raw: string): string {
   return raw.trim().toLowerCase().replace(/[._-]+/g, " ").replace(/\s+/g, " ");
 }
 
-/** Log-load dest labels that should match a specialty dest chip. */
+/** Log-load dest / commodity labels that should match a specialty chip. */
 const SPECIALTY_DEST_ALIASES: Record<string, string> = {
   "groot recycling": "groot",
   "groot recycle": "groot",
@@ -533,6 +574,14 @@ const SPECIALTY_DEST_ALIASES: Record<string, string> = {
   "resource management": "resource mgt",
   prairiehill: "prairie hill",
   "grays lake": "grayslake",
+  "trash (msw)": "trash",
+  msw: "trash",
+  "kan spcl": "kanspcl",
+  "kan special": "kanspcl",
+  "kankakee special": "kanspcl",
+  kanspcl: "kanspcl",
+  sunchem: "sun chem",
+  "sun chemical": "sun chem",
 };
 
 function lookupSpecialtyIdByName(raw: string): string | null {
@@ -570,9 +619,9 @@ export function resolveSpecialtyStationId(
 }
 
 /**
- * Specialty-board commodity for this card. Trash (MSW) is never gated — the
- * Specialty Loads warn is walking-floor / specialty dests only (plus leachate
- * on tank cards). Groot dests still count when the commodity is not trash.
+ * Specialty-board commodity for this card.
+ * Commodity-keyed walking-floor cards match the + chip list (Ford Trash only).
+ * Dest-keyed cards never treat ordinary trash as a board lane.
  */
 function isSpecialtyBoardCommodity(
   specialtyId: string,
@@ -581,6 +630,11 @@ function isSpecialtyBoardCommodity(
   pickup: string,
 ): boolean {
   const key = tallyLabel(commodity);
+  if (specialtyChipMode(specialtyId) === "commodity") {
+    return specialtyDestinationsFor(specialtyId).some((chip) =>
+      sameSpecialtyDest(chip, commodity),
+    );
+  }
   if (key === "TRASH") return false;
   if (specialtyId === "gray-tank" || specialtyId === "liberty-tank") {
     return key === "LEACHATE";
@@ -599,24 +653,53 @@ function isSpecialtyBoardCommodity(
   return fields.some((field) => field.toLowerCase().includes("groot"));
 }
 
+/** Canonical chip label stored on the slot (`destination` field) for this load. */
+export function specialtyLaneChipLabel(
+  specialtyId: string,
+  destination: string,
+  commodity: string,
+): string | null {
+  const chips = specialtyDestinationsFor(specialtyId);
+  const needle =
+    specialtyChipMode(specialtyId) === "commodity" ? commodity : destination;
+  if (!needle.trim()) return null;
+  return chips.find((chip) => sameSpecialtyDest(chip, needle)) ?? null;
+}
+
+export type SpecialtyBoardLane = {
+  specialtyId: string;
+  chip: string;
+};
+
 /**
- * Specialty Loads lane: board station + dest chip for that card + board commodity.
- * Ordinary trash is never a board lane. Leachate / etc. that are not on the board return null.
+ * Specialty Loads lane: board station + chip for that card.
+ * Walking-floor commodity cards match the load commodity; Liberty / dest cards
+ * match destination. Ordinary trash is a board lane only on Ford.
  */
+export function resolveSpecialtyBoardMatch(
+  stationId: string | undefined,
+  pickup: string,
+  destination: string,
+  commodity: string,
+): SpecialtyBoardLane | null {
+  const specialtyId = resolveSpecialtyStationId(stationId, pickup);
+  if (!specialtyId) return null;
+  const chip = specialtyLaneChipLabel(specialtyId, destination, commodity);
+  if (!chip) return null;
+  if (!isSpecialtyBoardCommodity(specialtyId, commodity, destination, pickup)) {
+    return null;
+  }
+  return { specialtyId, chip };
+}
+
 export function resolveSpecialtyBoardLane(
   stationId: string | undefined,
   pickup: string,
   destination: string,
   commodity: string,
 ): string | null {
-  const specialtyId = resolveSpecialtyStationId(stationId, pickup);
-  if (!specialtyId) return null;
-  const dest = destination.trim();
-  if (!dest) return null;
-  const dests = specialtyDestinationsFor(specialtyId);
-  if (!dests.some((d) => sameSpecialtyDest(d, dest))) return null;
-  if (!isSpecialtyBoardCommodity(specialtyId, commodity, dest, pickup)) return null;
-  return specialtyId;
+  return resolveSpecialtyBoardMatch(stationId, pickup, destination, commodity)
+    ?.specialtyId ?? null;
 }
 
 /** Warn payload when a specialty-board lane has fewer opens than the qty being logged. */
@@ -629,17 +712,17 @@ export function missingSpecialtyOpensWarn(
   commodity: string,
   qty = 1,
 ): { specialtyId: string; opens: number } | null {
-  const specialtyId = resolveSpecialtyBoardLane(
+  const lane = resolveSpecialtyBoardMatch(
     stationId,
     pickup,
     destination,
     commodity,
   );
-  if (!specialtyId) return null;
+  if (!lane) return null;
   const need = Math.max(0, Math.floor(qty));
-  const opens = countSpecialtyOpens(store, date, specialtyId, destination);
+  const opens = countSpecialtyOpens(store, date, lane.specialtyId, lane.chip);
   if (opens >= need) return null;
-  return { specialtyId, opens };
+  return { specialtyId: lane.specialtyId, opens };
 }
 
 /** Canonical YYYY-MM-DD day key (Postgres timestamps keep the calendar prefix). */

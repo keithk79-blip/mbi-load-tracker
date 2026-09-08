@@ -45,7 +45,7 @@ export function SpecialtyBoardCard({ date }: { date: string }) {
       {open ? (
         <div className="specialty-body">
           <p className="specialty-hint">
-            + destination · - or tap dest chip to remove
+            + dest or commodity · − or tap chip to remove
           </p>
           <ul className="specialty-list">
             {SPECIALTY_STATIONS.map((station) => {

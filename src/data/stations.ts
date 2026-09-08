@@ -109,7 +109,7 @@ export const STATIONS: Station[] = [
     id: "liberty",
     name: "Liberty",
     commodities: ["Leachate (tanker)"],
-    destinations: ["CID", "Kankakee", "Reworld"],
+    destinations: ["CID", "Kankakee", "Reworld", "KanSpcl", "Sun Chem"],
   },
   {
     id: "dekalb",
