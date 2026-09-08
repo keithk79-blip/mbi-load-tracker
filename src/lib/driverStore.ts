@@ -1,11 +1,26 @@
 ﻿import type { DayStore, LockedDay } from "./driverDays";
 import { isDriverTallyDay } from "./driverDays";
+import {
+  cleanDeletedKeys,
+  cleanManualOffs,
+  type ManualOffsStore,
+} from "./manualCallOffs";
 
-const DAYS_KEY = "chitrader.load-tracker.driver-days.v1";
+export const DAYS_KEY = "chitrader.load-tracker.driver-days.v1";
 
 type PersistedDays = {
   version: 1;
   days: DayStore;
+  /** Ad-hoc full-day offs keyed by Chicago calendar date. Additive to the sheets list. */
+  manualOffs?: ManualOffsStore;
+  /** Tombstones `YYYY-MM-DD|namekey` so a cloud pull cannot restore a local remove. */
+  manualOffsDeleted?: string[];
+};
+
+export type DriverDaysPayload = {
+  days: DayStore;
+  manualOffs: ManualOffsStore;
+  manualOffsDeleted: string[];
 };
 
 function cleanOot(names: unknown): string[] | undefined {
@@ -25,23 +40,72 @@ function clean(store: DayStore): DayStore {
   return out;
 }
 
-export function readDayStore(): DayStore {
+function emptyPayload(): DriverDaysPayload {
+  return { days: {}, manualOffs: {}, manualOffsDeleted: [] };
+}
+
+export function readDriverDaysPayload(): DriverDaysPayload {
   try {
     const raw = localStorage.getItem(DAYS_KEY);
-    if (!raw) return {};
+    if (!raw) return emptyPayload();
     const parsed = JSON.parse(raw) as PersistedDays;
     if (parsed?.version !== 1 || typeof parsed.days !== "object" || !parsed.days) {
-      return {};
+      return emptyPayload();
     }
-    return clean(parsed.days);
+    return {
+      days: clean(parsed.days),
+      manualOffs: cleanManualOffs(parsed.manualOffs),
+      manualOffsDeleted: cleanDeletedKeys(parsed.manualOffsDeleted),
+    };
   } catch {
-    return {};
+    return emptyPayload();
   }
 }
 
+function writePayload(payload: DriverDaysPayload): void {
+  const next: PersistedDays = {
+    version: 1,
+    days: clean(payload.days),
+    manualOffs: payload.manualOffs,
+    manualOffsDeleted: payload.manualOffsDeleted,
+  };
+  localStorage.setItem(DAYS_KEY, JSON.stringify(next));
+}
+
+export function readDayStore(): DayStore {
+  return readDriverDaysPayload().days;
+}
+
 export function writeDayStore(store: DayStore): void {
-  const payload: PersistedDays = { version: 1, days: clean(store) };
-  localStorage.setItem(DAYS_KEY, JSON.stringify(payload));
+  const current = readDriverDaysPayload();
+  writePayload({ ...current, days: store });
+}
+
+export function readManualOffs(): ManualOffsStore {
+  return readDriverDaysPayload().manualOffs;
+}
+
+export function writeManualOffs(
+  manualOffs: ManualOffsStore,
+  manualOffsDeleted?: string[],
+): void {
+  const current = readDriverDaysPayload();
+  writePayload({
+    ...current,
+    manualOffs: cleanManualOffs(manualOffs),
+    manualOffsDeleted:
+      manualOffsDeleted === undefined
+        ? current.manualOffsDeleted
+        : cleanDeletedKeys(manualOffsDeleted),
+  });
+}
+
+export function persistDriverDays(payload: DriverDaysPayload): void {
+  writePayload({
+    days: payload.days,
+    manualOffs: cleanManualOffs(payload.manualOffs),
+    manualOffsDeleted: cleanDeletedKeys(payload.manualOffsDeleted),
+  });
 }
 
 export function asLockedDay(row: {

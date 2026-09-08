@@ -8,7 +8,7 @@
   useState,
   type ReactNode,
 } from "react";
-import { chicagoToday } from "../lib/chicagoDate";
+import { chicagoToday, isChicagoSunday } from "../lib/chicagoDate";
 import {
   applyLiveSheet,
   lockEndedDays,
@@ -19,10 +19,36 @@ import {
   type DayStore,
   type LockedDay,
 } from "../lib/driverDays";
-import { fetchRemoteDays, pushDayStore } from "../lib/driverCloud";
-import { readDayStore, writeDayStore } from "../lib/driverStore";
+import {
+  deleteRemoteManualOff,
+  fetchRemoteDays,
+  fetchRemoteManualOffs,
+  pushDayStore,
+  pushMissingManualOffs,
+  upsertRemoteManualOff,
+} from "../lib/driverCloud";
+import {
+  readDayStore,
+  readDriverDaysPayload,
+  writeDayStore,
+  writeManualOffs,
+} from "../lib/driverStore";
 import { fetchDriverSnapshot, readDriverCache } from "../lib/sheets";
-import { fullDayOffNames, type CallOffRow } from "../lib/driverAvailability";
+import {
+  callOffNameKey,
+  fullDayOffEntries,
+  type CallOffEntry,
+  type CallOffKind,
+  type CallOffRow,
+} from "../lib/driverAvailability";
+import {
+  addManualOff as insertManualOff,
+  deletedManualKey,
+  gcDeletedManualKeys,
+  mergeManualOffStores,
+  removeManualOff as dropManualOff,
+  type ManualOffsStore,
+} from "../lib/manualCallOffs";
 import { useAuth } from "./AuthContext";
 
 export type DriversStatus = "loading" | "live" | "cached" | "error";
@@ -37,7 +63,13 @@ type DriversContextValue = {
   days: DayStore;
   ootNames: string[];
   availabilityOn: (date: string) => LockedDay | null;
-  callOffNamesOn: (date: string) => string[];
+  callOffsOn: (date: string) => CallOffEntry[];
+  addManualOff: (
+    date: string,
+    name: string,
+    kind: CallOffKind,
+  ) => Promise<boolean>;
+  removeManualOff: (date: string, name: string) => Promise<boolean>;
   ytdAverage: (today: string) => number | null;
   refresh: () => Promise<void>;
 };
@@ -60,6 +92,11 @@ export function DriversProvider({ children }: { children: ReactNode }) {
     if (locked !== current) writeDayStore(locked);
     return locked;
   });
+  const initialManuals = readDriverDaysPayload();
+  const [manualOffs, setManualOffs] = useState<ManualOffsStore>(
+    () => initialManuals.manualOffs,
+  );
+  const deletedRef = useRef<string[]>(initialManuals.manualOffsDeleted);
   const todayRef = useRef(chicagoToday());
 
   const persistDays = useCallback((next: DayStore) => {
@@ -69,6 +106,40 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       void pushDayStore(next);
     }
   }, [configured, session]);
+
+  const persistManuals = useCallback(
+    (next: ManualOffsStore, deleted: string[] = deletedRef.current) => {
+      deletedRef.current = deleted;
+      writeManualOffs(next, deleted);
+      setManualOffs(next);
+    },
+    [],
+  );
+
+  const applySheetWithManuals = useCallback(
+    (
+      store: DayStore,
+      live: {
+        base: number;
+        saturdayBase: number;
+        offs: CallOffRow[];
+        ootNames?: string[];
+      },
+      today: string,
+      now: string,
+      manuals: ManualOffsStore,
+    ) =>
+      applyLiveSheet(
+        store,
+        {
+          ...live,
+          manualOffs: manuals[today],
+        },
+        today,
+        now,
+      ),
+    [],
+  );
 
   const refresh = useCallback(async () => {
     setStatus((prev) => (prev === "live" || prev === "cached" ? prev : "loading"));
@@ -83,6 +154,26 @@ export function DriversProvider({ children }: { children: ReactNode }) {
           writeDayStore(merged);
           setDays(merged);
         }
+        const remoteManuals = await fetchRemoteManualOffs();
+        if (remoteManuals) {
+          const local = readDriverDaysPayload();
+          const mergedManuals = mergeManualOffStores(
+            local.manualOffs,
+            remoteManuals,
+            local.manualOffsDeleted,
+          );
+          const nextDeleted = gcDeletedManualKeys(
+            local.manualOffsDeleted,
+            remoteManuals,
+          );
+          persistManuals(mergedManuals, nextDeleted);
+          await pushMissingManualOffs(mergedManuals, remoteManuals);
+          for (const key of nextDeleted) {
+            const split = key.indexOf("|");
+            if (split <= 0) continue;
+            await deleteRemoteManualOff(key.slice(0, split), key.slice(split + 1));
+          }
+        }
       }
       const snap = await fetchDriverSnapshot();
       setBase(snap.baseAvailable);
@@ -90,7 +181,8 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       setOffs(snap.offs);
       setOotNames(snap.ootNames);
       setFetchedAt(snap.fetchedAt);
-      const next = applyLiveSheet(
+      const manuals = readDriverDaysPayload().manualOffs;
+      const next = applySheetWithManuals(
         readDayStore(),
         {
           base: snap.baseAvailable,
@@ -100,18 +192,20 @@ export function DriversProvider({ children }: { children: ReactNode }) {
         },
         today,
         now,
+        manuals,
       );
       persistDays(next);
       setStatus("live");
     } catch (err) {
       const cachedNow = readDriverCache();
+      const manuals = readDriverDaysPayload().manualOffs;
       if (cachedNow) {
         setBase(cachedNow.baseAvailable);
         setSaturday(cachedNow.saturdayAvailable);
         setOffs(cachedNow.offs);
         setOotNames(cachedNow.ootNames);
         setFetchedAt(cachedNow.fetchedAt);
-        const next = applyLiveSheet(
+        const next = applySheetWithManuals(
           readDayStore(),
           {
             base: cachedNow.baseAvailable,
@@ -121,19 +215,20 @@ export function DriversProvider({ children }: { children: ReactNode }) {
           },
           today,
           now,
+          manuals,
         );
         persistDays(next);
         setStatus("cached");
-        setError("Could not refresh sheets â€” showing last pull / locked days.");
+        setError("Could not refresh sheets — showing last pull / locked days.");
       } else if (Object.keys(readDayStore()).length) {
         setStatus("cached");
-        setError("Could not refresh sheets â€” showing locked days.");
+        setError("Could not refresh sheets — showing locked days.");
       } else {
         setStatus("error");
         setError(err instanceof Error ? err.message : "Could not reach Google Sheets.");
       }
     }
-  }, [configured, persistDays, session]);
+  }, [applySheetWithManuals, configured, persistDays, persistManuals, session]);
 
   useEffect(() => {
     void refresh();
@@ -180,17 +275,101 @@ export function DriversProvider({ children }: { children: ReactNode }) {
           base: baseAvailable,
           saturdayBase: saturdayAvailable ?? 0,
           offs,
+          manualOffs: manualOffs[date],
         },
         date,
         today,
       );
     },
-    [days, baseAvailable, saturdayAvailable, offs],
+    [days, baseAvailable, saturdayAvailable, offs, manualOffs],
   );
 
-  const callOffNamesOn = useCallback(
-    (date: string): string[] => fullDayOffNames(offs, date),
-    [offs],
+  const callOffsOn = useCallback(
+    (date: string): CallOffEntry[] =>
+      fullDayOffEntries(offs, manualOffs[date], date),
+    [offs, manualOffs],
+  );
+
+  const recomputeTodayFrom = useCallback(
+    (nextManuals: ManualOffsStore) => {
+      const today = chicagoToday();
+      if (baseAvailable === null) return;
+      const next = applySheetWithManuals(
+        readDayStore(),
+        {
+          base: baseAvailable,
+          saturdayBase: saturdayAvailable ?? 0,
+          offs,
+          ootNames,
+        },
+        today,
+        new Date().toISOString(),
+        nextManuals,
+      );
+      persistDays(next);
+    },
+    [
+      applySheetWithManuals,
+      baseAvailable,
+      offs,
+      ootNames,
+      persistDays,
+      saturdayAvailable,
+    ],
+  );
+
+  const addManualOff = useCallback(
+    async (date: string, name: string, kind: CallOffKind): Promise<boolean> => {
+      if (isChicagoSunday(date) || date < chicagoToday()) return false;
+      const occupied = new Set(
+        fullDayOffEntries(offs, undefined, date).map((row) =>
+          callOffNameKey(row.name),
+        ),
+      );
+      const { store: next, added } = insertManualOff(
+        manualOffs,
+        date,
+        name,
+        kind,
+        occupied,
+      );
+      if (!added) return false;
+      const nextDeleted = deletedRef.current.filter(
+        (key) => key !== deletedManualKey(date, added.name),
+      );
+      persistManuals(next, nextDeleted);
+      recomputeTodayFrom(next);
+      if (configured && session) {
+        await upsertRemoteManualOff(date, added);
+      }
+      return true;
+    },
+    [
+      configured,
+      manualOffs,
+      offs,
+      persistManuals,
+      recomputeTodayFrom,
+      session,
+    ],
+  );
+
+  const removeManualOff = useCallback(
+    async (date: string, name: string): Promise<boolean> => {
+      const { store: next, removed } = dropManualOff(manualOffs, date, name);
+      if (!removed) return false;
+      const tombstone = deletedManualKey(date, removed.name);
+      const nextDeleted = deletedRef.current.includes(tombstone)
+        ? deletedRef.current
+        : [...deletedRef.current, tombstone];
+      persistManuals(next, nextDeleted);
+      recomputeTodayFrom(next);
+      if (configured && session) {
+        await deleteRemoteManualOff(date, removed.name);
+      }
+      return true;
+    },
+    [configured, manualOffs, persistManuals, recomputeTodayFrom, session],
   );
 
   const value = useMemo<DriversContextValue>(
@@ -204,7 +383,9 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       days,
       ootNames,
       availabilityOn,
-      callOffNamesOn,
+      callOffsOn,
+      addManualOff,
+      removeManualOff,
       ytdAverage: (today: string) => ytdWorkingAverage(days, today),
       refresh,
     }),
@@ -218,7 +399,9 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       days,
       ootNames,
       availabilityOn,
-      callOffNamesOn,
+      callOffsOn,
+      addManualOff,
+      removeManualOff,
       refresh,
     ],
   );
@@ -231,6 +414,3 @@ export function useDrivers(): DriversContextValue {
   if (!ctx) throw new Error("useDrivers must be used inside DriversProvider");
   return ctx;
 }
-
-
-

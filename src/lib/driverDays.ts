@@ -6,8 +6,10 @@
 } from "./chicagoDate";
 import {
   availableDrivers,
+  withManualOffs,
   type CallOffRow,
   type DayAvailability,
+  type ManualCallOff,
 } from "./driverAvailability";
 
 export type LockedDay = DayAvailability & {
@@ -24,6 +26,8 @@ export type LiveSheet = {
   offs: CallOffRow[];
   /** Live OOT names — only written onto today's snapshot, never past days. */
   ootNames?: string[];
+  /** Manual full-day offs for the date being computed (today or a projected future day). */
+  manualOffs?: ManualCallOff[];
 };
 
 /** Sundays have no driver tally. Saturdays use the sat-yard sum. */
@@ -57,7 +61,8 @@ export function computeAvailability(live: LiveSheet, day: string): DayAvailabili
     const available = Math.max(0, Math.floor(live.saturdayBase));
     return { date: day, base: available, offs: 0, available };
   }
-  return availableDrivers(live.base, live.offs, day);
+  const rows = withManualOffs(live.offs, live.manualOffs, day);
+  return availableDrivers(live.base, rows, day);
 }
 
 /**

@@ -120,7 +120,51 @@ describe("applyLiveSheet lock", () => {
     const next = applyLiveSheet(store, { base: 99, saturdayBase: 1, offs: [] }, "2026-09-04", "t1");
     expect(next["2026-09-03"]).toEqual(store["2026-09-03"]);
   });
+
+  it("subtracts manual weekday offs on top of the sheet list", () => {
+    const next = applyLiveSheet(
+      {},
+      {
+        base: 143,
+        saturdayBase: 33,
+        offs: [{ name: "A", start: "2026-09-08", end: null, reason: "Call Off" }],
+        manualOffs: [
+          { name: "B", kind: "p-day" },
+          { name: "a", kind: "ncns" },
+        ],
+      },
+      "2026-09-08",
+      "t1",
+    );
+    expect(next["2026-09-08"]).toMatchObject({
+      base: 143,
+      offs: 2,
+      available: 141,
+      locked: false,
+      source: "weekday",
+    });
+  });
+
+  it("does not subtract manuals from the Saturday yard sum", () => {
+    const next = applyLiveSheet(
+      {},
+      {
+        base: 143,
+        saturdayBase: 33,
+        offs,
+        manualOffs: [{ name: "Extra", kind: "ncns" }],
+      },
+      "2026-09-05",
+      "t1",
+    );
+    expect(next["2026-09-05"]).toMatchObject({
+      available: 33,
+      offs: 0,
+      source: "saturday",
+    });
+  });
 });
+
 
 describe("lockEndedDays", () => {
   it("freezes yesterday without touching today's unlocked snapshot", () => {

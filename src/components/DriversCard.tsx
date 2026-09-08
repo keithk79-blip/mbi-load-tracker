@@ -1,10 +1,15 @@
-﻿import { RefreshCw } from "lucide-react";
+﻿import { useState } from "react";
+import { Plus, RefreshCw, X } from "lucide-react";
 import {
   chicagoToday,
   formatHeaderDate,
   isChicagoSaturday,
   isChicagoSunday,
 } from "../lib/chicagoDate";
+import {
+  CALL_OFF_KIND_OPTIONS,
+  type CallOffKind,
+} from "../lib/driverAvailability";
 import { useDrivers } from "../store/DriversContext";
 
 function pulledLabel(iso: string | null): string {
@@ -43,11 +48,42 @@ export function DriversCard({
     ytdAverage,
     refresh,
     ootNames,
-    callOffNamesOn,
+    callOffsOn,
+    addManualOff,
+    removeManualOff,
   } = useDrivers();
   const dayAvail = availabilityOn(viewed);
   const avg = ytdAverage(today);
-  const callOffNames = callOffNamesOn(viewed);
+  const callOffs = callOffsOn(viewed);
+  const canEditCallOffs = !sunday && (viewingToday || viewingFuture);
+
+  const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const [draftKind, setDraftKind] = useState<CallOffKind>("call-off");
+  const [addError, setAddError] = useState<string | null>(null);
+  const adding = addingFor === viewed;
+
+  function closeAdd() {
+    setAddingFor(null);
+    setAddError(null);
+  }
+
+  async function saveManual() {
+    const name = draftName.trim();
+    if (!name) {
+      setAddError("Enter a driver name.");
+      return;
+    }
+    const ok = await addManualOff(viewed, name, draftKind);
+    if (!ok) {
+      setAddError("That name is already on this day’s call offs.");
+      return;
+    }
+    setDraftName("");
+    setDraftKind("call-off");
+    setAddError(null);
+    closeAdd();
+  }
 
   // Today + future: live roster OOT. Past: locked day ootNames only (never backfill).
   const displayedOot =
@@ -62,11 +98,13 @@ export function DriversCard({
       ? status === "live" || status === "cached" || ootNames.length > 0
       : Boolean(dayAvail));
 
-  // Today + future: full-day call-offs for the viewed date.
   const showCallOffs =
     !sunday &&
     (viewingToday || viewingFuture) &&
-    (status === "live" || status === "cached" || callOffNames.length > 0);
+    (status === "live" ||
+      status === "cached" ||
+      callOffs.length > 0 ||
+      canEditCallOffs);
 
   const whenLabel = viewingToday
     ? saturday
@@ -164,13 +202,106 @@ export function DriversCard({
 
       {showCallOffs ? (
         <div className="oot-block">
-          <p className="oot-label">Call offs</p>
-          <p className="oot-yards">Full-day Off.</p>
-          {callOffNames.length ? (
+          <div className="calloff-head">
+            <div>
+              <p className="oot-label">Call offs</p>
+              <p className="oot-yards">Full-day Off.</p>
+            </div>
+            {canEditCallOffs ? (
+              <button
+                type="button"
+                className="calloff-add-btn"
+                aria-expanded={adding}
+                onClick={() => {
+                  if (adding) {
+                    closeAdd();
+                    return;
+                  }
+                  setAddingFor(viewed);
+                  setDraftName("");
+                  setDraftKind("call-off");
+                  setAddError(null);
+                }}
+              >
+                <Plus size={14} strokeWidth={2.6} />
+                Add
+              </button>
+            ) : null}
+          </div>
+          {adding ? (
+            <form
+              className="calloff-add-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveManual();
+              }}
+            >
+              <label className="field-label calloff-name-label" htmlFor={`calloff-name-${viewed}`}>
+                Driver name
+              </label>
+              <input
+                id={`calloff-name-${viewed}`}
+                className="text-input calloff-name-input"
+                value={draftName}
+                onChange={(event) => {
+                  setDraftName(event.target.value);
+                  if (addError) setAddError(null);
+                }}
+                placeholder="Name"
+                autoComplete="off"
+                autoFocus
+              />
+              <p className="field-label calloff-type-label">Type</p>
+              <div className="calloff-kind-row" role="group" aria-label="Call-off type">
+                {CALL_OFF_KIND_OPTIONS.map((option) => (
+                  <button
+                    key={option.kind}
+                    type="button"
+                    className={
+                      draftKind === option.kind
+                        ? `calloff-kind-btn calloff-kind-${option.kind} selected`
+                        : `calloff-kind-btn calloff-kind-${option.kind}`
+                    }
+                    aria-pressed={draftKind === option.kind}
+                    onClick={() => setDraftKind(option.kind)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              {addError ? <p className="calloff-add-error">{addError}</p> : null}
+              <div className="calloff-add-actions">
+                <button type="submit" className="text-btn amber">
+                  Save
+                </button>
+                <button
+                  type="button"
+                  className="text-btn"
+                  onClick={closeAdd}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : null}
+          {callOffs.length ? (
             <ul className="oot-list">
-              {callOffNames.map((name) => (
-                <li key={name} className="oot-chip">
-                  {name}
+              {callOffs.map((entry) => (
+                <li
+                  key={`${entry.source}:${entry.name}`}
+                  className={`oot-chip calloff-chip calloff-chip-${entry.kind}`}
+                >
+                  <span>{entry.name}</span>
+                  {entry.source === "manual" ? (
+                    <button
+                      type="button"
+                      className="calloff-remove"
+                      aria-label={`Remove ${entry.name}`}
+                      onClick={() => void removeManualOff(viewed, entry.name)}
+                    >
+                      <X size={12} strokeWidth={2.6} />
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -210,6 +341,3 @@ export function DriversCard({
     </article>
   );
 }
-
-
-

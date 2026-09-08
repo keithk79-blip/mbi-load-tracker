@@ -1238,6 +1238,184 @@ button {
   font-weight: 600;
 }
 
+.calloff-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.calloff-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 4px 8px;
+  min-height: 28px;
+  border: 1px solid #6a2a2c;
+  border-radius: 999px;
+  background: #2a1618;
+  color: #f0c4c6;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.calloff-add-btn:hover,
+.calloff-add-btn:focus-visible {
+  border-color: var(--brand);
+  color: var(--text);
+  outline: none;
+}
+
+.calloff-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border-radius: 12px;
+  border: 1px solid #5a2024;
+  background: #181012;
+}
+
+.calloff-name-label,
+.calloff-type-label {
+  margin: 0;
+}
+
+.calloff-name-input {
+  margin-top: 0;
+  min-height: 40px;
+  padding: 8px 12px;
+  background: #221416;
+  border-color: #5a2024;
+}
+
+.calloff-kind-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.calloff-kind-btn {
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: transparent;
+}
+
+.calloff-kind-call-off {
+  border: 1px solid #3b6ea8;
+  color: #cfe4ff;
+}
+
+.calloff-kind-p-day {
+  border: 1px solid #2f8a55;
+  color: #c8f5d6;
+}
+
+.calloff-kind-okd-off {
+  border: 1px solid #b99020;
+  color: #ffe9a3;
+}
+
+.calloff-kind-ncns {
+  border: 1px solid #c44545;
+  color: #ffd0d0;
+}
+
+.calloff-kind-call-off.selected {
+  background: #1d3a5c;
+  border-color: #7eb6ff;
+  color: #eaf3ff;
+}
+
+.calloff-kind-p-day.selected {
+  background: #164b2e;
+  border-color: #6ee7a0;
+  color: #e8ffef;
+}
+
+.calloff-kind-okd-off.selected {
+  background: #4a3a10;
+  border-color: #f5d76e;
+  color: #fff6d4;
+}
+
+.calloff-kind-ncns.selected {
+  background: #5a1c1c;
+  border-color: #ff8a8a;
+  color: #ffe8e8;
+}
+
+.calloff-add-error {
+  margin: 0;
+  color: #ffb4b4;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.calloff-add-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.calloff-add-actions .text-btn {
+  min-height: 36px;
+  padding: 4px 6px;
+}
+
+.calloff-chip {
+  gap: 4px;
+}
+
+.calloff-chip-call-off {
+  border-color: #3b6ea8;
+  background: #17324f;
+  color: #e7f1ff;
+}
+
+.calloff-chip-p-day {
+  border-color: #2f8a55;
+  background: #143826;
+  color: #defbe8;
+}
+
+.calloff-chip-okd-off {
+  border-color: #b99020;
+  background: #3d320e;
+  color: #fff1c4;
+}
+
+.calloff-chip-ncns {
+  border-color: #c44545;
+  background: #4a1818;
+  color: #ffd6d6;
+}
+
+.calloff-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.8;
+}
+
+.calloff-remove:hover,
+.calloff-remove:focus-visible {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
+}
+
 .drivers-actions {
   display: flex;
   align-items: center;

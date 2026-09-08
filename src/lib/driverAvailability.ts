@@ -12,6 +12,91 @@ export type CallOffRow = {
   reason: string;
 };
 
+/** Dispatcher-facing type for a full-day off pill. Color only — no type text on the chip. */
+export type CallOffKind = "call-off" | "p-day" | "okd-off" | "ncns";
+
+export const CALL_OFF_KIND_OPTIONS = [
+  { kind: "call-off", label: "Call Off" },
+  { kind: "p-day", label: "P-Day" },
+  { kind: "okd-off", label: "Ok'd Off" },
+  { kind: "ncns", label: "NCNS" },
+] as const;
+
+export type ManualCallOff = {
+  name: string;
+  kind: CallOffKind;
+};
+
+export type CallOffEntry = {
+  name: string;
+  kind: CallOffKind;
+  source: "sheet" | "manual";
+};
+
+const CALL_OFF_KINDS = new Set<string>(
+  CALL_OFF_KIND_OPTIONS.map((row) => row.kind),
+);
+
+export function isCallOffKind(value: unknown): value is CallOffKind {
+  return typeof value === "string" && CALL_OFF_KINDS.has(value);
+}
+
+export function reasonForKind(kind: CallOffKind): string {
+  switch (kind) {
+    case "p-day":
+      return "P-Day";
+    case "okd-off":
+      return "Ok'd Off";
+    case "ncns":
+      return "NCNS";
+    default:
+      return "Call Off";
+  }
+}
+
+/** Sheet Reason → pill color. Unknown full-day reasons default to Call Off (blue). */
+export function callOffKindFromReason(reason: string): CallOffKind {
+  const n = normalizeReason(reason);
+  if (/\bncns\b/.test(n) || /\bno[\s-]?call[\s-]?no[\s-]?show\b/.test(n)) {
+    return "ncns";
+  }
+  if (/\bp[\s-]?days?\b/.test(n)) return "p-day";
+  if (/\bok'?d (day )?off\b/.test(n)) return "okd-off";
+  return "call-off";
+}
+
+export function callOffNameKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+export function manualsToRows(
+  manuals: readonly ManualCallOff[] | undefined,
+  day: string,
+): CallOffRow[] {
+  if (!manuals?.length) return [];
+  const rows: CallOffRow[] = [];
+  for (const off of manuals) {
+    const name = off.name.trim();
+    if (!name || !isCallOffKind(off.kind)) continue;
+    rows.push({
+      name,
+      start: day,
+      end: null,
+      reason: reasonForKind(off.kind),
+    });
+  }
+  return rows;
+}
+
+export function withManualOffs(
+  sheetRows: CallOffRow[],
+  manuals: readonly ManualCallOff[] | undefined,
+  day: string,
+): CallOffRow[] {
+  const extra = manualsToRows(manuals, day);
+  return extra.length ? [...sheetRows, ...extra] : sheetRows;
+}
+
 export type DayAvailability = {
   date: string;
   base: number;
@@ -59,6 +144,8 @@ const FULL_DAY_OFF_RE = [
   /\bbereavement\b/,
   /\blast\s+day\b/,
   /\bretir(?:e|ed|ing)\b/,
+  /\bncns\b/,
+  /\bno[\s-]?call[\s-]?no[\s-]?show\b/,
 ];
 
 /**
@@ -103,6 +190,39 @@ export function fullDayOffNames(rows: CallOffRow[], day: string): string[] {
   return names.sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
 }
 
+/** Sheet full-day names plus manual adds. Sheet wins on the same name; manuals are additive. */
+export function fullDayOffEntries(
+  sheetRows: CallOffRow[],
+  manuals: readonly ManualCallOff[] | undefined,
+  day: string,
+): CallOffEntry[] {
+  const seen = new Set<string>();
+  const entries: CallOffEntry[] = [];
+  for (const row of sheetRows) {
+    if (!callOffAppliesToDay(row, day)) continue;
+    const name = row.name.trim();
+    if (!name) continue;
+    const key = callOffNameKey(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    entries.push({
+      name,
+      kind: callOffKindFromReason(row.reason),
+      source: "sheet",
+    });
+  }
+  for (const off of manuals ?? []) {
+    const name = off.name.trim();
+    if (!name || !isCallOffKind(off.kind)) continue;
+    const key = callOffNameKey(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    entries.push({ name, kind: off.kind, source: "manual" });
+  }
+  return entries.sort((a, b) =>
+    a.name.localeCompare(b.name, "en", { sensitivity: "base" }),
+  );
+}
 
 export function availableDrivers(
   base: number,
