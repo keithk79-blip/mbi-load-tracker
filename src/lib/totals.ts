@@ -118,39 +118,34 @@ export type DaySummaryCard = {
   emphasis?: boolean;
 };
 
-export function topCommodityTallies(
-  loads: Load[],
-  limit = 2,
-): { label: string; count: number }[] {
-  const counts = new Map<string, number>();
-  for (const load of loads) {
-    const key = tallyLabel(load.commodity);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .slice(0, limit)
-    .map(([label, count]) => ({ label, count }));
+export function countByTallyLabel(loads: Load[], label: string): number {
+  return loads.filter((load) => tallyLabel(load.commodity) === label).length;
 }
 
-/** Today header cards: top commodities, LOADS, SUBS, WALKING-FLOOR. */
+/** Today header: TRASH, LEACHATE, LOADS, SUBS, WALKING-FLOOR. Always these five. */
 export function daySummaryCards(loads: Load[]): DaySummaryCard[] {
-  const cards: DaySummaryCard[] = topCommodityTallies(loads, 2).map((row) => ({
-    key: `commodity:${row.label}`,
-    label: row.label,
-    count: row.count,
-  }));
-  cards.push({
-    key: "loads",
-    label: "LOADS",
-    count: loads.length,
-    emphasis: true,
-  });
-  cards.push({ key: "subs", label: "SUBS", count: countBrokerLoads(loads) });
-  cards.push({
-    key: "walking-floor",
-    label: "WALKING-FLOOR",
-    count: countWalkingFloorLoads(loads),
-  });
-  return cards;
+  return [
+    {
+      key: "trash",
+      label: "TRASH",
+      count: countByTallyLabel(loads, "TRASH"),
+    },
+    {
+      key: "leachate",
+      label: "LEACHATE",
+      count: countByTallyLabel(loads, "LEACHATE"),
+    },
+    {
+      key: "loads",
+      label: "LOADS",
+      count: loads.length,
+      emphasis: true,
+    },
+    { key: "subs", label: "SUBS", count: countBrokerLoads(loads) },
+    {
+      key: "walking-floor",
+      label: "WALKING-FLOOR",
+      count: countWalkingFloorLoads(loads),
+    },
+  ];
 }

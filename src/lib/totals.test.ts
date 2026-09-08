@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { Load } from "../types";
 import {
   countBrokerLoads,
+  countByTallyLabel,
   countWalkingFloorLoads,
   daySummaryCards,
   isWalkingFloorLoad,
-  topCommodityTallies,
 } from "./totals";
 
 function load(partial: Partial<Load>): Load {
@@ -85,7 +85,10 @@ describe("walking-floor tallies", () => {
 });
 
 describe("daySummaryCards", () => {
-  it("keeps commodity and load tallies and adds SUBS plus WALKING-FLOOR", () => {
+  const labels = (cards: ReturnType<typeof daySummaryCards>) =>
+    cards.map((card) => [card.label, card.count]);
+
+  it("always shows TRASH, LEACHATE, LOADS, SUBS, and WALKING-FLOOR", () => {
     const loads = [
       load({ id: "1", truck: "418", commodity: "Trash (MSW)" }),
       load({ id: "2", truck: "VZ", commodity: "Trash (MSW)" }),
@@ -93,13 +96,11 @@ describe("daySummaryCards", () => {
       load({ id: "4", truck: "CGH", commodity: "Yard Waste" }),
     ];
 
-    expect(topCommodityTallies(loads, 2)).toEqual([
-      { label: "TRASH", count: 2 },
-      { label: "LEACHATE", count: 1 },
-    ]);
+    expect(countByTallyLabel(loads, "TRASH")).toBe(2);
+    expect(countByTallyLabel(loads, "LEACHATE")).toBe(1);
 
     const cards = daySummaryCards(loads);
-    expect(cards.map((card) => [card.label, card.count])).toEqual([
+    expect(labels(cards)).toEqual([
       ["TRASH", 2],
       ["LEACHATE", 1],
       ["LOADS", 4],
@@ -109,7 +110,33 @@ describe("daySummaryCards", () => {
     expect(cards.find((card) => card.label === "LOADS")?.emphasis).toBe(true);
   });
 
-  it("increments LOADS, the commodity card, and SUBS for a broker trash load", () => {
+  it("keeps TRASH and LEACHATE when yard waste outranks leachate", () => {
+    const loads = [
+      load({ id: "1", commodity: "Trash (MSW)" }),
+      load({ id: "2", commodity: "Yard Waste" }),
+      load({ id: "3", commodity: "Yard Waste" }),
+      load({ id: "4", commodity: "Recycle" }),
+    ];
+    expect(labels(daySummaryCards(loads))).toEqual([
+      ["TRASH", 1],
+      ["LEACHATE", 0],
+      ["LOADS", 4],
+      ["SUBS", 0],
+      ["WALKING-FLOOR", 3],
+    ]);
+  });
+
+  it("still shows TRASH and LEACHATE at zero on an empty day", () => {
+    expect(labels(daySummaryCards([]))).toEqual([
+      ["TRASH", 0],
+      ["LEACHATE", 0],
+      ["LOADS", 0],
+      ["SUBS", 0],
+      ["WALKING-FLOOR", 0],
+    ]);
+  });
+
+  it("increments LOADS, TRASH, and SUBS for a broker trash load", () => {
     const before = daySummaryCards([]);
     const after = daySummaryCards([
       load({ truck: "TJ", commodity: "Trash (MSW)" }),
@@ -119,9 +146,17 @@ describe("daySummaryCards", () => {
 
     expect(value(after, "LOADS") - value(before, "LOADS")).toBe(1);
     expect(value(after, "TRASH") - value(before, "TRASH")).toBe(1);
+    expect(value(after, "LEACHATE") - value(before, "LEACHATE")).toBe(0);
     expect(value(after, "SUBS") - value(before, "SUBS")).toBe(1);
     expect(value(after, "WALKING-FLOOR") - value(before, "WALKING-FLOOR")).toBe(
       0,
     );
+    expect(labels(after).map(([label]) => label)).toEqual([
+      "TRASH",
+      "LEACHATE",
+      "LOADS",
+      "SUBS",
+      "WALKING-FLOOR",
+    ]);
   });
 });
