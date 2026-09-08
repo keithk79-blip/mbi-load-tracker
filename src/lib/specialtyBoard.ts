@@ -1,6 +1,7 @@
 /** Walking-floor / specialty load board (day-scoped open slots). */
 
 import { destinationsFor } from "../data/stations";
+import { tallyLabel } from "./commodity";
 import { isValidISODate } from "./chicagoDate";
 
 export type SpecialtyStation = {
@@ -82,6 +83,8 @@ const SPECIALTY_DEST_OVERRIDES: Record<string, readonly string[]> = {
   schererville: ["Homewood"],
   mccook: ["Christianson Farms"],
   "dekalb-reload": ["Hodgkins", "RSI"],
+  // Global walking-floor dests plus GraysLake for Wheeling recycle only.
+  wheeling: [...SPECIALTY_DESTINATIONS, "GraysLake"],
 };
 
 /** Per-station dest chips; restricted yards match (or subset) log-load dests. */
@@ -126,6 +129,9 @@ export function specialtyDestHint(stationId: string): string {
   }
   if (stationId === "dekalb-reload") {
     return "Hodgkins · RSI";
+  }
+  if (stationId === "wheeling") {
+    return "Walking-floor dests plus GraysLake recycle";
   }
   return "Destination for new open load";
 }
@@ -526,6 +532,7 @@ const SPECIALTY_DEST_ALIASES: Record<string, string> = {
   resource: "resource mgt",
   "resource management": "resource mgt",
   prairiehill: "prairie hill",
+  "grays lake": "grayslake",
 };
 
 function lookupSpecialtyIdByName(raw: string): string | null {
@@ -560,6 +567,79 @@ export function resolveSpecialtyStationId(
     lookupSpecialtyIdByName(pickupName ?? "") ??
     lookupSpecialtyIdByName(stationId ?? "")
   );
+}
+
+/**
+ * Specialty-board commodity for this card. Trash (MSW) is never gated — the
+ * Specialty Loads warn is walking-floor / specialty dests only (plus leachate
+ * on tank cards). Groot dests still count when the commodity is not trash.
+ */
+function isSpecialtyBoardCommodity(
+  specialtyId: string,
+  commodity: string,
+  destination: string,
+  pickup: string,
+): boolean {
+  const key = tallyLabel(commodity);
+  if (key === "TRASH") return false;
+  if (specialtyId === "gray-tank" || specialtyId === "liberty-tank") {
+    return key === "LEACHATE";
+  }
+  if (specialtyId === "hodgkins") return key === "RESIDUAL" || key === "GLASS";
+  if (
+    key === "YARD" ||
+    key === "RECYCLE" ||
+    key === "RESIDUAL" ||
+    key === "CARDBOARD" ||
+    key === "GLASS"
+  ) {
+    return true;
+  }
+  const fields = [commodity, destination, pickup];
+  return fields.some((field) => field.toLowerCase().includes("groot"));
+}
+
+/**
+ * Specialty Loads lane: board station + dest chip for that card + board commodity.
+ * Ordinary trash is never a board lane. Leachate / etc. that are not on the board return null.
+ */
+export function resolveSpecialtyBoardLane(
+  stationId: string | undefined,
+  pickup: string,
+  destination: string,
+  commodity: string,
+): string | null {
+  const specialtyId = resolveSpecialtyStationId(stationId, pickup);
+  if (!specialtyId) return null;
+  const dest = destination.trim();
+  if (!dest) return null;
+  const dests = specialtyDestinationsFor(specialtyId);
+  if (!dests.some((d) => sameSpecialtyDest(d, dest))) return null;
+  if (!isSpecialtyBoardCommodity(specialtyId, commodity, dest, pickup)) return null;
+  return specialtyId;
+}
+
+/** Warn payload when a specialty-board lane has fewer opens than the qty being logged. */
+export function missingSpecialtyOpensWarn(
+  store: SpecialtyStore,
+  date: string,
+  stationId: string | undefined,
+  pickup: string,
+  destination: string,
+  commodity: string,
+  qty = 1,
+): { specialtyId: string; opens: number } | null {
+  const specialtyId = resolveSpecialtyBoardLane(
+    stationId,
+    pickup,
+    destination,
+    commodity,
+  );
+  if (!specialtyId) return null;
+  const need = Math.max(0, Math.floor(qty));
+  const opens = countSpecialtyOpens(store, date, specialtyId, destination);
+  if (opens >= need) return null;
+  return { specialtyId, opens };
 }
 
 /** Canonical YYYY-MM-DD day key (Postgres timestamps keep the calendar prefix). */

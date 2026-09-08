@@ -11,9 +11,11 @@ import {
   destKeepAfterChange,
   isSpecialtyStationId,
   mergeSpecialtyStores,
+  missingSpecialtyOpensWarn,
   omitSpecialtyIds,
   remainingSpecialtySlotIds,
   removeSpecialtySlot,
+  resolveSpecialtyBoardLane,
   resolveSpecialtyStationId,
   slotsForStation,
   specialtyDestinationsFor,
@@ -36,6 +38,14 @@ function catalogLogPickup(
   };
 }
 
+function boardCommodityFor(specialtyId: string | null): string {
+  if (specialtyId === "gray-tank" || specialtyId === "liberty-tank") {
+    return "Leachate (tanker)";
+  }
+  if (specialtyId === "hodgkins") return "Residual";
+  return "Recycle";
+}
+
 function logLoadConsume(
   store: SpecialtyStore,
   date: string,
@@ -43,10 +53,17 @@ function logLoadConsume(
   pickup: string,
   destination: string,
   qty = 1,
+  commodity?: string,
 ): SpecialtyStore {
-  const specialtyId = resolveSpecialtyStationId(stationId, pickup);
-  if (!specialtyId) return store;
-  return consumeSpecialtyOpens(store, date, specialtyId, destination, qty);
+  const resolved = resolveSpecialtyStationId(stationId, pickup);
+  const lane = resolveSpecialtyBoardLane(
+    stationId,
+    pickup,
+    destination,
+    commodity ?? boardCommodityFor(resolved),
+  );
+  if (!lane) return store;
+  return consumeSpecialtyOpens(store, date, lane, destination, qty);
 }
 
 describe("specialty walking-floor catalog", () => {
@@ -63,6 +80,28 @@ describe("specialty walking-floor catalog", () => {
   it("offers Groot as a specialty destination chip (Wheeling recycle)", () => {
     expect(SPECIALTY_DESTINATIONS).toContain("Groot");
     expect(specialtyDestinationsFor("wheeling")).toContain("Groot");
+  });
+
+  it("offers GraysLake as a Wheeling-only specialty dest (recycle)", () => {
+    expect(specialtyDestinationsFor("wheeling")).toContain("GraysLake");
+    expect(specialtyDestinationsFor("wheeling")).toContain("Groot");
+    expect(SPECIALTY_DESTINATIONS).not.toContain("GraysLake");
+    expect(applyPickupCascade("wheeling", "Recycle", "GraysLake")).toMatchObject({
+      commodity: "Recycle",
+      destination: "GraysLake",
+      commodityValid: true,
+      destinationValid: true,
+    });
+    expect(applyPickupCascade("wheeling", "Trash (MSW)", "GraysLake")).toEqual({
+      commodity: "Trash (MSW)",
+      destination: "",
+      commodityValid: true,
+      destinationValid: false,
+    });
+    for (const station of SPECIALTY_STATIONS) {
+      if (station.id === "wheeling") continue;
+      expect(specialtyDestinationsFor(station.id)).not.toContain("GraysLake");
+    }
   });
 
   it("lists only leachate dests on the Gray Tank specialty card", () => {
@@ -339,6 +378,174 @@ describe("specialty walking-floor catalog", () => {
   });
 });
 
+describe("No Available Loads warn is only for specialty-board lanes", () => {
+  const date = "2026-09-08";
+
+  it("does not warn for Northlake Trash → Pontiac (ordinary trash dispatch)", () => {
+    expect(
+      resolveSpecialtyBoardLane("northlake", "Northlake", "Pontiac", "Trash (MSW)"),
+    ).toBeNull();
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "northlake",
+        "Northlake",
+        "Pontiac",
+        "Trash (MSW)",
+      ),
+    ).toBeNull();
+  });
+
+  it("does not consume a Northlake specialty open when logging Trash → Pontiac", () => {
+    let store = addSpecialtySlot({}, date, "northlake", "Hodgkins");
+    store = logLoadConsume(
+      store,
+      date,
+      "northlake",
+      "Northlake",
+      "Pontiac",
+      1,
+      "Trash (MSW)",
+    );
+    expect(countSpecialtyOpens(store, date, "northlake", "Hodgkins")).toBe(1);
+    expect(countSpecialtyOpens(store, date, "northlake", "Pontiac")).toBe(0);
+  });
+
+  it("warns for Northlake Recycle → Hodgkins when the board has zero opens", () => {
+    expect(
+      resolveSpecialtyBoardLane("northlake", "Northlake", "Hodgkins", "Recycle"),
+    ).toBe("northlake");
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "northlake",
+        "Northlake",
+        "Hodgkins",
+        "Recycle",
+      ),
+    ).toEqual({ specialtyId: "northlake", opens: 0 });
+  });
+
+  it("does not warn for Northlake Recycle → Hodgkins when an open exists, and consume burns it", () => {
+    let store = addSpecialtySlot({}, date, "northlake", "Hodgkins");
+    expect(
+      missingSpecialtyOpensWarn(
+        store,
+        date,
+        "northlake",
+        "Northlake",
+        "Hodgkins",
+        "Recycle",
+      ),
+    ).toBeNull();
+    store = logLoadConsume(store, date, "northlake", "Northlake", "Hodgkins", 1, "Recycle");
+    expect(countSpecialtyOpens(store, date, "northlake", "Hodgkins")).toBe(0);
+  });
+
+  it("does not warn for Apollo Trash → Pontiac (dest is on the board, commodity is not)", () => {
+    expect(
+      resolveSpecialtyBoardLane("apollo", "Apollo", "Pontiac", "Trash (MSW)"),
+    ).toBeNull();
+    expect(
+      missingSpecialtyOpensWarn({}, date, "apollo", "Apollo", "Pontiac", "Trash (MSW)"),
+    ).toBeNull();
+  });
+
+  it("never warns for Trash (MSW) from any specialty pickup, even with empty opens", () => {
+    for (const station of SPECIALTY_STATIONS) {
+      const dest = specialtyDestinationsFor(station.id)[0];
+      expect(dest).toBeTruthy();
+      const log = catalogLogPickup(station.id, station.name);
+      expect(
+        resolveSpecialtyBoardLane(
+          log.stationId,
+          log.pickup,
+          dest,
+          "Trash (MSW)",
+        ),
+      ).toBeNull();
+      expect(
+        missingSpecialtyOpensWarn(
+          {},
+          date,
+          log.stationId,
+          log.pickup,
+          dest,
+          "Trash (MSW)",
+        ),
+      ).toBeNull();
+    }
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "wheeling",
+        "Wheeling",
+        "Groot",
+        "Trash (MSW)",
+      ),
+    ).toBeNull();
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "herthside",
+        "Hearthside",
+        "Newton County",
+        "Trash (MSW)",
+      ),
+    ).toBeNull();
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "northlake",
+        "Northlake",
+        "Pontiac",
+        "MSW",
+      ),
+    ).toBeNull();
+  });
+
+  it("still warns for Wheeling Recycle → GraysLake with zero opens", () => {
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "wheeling",
+        "Wheeling",
+        "GraysLake",
+        "Recycle",
+      ),
+    ).toEqual({ specialtyId: "wheeling", opens: 0 });
+  });
+
+  it("still warns for Liberty leachate → CID and Gray Tank leachate → CID with zero opens", () => {
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "liberty",
+        "Liberty",
+        "CID",
+        "Leachate (tanker)",
+      ),
+    ).toEqual({ specialtyId: "liberty-tank", opens: 0 });
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "gray-tank",
+        "Gray Tank",
+        "CID",
+        "Leachate (tanker)",
+      ),
+    ).toEqual({ specialtyId: "gray-tank", opens: 0 });
+  });
+});
+
 describe("specialty consume on logged loads", () => {
   it("consumes a Wheeling → Groot open when a Recycle load is logged for that day", () => {
     const date = "2026-09-08";
@@ -350,9 +557,19 @@ describe("specialty consume on logged loads", () => {
       destinationValid: true,
     });
 
-    store = logLoadConsume(store, date, "wheeling", "Wheeling", "Groot");
+    store = logLoadConsume(store, date, "wheeling", "Wheeling", "Groot", 1, "Recycle");
     expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(0);
     expect(slotsForStation(store[date] ?? [], "wheeling")).toEqual([]);
+  });
+
+  it("consumes a Wheeling → GraysLake open from Recycle logs and Grays Lake aliases", () => {
+    const date = "2026-09-08";
+    let store: SpecialtyStore = {};
+    store = addSpecialtySlot(store, date, "wheeling", "GraysLake");
+    expect(countSpecialtyOpens(store, date, "wheeling", "Grays Lake")).toBe(1);
+    expect(countSpecialtyOpens(store, date, "wheeling", "Grayslake")).toBe(1);
+    store = logLoadConsume(store, date, "wheeling", "Wheeling", "Grays Lake", 1, "Recycle");
+    expect(countSpecialtyOpens(store, date, "wheeling", "GraysLake")).toBe(0);
   });
 
   it("consumes a Melrose → Hodgkins open and leaves a different dest", () => {
@@ -523,7 +740,7 @@ describe("specialty consume on logged loads", () => {
     expect(countSpecialtyOpens(afterGc, date, "liberty-tank", "CID")).toBe(0);
   });
 
-  it.each(SPECIALTY_STATIONS)(
+  it.each(SPECIALTY_STATIONS.filter((s) => s.id !== "herthside"))(
     "consumes $id opens when a matching load is logged with qty=2",
     ({ id, name }) => {
       const dest = specialtyDestinationsFor(id)[0];
@@ -540,6 +757,21 @@ describe("specialty consume on logged loads", () => {
       expect(countSpecialtyOpens(store, date, id, dest)).toBe(0);
     },
   );
+
+  it("does not consume Hearthside Newton County opens when logging Trash (MSW)", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "herthside", "Newton County");
+    store = logLoadConsume(
+      store,
+      date,
+      "herthside",
+      "Hearthside",
+      "Newton County",
+      1,
+      "Trash (MSW)",
+    );
+    expect(countSpecialtyOpens(store, date, "herthside", "Newton County")).toBe(1);
+  });
 
   it.each([
     { stationId: "liberty", pickup: "Liberty" },

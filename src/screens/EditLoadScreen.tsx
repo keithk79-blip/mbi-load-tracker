@@ -16,7 +16,7 @@ import {
   isValidISODate,
 } from "../lib/chicagoDate";
 import { findNearDuplicate } from "../lib/duplicates";
-import { resolveSpecialtyStationId } from "../lib/specialtyBoard";
+import { resolveSpecialtyBoardLane } from "../lib/specialtyBoard";
 import { useSpecialty } from "../store/SpecialtyContext";
 import { useLoads } from "../store/LoadsContext";
 import type { Load } from "../types";
@@ -80,14 +80,20 @@ export function EditLoadScreen({
       seeded: false,
     });
 
-    const specialtyId = resolveSpecialtyStationId(form.stationId, pickup);
+    const specialtyId = resolveSpecialtyBoardLane(
+      form.stationId,
+      pickup,
+      destination,
+      form.commodity,
+    );
     const routeChanged =
       load.stationId !== form.stationId ||
       load.destination.trim().toLowerCase() !== destination.toLowerCase() ||
       load.date !== date ||
-      load.pickup.trim().toLowerCase() !== pickup.toLowerCase();
+      load.pickup.trim().toLowerCase() !== pickup.toLowerCase() ||
+      load.commodity.trim().toLowerCase() !== form.commodity.trim().toLowerCase();
 
-    if (specialtyId && destination && routeChanged) {
+    if (specialtyId && routeChanged) {
       void consumeOpens(date, specialtyId, destination, 1);
     }
 
@@ -120,19 +126,20 @@ export function EditLoadScreen({
       }
     }
 
-    const specialtyId = resolveSpecialtyStationId(form.stationId, pickup);
+    const specialtyId = resolveSpecialtyBoardLane(
+      form.stationId,
+      pickup,
+      destination,
+      form.commodity,
+    );
     const routeChanged =
       load.stationId !== form.stationId ||
       load.destination.trim().toLowerCase() !== destination.toLowerCase() ||
       load.date !== date ||
-      load.pickup.trim().toLowerCase() !== pickup.toLowerCase();
+      load.pickup.trim().toLowerCase() !== pickup.toLowerCase() ||
+      load.commodity.trim().toLowerCase() !== form.commodity.trim().toLowerCase();
 
-    if (
-      !forceSpecialty &&
-      specialtyId &&
-      destination &&
-      routeChanged
-    ) {
+    if (!forceSpecialty && specialtyId && routeChanged) {
       const opens = opensFor(date, specialtyId, destination);
       if (opens < 1) {
         setDuplicate(null);
