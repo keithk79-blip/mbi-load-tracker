@@ -1,5 +1,10 @@
-﻿import { type DayStore, type LockedDay, isDriverTallyDay } from "./driverDays";
+﻿import { callOffNameKey, type ManualCallOff } from "./driverAvailability";
+import { type DayStore, type LockedDay, isDriverTallyDay } from "./driverDays";
 import { asLockedDay } from "./driverStore";
+import {
+  cleanManualOffs,
+  type ManualOffsStore,
+} from "./manualCallOffs";
 import { getSupabase } from "./supabase";
 
 type RemoteRow = {
@@ -77,4 +82,88 @@ export async function pushDayStore(store: DayStore): Promise<void> {
   for (const row of updates) {
     await supabase.from("driver_availability").update(row).eq("date", row.date);
   }
+}
+
+type ManualRemoteRow = {
+  date: string;
+  name: string;
+  kind: string;
+};
+
+export async function fetchRemoteManualOffs(): Promise<ManualOffsStore | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("manual_call_offs")
+    .select("date, name, kind");
+  if (error || !data) return null;
+  const byDate: Record<string, unknown[]> = {};
+  for (const row of data as ManualRemoteRow[]) {
+    const date = typeof row.date === "string" ? row.date.slice(0, 10) : "";
+    if (!date) continue;
+    if (!byDate[date]) byDate[date] = [];
+    byDate[date].push({ name: row.name, kind: row.kind });
+  }
+  return cleanManualOffs(byDate);
+}
+
+export async function upsertRemoteManualOff(
+  date: string,
+  off: ManualCallOff,
+): Promise<void> {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  const name = off.name.trim();
+  if (!name) return;
+  await supabase.from("manual_call_offs").upsert(
+    {
+      date,
+      name_key: callOffNameKey(name),
+      name,
+      kind: off.kind,
+    },
+    { onConflict: "date,name_key" },
+  );
+}
+
+export async function deleteRemoteManualOff(
+  date: string,
+  name: string,
+): Promise<void> {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  const key = callOffNameKey(name);
+  if (!key) return;
+  await supabase
+    .from("manual_call_offs")
+    .delete()
+    .eq("date", date)
+    .eq("name_key", key);
+}
+
+/** Push names that exist locally but not on the remote snapshot (unsynced adds). */
+export async function pushMissingManualOffs(
+  local: ManualOffsStore,
+  remote: ManualOffsStore,
+): Promise<void> {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  const rows: { date: string; name_key: string; name: string; kind: string }[] = [];
+  for (const [date, list] of Object.entries(local)) {
+    const remoteKeys = new Set(
+      (remote[date] ?? []).map((row) => callOffNameKey(row.name)),
+    );
+    for (const off of list) {
+      const key = callOffNameKey(off.name);
+      if (!key || remoteKeys.has(key)) continue;
+      rows.push({
+        date,
+        name_key: key,
+        name: off.name.trim(),
+        kind: off.kind,
+      });
+    }
+  }
+  if (!rows.length) return;
+  await supabase.from("manual_call_offs").upsert(rows, { onConflict: "date,name_key" });
 }

@@ -3,9 +3,12 @@ import { parseSheetDate } from "./chicagoDate";
 import {
   availableDrivers,
   callOffAppliesToDay,
+  callOffKindFromReason,
   fullDayOffCount,
+  fullDayOffEntries,
   isFullDayOff,
   parseCallOffCsv,
+  withManualOffs,
   type CallOffRow,
 } from "./driverAvailability";
 
@@ -29,6 +32,9 @@ const SUBTRACT = [
   "Bereavement, father died",
   "Last Day , retiring",
   "Last Day, Retiring",
+  "NCNS",
+  "ncns",
+  "No Call No Show",
 ];
 
 const KEEP = [
@@ -145,5 +151,68 @@ describe("parseSheetDate + CSV", () => {
       end: "2026-08-29",
     });
     expect(isFullDayOff(rows[2].reason)).toBe(false);
+  });
+});
+
+describe("callOffKindFromReason", () => {
+  it("maps sheet reasons onto the four pill types and defaults the rest to Call Off", () => {
+    expect(callOffKindFromReason("Call Off")).toBe("call-off");
+    expect(callOffKindFromReason("Call Off, taking kid to school")).toBe("call-off");
+    expect(callOffKindFromReason("P-Day")).toBe("p-day");
+    expect(callOffKindFromReason("1 P-Day")).toBe("p-day");
+    expect(callOffKindFromReason("Ok'd Off")).toBe("okd-off");
+    expect(callOffKindFromReason("ok'd day off")).toBe("okd-off");
+    expect(callOffKindFromReason("NCNS")).toBe("ncns");
+    expect(callOffKindFromReason("No Call No Show")).toBe("ncns");
+    expect(callOffKindFromReason("FMLA Day")).toBe("call-off");
+    expect(callOffKindFromReason("Jury Duty")).toBe("call-off");
+  });
+});
+
+describe("fullDayOffEntries + manuals", () => {
+  const sheet: CallOffRow[] = [
+    { name: "Agustin Baca Guzman", start: "2026-09-08", end: null, reason: "Call Off" },
+    { name: "Pablo Cruz", start: "2026-09-08", end: null, reason: "P-Day" },
+    { name: "Late Note", start: "2026-09-08", end: null, reason: "Needs to be parked by noon" },
+  ];
+
+  it("colors sheet names from Reason and appends manuals without duplicating", () => {
+    const entries = fullDayOffEntries(
+      sheet,
+      [
+        { name: "Mike Davy", kind: "okd-off" },
+        { name: "agustin baca guzman", kind: "ncns" },
+      ],
+      "2026-09-08",
+    );
+    expect(entries).toEqual([
+      { name: "Agustin Baca Guzman", kind: "call-off", source: "sheet" },
+      { name: "Mike Davy", kind: "okd-off", source: "manual" },
+      { name: "Pablo Cruz", kind: "p-day", source: "sheet" },
+    ]);
+  });
+
+  it("counts unique sheet + manual names in the available-driver subtract", () => {
+    const rows = withManualOffs(sheet, [{ name: "Mike Davy", kind: "ncns" }], "2026-09-08");
+    expect(availableDrivers(143, rows, "2026-09-08")).toEqual({
+      date: "2026-09-08",
+      base: 143,
+      offs: 3,
+      available: 140,
+    });
+  });
+
+  it("subtracts all four manual kinds and does not double-count a sheet name", () => {
+    const rows = withManualOffs(sheet, [
+      { name: "Call Off Driver", kind: "call-off" },
+      { name: "P Day Driver", kind: "p-day" },
+      { name: "Okd Driver", kind: "okd-off" },
+      { name: "Ncns Driver", kind: "ncns" },
+      { name: "Pablo Cruz", kind: "ncns" },
+    ], "2026-09-08");
+    expect(availableDrivers(143, rows, "2026-09-08")).toMatchObject({
+      offs: 6,
+      available: 137,
+    });
   });
 });
