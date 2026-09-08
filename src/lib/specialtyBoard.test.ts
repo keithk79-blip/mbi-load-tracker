@@ -42,7 +42,6 @@ function boardCommodityFor(specialtyId: string | null): string {
   if (specialtyId === "gray-tank" || specialtyId === "liberty-tank") {
     return "Leachate (tanker)";
   }
-  if (specialtyId === "herthside") return "Trash (MSW)";
   if (specialtyId === "hodgkins") return "Residual";
   return "Recycle";
 }
@@ -454,6 +453,62 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
     ).toBeNull();
   });
 
+  it("never warns for Trash (MSW) from any specialty pickup, even with empty opens", () => {
+    for (const station of SPECIALTY_STATIONS) {
+      const dest = specialtyDestinationsFor(station.id)[0];
+      expect(dest).toBeTruthy();
+      const log = catalogLogPickup(station.id, station.name);
+      expect(
+        resolveSpecialtyBoardLane(
+          log.stationId,
+          log.pickup,
+          dest,
+          "Trash (MSW)",
+        ),
+      ).toBeNull();
+      expect(
+        missingSpecialtyOpensWarn(
+          {},
+          date,
+          log.stationId,
+          log.pickup,
+          dest,
+          "Trash (MSW)",
+        ),
+      ).toBeNull();
+    }
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "wheeling",
+        "Wheeling",
+        "Groot",
+        "Trash (MSW)",
+      ),
+    ).toBeNull();
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "herthside",
+        "Hearthside",
+        "Newton County",
+        "Trash (MSW)",
+      ),
+    ).toBeNull();
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "northlake",
+        "Northlake",
+        "Pontiac",
+        "MSW",
+      ),
+    ).toBeNull();
+  });
+
   it("still warns for Wheeling Recycle → GraysLake with zero opens", () => {
     expect(
       missingSpecialtyOpensWarn(
@@ -685,7 +740,7 @@ describe("specialty consume on logged loads", () => {
     expect(countSpecialtyOpens(afterGc, date, "liberty-tank", "CID")).toBe(0);
   });
 
-  it.each(SPECIALTY_STATIONS)(
+  it.each(SPECIALTY_STATIONS.filter((s) => s.id !== "herthside"))(
     "consumes $id opens when a matching load is logged with qty=2",
     ({ id, name }) => {
       const dest = specialtyDestinationsFor(id)[0];
@@ -702,6 +757,21 @@ describe("specialty consume on logged loads", () => {
       expect(countSpecialtyOpens(store, date, id, dest)).toBe(0);
     },
   );
+
+  it("does not consume Hearthside Newton County opens when logging Trash (MSW)", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "herthside", "Newton County");
+    store = logLoadConsume(
+      store,
+      date,
+      "herthside",
+      "Hearthside",
+      "Newton County",
+      1,
+      "Trash (MSW)",
+    );
+    expect(countSpecialtyOpens(store, date, "herthside", "Newton County")).toBe(1);
+  });
 
   it.each([
     { stationId: "liberty", pickup: "Liberty" },

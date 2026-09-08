@@ -570,9 +570,9 @@ export function resolveSpecialtyStationId(
 }
 
 /**
- * Specialty-board commodity for this card. Walking-floor stations use recycle /
- * yard / residual / cardboard / glass (and Groot dests even if labeled trash).
- * Tank and Hearthside cards use leachate / trash instead.
+ * Specialty-board commodity for this card. Trash (MSW) is never gated — the
+ * Specialty Loads warn is walking-floor / specialty dests only (plus leachate
+ * on tank cards). Groot dests still count when the commodity is not trash.
  */
 function isSpecialtyBoardCommodity(
   specialtyId: string,
@@ -581,10 +581,10 @@ function isSpecialtyBoardCommodity(
   pickup: string,
 ): boolean {
   const key = tallyLabel(commodity);
+  if (key === "TRASH") return false;
   if (specialtyId === "gray-tank" || specialtyId === "liberty-tank") {
     return key === "LEACHATE";
   }
-  if (specialtyId === "herthside") return key === "TRASH";
   if (specialtyId === "hodgkins") return key === "RESIDUAL" || key === "GLASS";
   if (
     key === "YARD" ||
@@ -601,7 +601,7 @@ function isSpecialtyBoardCommodity(
 
 /**
  * Specialty Loads lane: board station + dest chip for that card + board commodity.
- * Ordinary trash / leachate / etc. that are not on the board return null.
+ * Ordinary trash is never a board lane. Leachate / etc. that are not on the board return null.
  */
 export function resolveSpecialtyBoardLane(
   stationId: string | undefined,
