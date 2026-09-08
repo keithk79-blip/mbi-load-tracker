@@ -210,7 +210,8 @@ export type StationEodRow = {
 export type EndOfDaySummary = {
   loads: number;
   subs: number;
-  tank: number;
+  trash: number;
+  leachate: number;
   walkingFloor: number;
   stations: StationEodRow[];
 };
@@ -222,17 +223,18 @@ export type EndOfDayCard = {
   emphasis?: boolean;
 };
 
-/** TANK (leachate), WALKING-FLOOR, LOADS, SUBS — Today-style EOD bubbles. */
+/** TRASH, LEACHATE, WALKING-FLOOR, LOADS, SUBS — same counts as Today. */
 export function endOfDayCards(summary: EndOfDaySummary): EndOfDayCard[] {
   return [
-    { key: "tank", label: "TANK", count: summary.tank },
+    { key: "trash", label: "TRASH", count: summary.trash },
+    { key: "leachate", label: "LEACHATE", count: summary.leachate },
     { key: "walking-floor", label: "WALKING-FLOOR", count: summary.walkingFloor },
     { key: "loads", label: "LOADS", count: summary.loads, emphasis: true },
     { key: "subs", label: "SUBS", count: summary.subs },
   ];
 }
 
-/** Overall loads, tank, walking-floor, SUBS, per-station pickups, and Close/left. */
+/** Overall loads, trash, leachate, walking-floor, SUBS, per-station pickups, and Close/left. */
 export function endOfDaySummary(
   loads: Load[],
   board: StationDayBoard,
@@ -240,7 +242,8 @@ export function endOfDaySummary(
   return {
     loads: loads.length,
     subs: countBrokerLoads(loads),
-    tank: countByTallyLabel(loads, "LEACHATE"),
+    trash: countByTallyLabel(loads, "TRASH"),
+    leachate: countByTallyLabel(loads, "LEACHATE"),
     walkingFloor: countWalkingFloorLoads(loads),
     stations: STATION_CALL_YARDS.map((yard) => {
       const pickedUp = loads.filter((load) => loadMatchesCallYard(load, yard)).length;

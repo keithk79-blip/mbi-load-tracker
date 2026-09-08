@@ -212,7 +212,8 @@ describe("endOfDaySummary", () => {
     const summary = endOfDaySummary(loads, board);
     expect(summary.loads).toBe(4);
     expect(summary.subs).toBe(2);
-    expect(summary.tank).toBe(0);
+    expect(summary.trash).toBe(4);
+    expect(summary.leachate).toBe(0);
     expect(summary.walkingFloor).toBe(0);
 
     const byId = Object.fromEntries(summary.stations.map((row) => [row.id, row]));
@@ -246,7 +247,7 @@ describe("endOfDaySummary", () => {
     expect(summary.stations.find((row) => row.id === "melrose")?.left).toBeNull();
   });
 
-  it("tallies tank (leachate), walking-floor, all loads, and SUBS for EOD cards", () => {
+  it("tallies trash, leachate, walking-floor, all loads, and SUBS for EOD cards", () => {
     const loads = [
       load({ id: "1", truck: "418", commodity: "Trash (MSW)" }),
       load({ id: "2", truck: "VZ", commodity: "Leachate (tanker)" }),
@@ -254,12 +255,14 @@ describe("endOfDaySummary", () => {
       load({ id: "4", truck: "CGH", commodity: "Recycle" }),
     ];
     const summary = endOfDaySummary(loads, emptyBoard());
-    expect(summary.tank).toBe(1);
+    expect(summary.trash).toBe(1);
+    expect(summary.leachate).toBe(1);
     expect(summary.walkingFloor).toBe(2);
     expect(summary.loads).toBe(4);
     expect(summary.subs).toBe(2);
     expect(endOfDayCards(summary).map((card) => [card.label, card.count])).toEqual([
-      ["TANK", 1],
+      ["TRASH", 1],
+      ["LEACHATE", 1],
       ["WALKING-FLOOR", 2],
       ["LOADS", 4],
       ["SUBS", 2],
@@ -269,13 +272,34 @@ describe("endOfDaySummary", () => {
     );
   });
 
-  it("keeps TANK and WALKING-FLOOR at zero on an empty day", () => {
+  it("keeps TRASH and LEACHATE at zero on an empty day", () => {
     const summary = endOfDaySummary([], emptyBoard());
     expect(endOfDayCards(summary).map((card) => [card.label, card.count])).toEqual([
-      ["TANK", 0],
+      ["TRASH", 0],
+      ["LEACHATE", 0],
       ["WALKING-FLOOR", 0],
       ["LOADS", 0],
       ["SUBS", 0],
+    ]);
+  });
+
+  it("uses the same leachate/tanker and trash/MSW labels as Today", () => {
+    const loads = [
+      load({ id: "1", commodity: "Leachate (tanker)" }),
+      load({ id: "2", commodity: "Trash (MSW)" }),
+      load({ id: "3", commodity: "MSW" }),
+    ];
+    const summary = endOfDaySummary(loads, emptyBoard());
+    expect(countByTallyLabel(loads, "LEACHATE")).toBe(1);
+    expect(countByTallyLabel(loads, "TRASH")).toBe(2);
+    expect(summary.leachate).toBe(1);
+    expect(summary.trash).toBe(2);
+    expect(endOfDayCards(summary).map((card) => card.label)).toEqual([
+      "TRASH",
+      "LEACHATE",
+      "WALKING-FLOOR",
+      "LOADS",
+      "SUBS",
     ]);
   });
 

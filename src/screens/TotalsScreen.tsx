@@ -136,7 +136,7 @@ export function TotalsScreen({
       <section className="eod-block">
         <h2 className="section-title">End of day</h2>
         <p className="eod-sub">
-          {formatHeaderDate(date)} · tank, walking-floor, overall, SUBS, pickups, and Close left
+          {formatHeaderDate(date)} · trash, leachate, walking-floor, overall, SUBS, pickups, and Close left
         </p>
         <div className="eod-stat-row">
           {endOfDayCards(eod).map((card) => (
