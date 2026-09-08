@@ -19,7 +19,7 @@ const TONES: Record<string, TagTone> = {
 export function commodityTone(commodity: string): TagTone {
   const c = commodity.toLowerCase();
   if (c.includes("leachate")) return TONES.leachate;
-  if (c.includes("residual")) return TONES.cd;
+  if (c.includes("residual") || c.includes("residue")) return TONES.cd;
   if (c.includes("glass")) return TONES.recycle;
   if (c.includes("trash") || c.includes("msw")) return TONES.trash;
   if (c.includes("recycle")) return TONES.recycle;
@@ -34,7 +34,7 @@ export function commodityTone(commodity: string): TagTone {
 export function tallyLabel(commodity: string): string {
   const c = commodity.toLowerCase();
   if (c.includes("leachate")) return "LEACHATE";
-  if (c.includes("residual")) return "RESIDUAL";
+  if (c.includes("residual") || c.includes("residue")) return "RESIDUAL";
   if (c.includes("glass")) return "GLASS";
   if (c.includes("trash") || c.includes("msw")) return "TRASH";
   if (c.includes("yard")) return "YARD";
@@ -50,7 +50,7 @@ export function tallyLabel(commodity: string): string {
 export function commodityRankLabel(commodity: string): string {
   const c = commodity.toLowerCase();
   if (c.includes("leachate")) return "Leachate";
-  if (c.includes("residual")) return "Residual";
+  if (c.includes("residual") || c.includes("residue")) return "Residual";
   if (c.includes("glass")) return "Glass";
   if (c.includes("trash") || c.includes("msw")) return "Trash (MSW)";
   if (c.includes("yard")) return "Yard Waste";

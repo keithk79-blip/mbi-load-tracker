@@ -55,7 +55,7 @@ export function SearchScreen({
             onSubmit={find}
             submitLabel="Find"
             autoFocus
-            hint="Type a truck number or use the pad."
+            hint="Type a truck number or broker code, or use the pad."
           />
         </>
       ) : (

@@ -153,7 +153,7 @@ export function LogLoadScreen({
           <BrandMark size="sm" />
           <div>
             <p className="eyebrow">New load</p>
-            <h1 className="overlay-title">Truck number</h1>
+            <h1 className="overlay-title">Truck</h1>
           </div>
         </header>
         <TruckEntry
@@ -162,7 +162,7 @@ export function LogLoadScreen({
           onSubmit={() => truck && commitTruck(truck)}
           submitLabel="Next"
           autoFocus
-          hint="Type the unit number or use the pad."
+          hint="Type the unit number or broker code, or use the pad."
         />
       </div>
     );

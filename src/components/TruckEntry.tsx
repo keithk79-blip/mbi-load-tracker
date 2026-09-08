@@ -1,3 +1,4 @@
+import { sanitizeTruck } from "../lib/truck";
 import { Numpad } from "./Numpad";
 
 type TruckEntryProps = {
@@ -9,31 +10,29 @@ type TruckEntryProps = {
   hint?: string;
 };
 
-function sanitizeTruck(raw: string, maxLength = 6): string {
-  return raw.replace(/\D/g, "").slice(0, maxLength);
-}
-
 export function TruckEntry({
   value,
   onChange,
   onSubmit,
   submitLabel = "Find",
   autoFocus = false,
-  hint = "Type the unit number or use the pad.",
+  hint = "Type the unit number or broker code, or use the pad.",
 }: TruckEntryProps) {
   return (
     <div className="truck-entry">
       <label className="truck-kb-label">
-        Truck number
+        Truck
         <input
           className="truck-kb-input"
           value={value}
-          inputMode="numeric"
-          pattern="[0-9]*"
+          inputMode="text"
           autoComplete="off"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
           autoFocus={autoFocus}
-          placeholder="e.g. 418"
-          aria-label="Truck number"
+          placeholder="e.g. 418 or VZ"
+          aria-label="Truck or broker code"
           onChange={(e) => onChange(sanitizeTruck(e.target.value))}
           onKeyDown={(e) => {
             if (e.key === "Enter" && value) onSubmit();
@@ -43,7 +42,7 @@ export function TruckEntry({
       <p className="field-hint tight">{hint} Enter to continue.</p>
       <Numpad
         value={value}
-        onChange={onChange}
+        onChange={(next) => onChange(sanitizeTruck(next))}
         onSubmit={onSubmit}
         submitLabel={submitLabel}
       />
