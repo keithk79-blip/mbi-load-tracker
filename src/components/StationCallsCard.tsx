@@ -6,15 +6,13 @@ import {
   STATION_CALL_HOURS,
   STATION_CALL_YARDS,
   adjacentStationId,
-  boardFillScore,
   boardForDate,
   commitStationCell,
   fetchStationCallStoreFromCloud,
-  mergeBoardCells,
-  mergeStationCallStores,
   parseNumericCell,
   pushStationCallDay,
   readStationCallStore,
+  reconcileStationCallCloud,
   setStationClose,
   setStationHour,
   startForStation,
@@ -54,12 +52,20 @@ function CellInput({
   const isZero = draft === null && parseNumericCell(value) === 0;
   const committedRef = useRef(false);
 
-  const commit = () => {
+  const commit = (raw?: string) => {
     if (committedRef.current) return;
     committedRef.current = true;
-    const next = commitStationCell(draft ?? shown);
-    setDraft(null);
+    const next = commitStationCell(raw ?? draft ?? shown);
+    if (next === null) setDraft("");
+    else setDraft(null);
     onCommit(next);
+  };
+
+  const persistEmpty = () => {
+    setDraft("");
+    if (committedRef.current) return;
+    committedRef.current = true;
+    onCommit(null);
   };
 
   return (
@@ -75,14 +81,31 @@ function CellInput({
       value={shown}
       onChange={(e) => {
         committedRef.current = false;
-        setDraft(e.target.value);
+        const next = e.target.value;
+        setDraft(next);
+        if (next.trim() === "") persistEmpty();
       }}
       onFocus={(e) => e.target.select()}
       onBlur={() => {
+        committedRef.current = false;
         commit();
         committedRef.current = false;
+        setDraft(null);
       }}
       onKeyDown={(e) => {
+        if (e.key === "Backspace" || e.key === "Delete") {
+          const input = e.target as HTMLInputElement;
+          const allSelected =
+            input.selectionStart === 0 &&
+            input.selectionEnd === input.value.length &&
+            input.value.length > 0;
+          if (allSelected) {
+            e.preventDefault();
+            committedRef.current = false;
+            persistEmpty();
+            return;
+          }
+        }
         if (e.key !== "Enter") return;
         e.preventDefault();
         commit();
@@ -113,18 +136,9 @@ export function StationCallsCard({ date }: { date: string }) {
       const remote = await fetchStationCallStoreFromCloud();
       if (!alive || !remote) return;
       const local = readStationCallStore();
-      const merged = mergeStationCallStores(local, remote);
-      for (const [d, localBoard] of Object.entries(local)) {
-        const remoteBoard = remote[d];
-        const missing = !remoteBoard;
-        const richer =
-          !!remoteBoard && boardFillScore(localBoard) > boardFillScore(remoteBoard);
-        if (missing || richer) {
-          const toPush = remoteBoard
-            ? mergeBoardCells(localBoard, remoteBoard)
-            : localBoard;
-          await pushStationCallDay(d, toPush, user?.id ?? null);
-        }
+      const { merged, toPush } = reconcileStationCallCloud(local, remote);
+      for (const { date: d, board } of toPush) {
+        await pushStationCallDay(d, board, user?.id ?? null);
       }
       writeStationCallStore(merged);
       if (alive) setStore(merged);
