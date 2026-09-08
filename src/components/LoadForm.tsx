@@ -9,6 +9,8 @@ import {
   getStation,
 } from "../data/stations";
 import { applyPickupCascade, pickupLabel } from "../lib/cascade";
+import { rankPickupStations } from "../lib/pickupRank";
+import { useLoads } from "../store/LoadsContext";
 import { Chip } from "./Chip";
 
 export type FormState = {
@@ -32,20 +34,23 @@ export function LoadForm({
   original,
   onChangeTruck,
 }: LoadFormProps) {
+  const { loads } = useLoads();
+  const rankedStations = useMemo(
+    () => rankPickupStations(STATIONS, loads),
+    [loads],
+  );
+  const visibleCount = FREQUENT_STATION_IDS.length;
+  const rest = rankedStations.slice(visibleCount);
   const [showAllStations, setShowAllStations] = useState(() => {
     if (!value.stationId || value.stationId === CUSTOM_ID) return false;
-    return !FREQUENT_STATION_IDS.includes(
-      value.stationId as (typeof FREQUENT_STATION_IDS)[number],
-    );
+    return !rankedStations
+      .slice(0, visibleCount)
+      .some((station) => station.id === value.stationId);
   });
 
-  const frequent = STATIONS.filter((s) =>
-    (FREQUENT_STATION_IDS as readonly string[]).includes(s.id),
-  );
-  const rest = STATIONS.filter(
-    (s) => !(FREQUENT_STATION_IDS as readonly string[]).includes(s.id),
-  );
-  const visibleStations = showAllStations ? [...frequent, ...rest] : frequent;
+  const visibleStations = showAllStations
+    ? rankedStations
+    : rankedStations.slice(0, visibleCount);
 
   const commodities = commoditiesFor(value.stationId);
   const destinations = destinationsFor(value.stationId, value.commodity);
