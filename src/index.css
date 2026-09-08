@@ -97,7 +97,7 @@ button {
 }
 
 .screen {
-  padding: 18px 16px 108px;
+  padding: 18px 16px 28px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -374,11 +374,12 @@ button {
 
 .fab,
 .log-load-top {
-  width: 100%;
-  min-height: 40px;
-  padding: 8px 12px;
+  width: fit-content;
+  align-self: flex-start;
+  min-height: 36px;
+  padding: 6px 14px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--amber);
   color: var(--amber-ink);
   font-weight: 800;
@@ -387,7 +388,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  margin: 2px 0 6px;
+  margin: 0;
 }
 
 .tab-bar {
