@@ -8,12 +8,14 @@ import {
   applySpecialtyTombstones,
   consumeSpecialtyOpens,
   consumeSpecialtyOpensAny,
+  consumeSpecialtyOpensTracked,
   countSpecialtyOpens,
   destKeepAfterChange,
   isSpecialtyStationId,
   mergeSpecialtyStores,
   missingSpecialtyOpensWarn,
   omitSpecialtyIds,
+  reconcileSpecialtyCloud,
   remainingSpecialtySlotIds,
   removeSpecialtySlot,
   resolveSpecialtyBoardLane,
@@ -41,10 +43,11 @@ function catalogLogPickup(
 }
 
 function boardCommodityFor(specialtyId: string | null, chip?: string): string {
-  if (specialtyId === "gray-tank" || specialtyId === "liberty-tank") {
+  if (specialtyId === "liberty-tank") {
     return "Leachate (tanker)";
   }
   if (specialtyId === "hodgkins") return "Residual";
+  if (specialtyId === "herthside") return "Trash (MSW)";
   if (specialtyId && specialtyChipMode(specialtyId) === "commodity") {
     if (chip && specialtyDestinationsFor(specialtyId).some((c) => c === chip)) {
       return chip === "Trash" ? "Trash (MSW)" : chip;
@@ -87,6 +90,8 @@ describe("specialty walking-floor catalog", () => {
     });
     expect(isSpecialtyStationId("liberty-tank")).toBe(true);
     expect(SPECIALTY_STATIONS.some((s) => s.id === "grayslake")).toBe(false);
+    expect(SPECIALTY_STATIONS.some((s) => s.id === "gray-tank")).toBe(false);
+    expect(SPECIALTY_STATIONS.some((s) => s.name === "Gray Tank")).toBe(false);
     expect(SPECIALTY_STATIONS.some((s) => s.id === "newton-tank")).toBe(false);
   });
 
@@ -169,37 +174,11 @@ describe("specialty walking-floor catalog", () => {
     });
   });
 
-  it("lists only leachate dests on the Gray Tank specialty card", () => {
-    expect(specialtyDestinationsFor("gray-tank")).toEqual([
-      "FRWRD",
-      "CID",
-      "Dekalb Sanitary",
-    ]);
-    expect(specialtyDestinationsFor("gray-tank")).not.toContain("Hodgkins");
-    expect(specialtyDestinationsFor("gray-tank")).not.toContain("RSI");
-    expect(specialtyDestinationsFor("gray-tank")).not.toContain("KanSpcl");
-    expect(specialtyChipMode("gray-tank")).toBe("destination");
-  });
-
-  it("cascades Gray Tank log-load to leachate dests only", () => {
-    expect(applyPickupCascade("gray-tank", "Recycle", "Hodgkins")).toEqual({
-      commodity: "",
-      destination: "",
-      commodityValid: false,
-      destinationValid: false,
-    });
-    expect(applyPickupCascade("gray-tank", "Leachate (tanker)", "FRWRD")).toEqual({
-      commodity: "Leachate (tanker)",
-      destination: "FRWRD",
-      commodityValid: true,
-      destinationValid: true,
-    });
-    expect(applyPickupCascade("gray-tank", "Leachate (tanker)", "CID")).toMatchObject({
-      destinationValid: true,
-    });
-    expect(
-      applyPickupCascade("gray-tank", "Leachate (tanker)", "Dekalb Sanitary"),
-    ).toMatchObject({ destinationValid: true });
+  it("does not list Gray Tank as a specialty card or log-load pickup", () => {
+    expect(SPECIALTY_STATIONS.some((s) => s.id === "gray-tank")).toBe(false);
+    expect(isSpecialtyStationId("gray-tank")).toBe(false);
+    expect(resolveSpecialtyStationId("gray-tank", "Gray Tank")).toBeNull();
+    expect(resolveSpecialtyStationId(undefined, "Gray Tank")).toBeNull();
   });
 
   it("lists only Newton County on the Hearthside specialty card", () => {
@@ -455,6 +434,7 @@ describe("specialty walking-floor catalog", () => {
     expect(resolveSpecialtyStationId("wheeling", "Wheeling")).toBe("wheeling");
     expect(resolveSpecialtyStationId("Wheeling")).toBe("wheeling");
     expect(resolveSpecialtyStationId("herthside", "Hearthside")).toBe("herthside");
+    expect(resolveSpecialtyStationId("gray-tank", "Gray Tank")).toBeNull();
     expect(resolveSpecialtyStationId("grayslake", "GraysLake")).toBeNull();
     expect(resolveSpecialtyStationId("laraway", "Laraway")).toBeNull();
     expect(resolveSpecialtyStationId("prairie-hill-rfd", "Prairie Hill RFD")).toBeNull();
@@ -536,9 +516,9 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
     ).toBeNull();
   });
 
-  it("never warns for Trash (MSW) from specialty pickups except Ford", () => {
+  it("never warns for Trash (MSW) from specialty pickups except Ford and Hearthside", () => {
     for (const station of SPECIALTY_STATIONS) {
-      if (station.id === "ford") continue;
+      if (station.id === "ford" || station.id === "herthside") continue;
       const dest = specialtyDestinationsFor(station.id)[0];
       expect(dest).toBeTruthy();
       const log = catalogLogPickup(station.id, station.name);
@@ -580,7 +560,7 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
         "Newton County",
         "Trash (MSW)",
       ),
-    ).toBeNull();
+    ).toEqual({ specialtyId: "herthside", opens: 0 });
     expect(
       missingSpecialtyOpensWarn(
         {},
@@ -593,7 +573,7 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
     ).toBeNull();
   });
 
-  it("treats Ford Trash as a specialty lane and leaves other trash off the board", () => {
+  it("treats Ford Trash and Hearthside Newton County trash as specialty lanes", () => {
     expect(
       resolveSpecialtyBoardLane("ford", "Ford", "RSI", "Trash (MSW)"),
     ).toBe("ford");
@@ -606,6 +586,18 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
     expect(
       resolveSpecialtyBoardLane("ford", "Ford", "Hodgkins", "Recycle"),
     ).toBe("ford");
+    expect(
+      resolveSpecialtyBoardMatch(
+        "herthside",
+        "Hearthside",
+        "Newton County",
+        "Trash (MSW)",
+      ),
+    ).toEqual({
+      specialtyId: "herthside",
+      chip: "Newton County",
+      chips: ["Newton County"],
+    });
     expect(
       resolveSpecialtyBoardLane("wheeling", "Wheeling", "Groot", "Trash (MSW)"),
     ).toBeNull();
@@ -647,7 +639,7 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
     ).toBe("wheeling");
   });
 
-  it("still warns for Liberty leachate → CID and Gray Tank leachate → CID with zero opens", () => {
+  it("still warns for Liberty leachate → CID with zero opens, not Gray Tank", () => {
     expect(
       missingSpecialtyOpensWarn(
         {},
@@ -667,7 +659,7 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
         "CID",
         "Leachate (tanker)",
       ),
-    ).toEqual({ specialtyId: "gray-tank", opens: 0 });
+    ).toBeNull();
   });
 });
 
@@ -869,7 +861,7 @@ describe("specialty consume on logged loads", () => {
   });
 
   it.each(
-    SPECIALTY_STATIONS.filter((s) => s.id !== "herthside").flatMap((station) =>
+    SPECIALTY_STATIONS.flatMap((station) =>
       specialtyDestinationsFor(station.id).map((chip) => ({
         id: station.id,
         name: station.name,
@@ -997,7 +989,7 @@ describe("specialty consume on logged loads", () => {
     expect(
       unkeptSpecialtyIds(remote, date, "liberty-tank", "CID", keep.keepIds).sort(),
     ).toEqual(["remote-liberty-cid", localId].sort());
-    expect(countSpecialtyOpens(gone, date, "gray-tank", "CID")).toBe(0);
+    expect(countSpecialtyOpens(gone, date, "batavia", "CID")).toBe(0);
   });
 
   it("dest-chip minus of one Liberty CID keeps the remaining local slot and drops remote extras", () => {
@@ -1006,9 +998,9 @@ describe("specialty consume on logged loads", () => {
     local = addSpecialtySlot(local, date, "liberty-tank", "CID");
     const keptId = local[date][0].id;
     const removedId = local[date][1].id;
-    local = addSpecialtySlot(local, date, "gray-tank", "CID");
-    const grayId = local[date].find((s) => s.stationId === "gray-tank")?.id;
-    expect(grayId).toBeTruthy();
+    local = addSpecialtySlot(local, date, "batavia", "RSI");
+    const otherId = local[date].find((s) => s.stationId === "batavia")?.id;
+    expect(otherId).toBeTruthy();
 
     const remote: SpecialtyStore = {
       [date]: [
@@ -1034,7 +1026,7 @@ describe("specialty consume on logged loads", () => {
     expect(remainingSpecialtySlotIds(merged, date, "liberty-tank", "CID")).toEqual([
       keptId,
     ]);
-    expect(countSpecialtyOpens(merged, date, "gray-tank", "CID")).toBe(1);
+    expect(countSpecialtyOpens(merged, date, "batavia", "RSI")).toBe(1);
   });
 
   it("station minus of Liberty CID stays gone after UUID tombstone GC if dest-keep remains", () => {
@@ -1061,7 +1053,7 @@ describe("specialty consume on logged loads", () => {
     expect(countSpecialtyOpens(afterGc, date, "liberty-tank", "CID")).toBe(0);
   });
 
-  it.each(SPECIALTY_STATIONS.filter((s) => s.id !== "herthside"))(
+  it.each(SPECIALTY_STATIONS)(
     "consumes $id opens when a matching load is logged with qty=2",
     ({ id, name }) => {
       const dest = specialtyDestinationsFor(id)[0];
@@ -1087,7 +1079,7 @@ describe("specialty consume on logged loads", () => {
     },
   );
 
-  it("does not consume Hearthside Newton County opens when logging Trash (MSW)", () => {
+  it("consumes Hearthside Newton County opens when logging Trash (MSW)", () => {
     const date = "2026-09-08";
     let store = addSpecialtySlot({}, date, "herthside", "Newton County");
     store = logLoadConsume(
@@ -1099,7 +1091,7 @@ describe("specialty consume on logged loads", () => {
       1,
       "Trash (MSW)",
     );
-    expect(countSpecialtyOpens(store, date, "herthside", "Newton County")).toBe(1);
+    expect(countSpecialtyOpens(store, date, "herthside", "Newton County")).toBe(0);
   });
 
   it.each([
@@ -1165,14 +1157,21 @@ describe("specialty consume on logged loads", () => {
     expect(countSpecialtyOpens(store, date, "prairie-hill", "C&D")).toBe(0);
   });
 
-  it("consumes Gray Tank → CID without touching a Liberty CID open", () => {
+  it("does not consume Liberty CID when logging Gray Tank leachate (not a pickup)", () => {
     const date = "2026-09-08";
     let store: SpecialtyStore = {};
-    store = addSpecialtySlot(store, date, "gray-tank", "CID");
     store = addSpecialtySlot(store, date, "liberty-tank", "CID");
-    store = logLoadConsume(store, date, "gray-tank", "Gray Tank", "CID");
-    expect(countSpecialtyOpens(store, date, "gray-tank", "CID")).toBe(0);
+    store = logLoadConsume(
+      store,
+      date,
+      "gray-tank",
+      "Gray Tank",
+      "CID",
+      1,
+      "Leachate (tanker)",
+    );
     expect(countSpecialtyOpens(store, date, "liberty-tank", "CID")).toBe(1);
+    expect(resolveSpecialtyBoardMatch("gray-tank", "Gray Tank", "CID", "Leachate (tanker)")).toBeNull();
   });
 
   it.each(SPECIALTY_STATIONS)(
@@ -1215,3 +1214,269 @@ describe("specialty consume on logged loads", () => {
     },
   );
 });
+
+function consumeThenReconcile(
+  local: SpecialtyStore,
+  date: string,
+  stationId: string,
+  pickup: string,
+  destination: string,
+  commodity: string,
+  qty: number,
+  remote: SpecialtyStore,
+  seenRemoteIds?: string[],
+) {
+  const match = resolveSpecialtyBoardMatch(
+    stationId,
+    pickup,
+    destination,
+    commodity,
+  );
+  expect(match).not.toBeNull();
+  const tracked = consumeSpecialtyOpensTracked(
+    local,
+    date,
+    match!.specialtyId,
+    match!.chips,
+    qty,
+  );
+  const seen =
+    seenRemoteIds ?? Object.values(remote).flat().map((slot) => slot.id);
+  return {
+    match: match!,
+    tracked,
+    refresh: reconcileSpecialtyCloud({
+      local: tracked.store,
+      remote,
+      deletedIds: tracked.burnedIds,
+      destKeeps: tracked.destKeeps,
+      seenRemoteIds: seen,
+    }),
+  };
+}
+
+describe("specialty consume sticks through refresh/merge", () => {
+  const date = "2026-09-09";
+
+  it("dest-mode Melrose Recycle→Hodgkins stays 1→0 after a stale remote merge", () => {
+    let local = addSpecialtySlot({}, date, "melrose", "Hodgkins");
+    local = addSpecialtySlot(local, date, "melrose", "RSI");
+    const remote: SpecialtyStore = {
+      [date]: local[date].map((slot) => ({ ...slot })),
+    };
+    const seen = remote[date].map((slot) => slot.id);
+
+    const { tracked, refresh } = consumeThenReconcile(
+      local,
+      date,
+      "melrose",
+      "Melrose",
+      "Hodgkins",
+      "Recycle",
+      1,
+      remote,
+      seen,
+    );
+    expect(tracked.burned).toBe(1);
+    expect(countSpecialtyOpens(tracked.store, date, "melrose", "Hodgkins")).toBe(0);
+    expect(countSpecialtyOpens(tracked.store, date, "melrose", "RSI")).toBe(1);
+    expect(countSpecialtyOpens(refresh.next, date, "melrose", "Hodgkins")).toBe(0);
+    expect(countSpecialtyOpens(refresh.next, date, "melrose", "RSI")).toBe(1);
+    expect(refresh.toUpload).toEqual([]);
+    expect(refresh.toDeleteRemote.length).toBeGreaterThan(0);
+
+    const second = reconcileSpecialtyCloud({
+      local: refresh.next,
+      remote,
+      deletedIds: refresh.deletedIds,
+      destKeeps: refresh.destKeeps,
+      seenRemoteIds: refresh.seenRemoteIds,
+    });
+    expect(countSpecialtyOpens(second.next, date, "melrose", "Hodgkins")).toBe(0);
+    expect(countSpecialtyOpens(second.next, date, "melrose", "RSI")).toBe(1);
+  });
+
+  it("does not resurrect a tombstoned Melrose Hodgkins id after dest-keep GC", () => {
+    const local = addSpecialtySlot({}, date, "melrose", "Hodgkins");
+    const slotId = local[date][0].id;
+    const remote: SpecialtyStore = {
+      [date]: local[date].map((slot) => ({ ...slot })),
+    };
+    const { refresh } = consumeThenReconcile(
+      local,
+      date,
+      "melrose",
+      "Melrose",
+      "Hodgkins",
+      "Recycle",
+      1,
+      remote,
+    );
+    expect(refresh.deletedIds).toContain(slotId);
+
+    const remoteGone: SpecialtyStore = {};
+    const afterGc = reconcileSpecialtyCloud({
+      local: refresh.next,
+      remote: remoteGone,
+      deletedIds: refresh.deletedIds,
+      destKeeps: refresh.destKeeps,
+      seenRemoteIds: refresh.seenRemoteIds,
+    });
+    expect(afterGc.deletedIds).toContain(slotId);
+
+    const resurrected: SpecialtyStore = {
+      [date]: [
+        {
+          id: slotId,
+          stationId: "melrose",
+          destination: "Hodgkins",
+          createdAt: "2026-09-09T12:00:00.000Z",
+        },
+      ],
+    };
+    const bounced = reconcileSpecialtyCloud({
+      local: afterGc.next,
+      remote: resurrected,
+      deletedIds: afterGc.deletedIds,
+      destKeeps: afterGc.destKeeps,
+      seenRemoteIds: afterGc.seenRemoteIds,
+    });
+    expect(countSpecialtyOpens(bounced.next, date, "melrose", "Hodgkins")).toBe(0);
+    expect(bounced.toUpload).toEqual([]);
+    expect(bounced.toDeleteRemote).toContain(slotId);
+  });
+
+  it("commodity-mode Wheeling Recycle and legacy Groot dest both stick through refresh", () => {
+    let local = addSpecialtySlot({}, date, "wheeling", "Recycle");
+    local = addSpecialtySlot(local, date, "wheeling", "Groot");
+    local = addSpecialtySlot(local, date, "wheeling", "Hodgkins");
+    const remote: SpecialtyStore = {
+      [date]: local[date].map((slot) => ({ ...slot })),
+    };
+
+    const recycle = consumeThenReconcile(
+      local,
+      date,
+      "wheeling",
+      "Wheeling",
+      "Groot",
+      "Recycle",
+      1,
+      remote,
+    );
+    expect(countSpecialtyOpens(recycle.refresh.next, date, "wheeling", "Recycle")).toBe(
+      0,
+    );
+    expect(countSpecialtyOpens(recycle.refresh.next, date, "wheeling", "Groot")).toBe(1);
+    expect(countSpecialtyOpens(recycle.refresh.next, date, "wheeling", "Hodgkins")).toBe(
+      1,
+    );
+
+    const groot = consumeThenReconcile(
+      recycle.tracked.store,
+      date,
+      "wheeling",
+      "Wheeling",
+      "Groot",
+      "Recycle",
+      1,
+      remote,
+      recycle.refresh.seenRemoteIds,
+    );
+    const grootRefresh = reconcileSpecialtyCloud({
+      local: groot.tracked.store,
+      remote,
+      deletedIds: [
+        ...recycle.refresh.deletedIds,
+        ...groot.tracked.burnedIds,
+      ],
+      destKeeps: groot.tracked.destKeeps,
+      seenRemoteIds: recycle.refresh.seenRemoteIds,
+    });
+    expect(countSpecialtyOpens(grootRefresh.next, date, "wheeling", "Groot")).toBe(0);
+    expect(countSpecialtyOpens(grootRefresh.next, date, "wheeling", "Hodgkins")).toBe(
+      1,
+    );
+  });
+
+  it("does not re-upload a remotely deleted specialty id the local cache still has", () => {
+    const localHodgkins = addSpecialtySlot({}, date, "batavia", "Hodgkins");
+    const slotId = localHodgkins[date][0].id;
+    const remoteOther = addSpecialtySlot({}, date, "elgin", "RSI");
+    const local = {
+      [date]: [...localHodgkins[date], ...remoteOther[date]],
+    } satisfies SpecialtyStore;
+    const refresh = reconcileSpecialtyCloud({
+      local,
+      remote: remoteOther,
+      deletedIds: [],
+      destKeeps: [],
+      seenRemoteIds: [slotId, remoteOther[date][0].id],
+    });
+    expect(countSpecialtyOpens(refresh.next, date, "batavia", "Hodgkins")).toBe(0);
+    expect(countSpecialtyOpens(refresh.next, date, "elgin", "RSI")).toBe(1);
+    expect(refresh.toUpload).toEqual([]);
+    expect(refresh.deletedIds).toContain(slotId);
+  });
+
+  it("still uploads a never-seen local add when remote is missing it", () => {
+    const local = addSpecialtySlot({}, date, "apollo", "Homewood");
+    const slotId = local[date][0].id;
+    const refresh = reconcileSpecialtyCloud({
+      local,
+      remote: {},
+      deletedIds: [],
+      destKeeps: [],
+      seenRemoteIds: [],
+    });
+    expect(refresh.toUpload.map((row) => row.slot.id)).toEqual([slotId]);
+    expect(countSpecialtyOpens(refresh.next, date, "apollo", "Homewood")).toBe(1);
+  });
+
+  it("Liberty CID consume stays gone when remote still has a liberty alias copy", () => {
+    let local = addSpecialtySlot({}, date, "liberty-tank", "CID");
+    const localId = local[date][0].id;
+    const remote: SpecialtyStore = {
+      [date]: [
+        { ...local[date][0] },
+        {
+          id: "cloud-liberty-cid",
+          stationId: "liberty",
+          destination: "CID",
+          createdAt: "2026-09-09T12:00:00.000Z",
+        },
+      ],
+    };
+    const { refresh } = consumeThenReconcile(
+      local,
+      date,
+      "liberty",
+      "Liberty",
+      "CID",
+      "Leachate (tanker)",
+      1,
+      remote,
+    );
+    expect(countSpecialtyOpens(refresh.next, date, "liberty-tank", "CID")).toBe(0);
+    expect(refresh.deletedIds).toEqual(
+      expect.arrayContaining([localId, "cloud-liberty-cid"]),
+    );
+
+    const afterGc = reconcileSpecialtyCloud({
+      local: refresh.next,
+      remote: {},
+      deletedIds: refresh.deletedIds,
+      destKeeps: refresh.destKeeps,
+      seenRemoteIds: refresh.seenRemoteIds,
+    });
+    const bounced = reconcileSpecialtyCloud({
+      local: afterGc.next,
+      remote,
+      deletedIds: afterGc.deletedIds,
+      destKeeps: afterGc.destKeeps,
+      seenRemoteIds: afterGc.seenRemoteIds,
+    });
+    expect(countSpecialtyOpens(bounced.next, date, "liberty-tank", "CID")).toBe(0);
+  });
+});
+

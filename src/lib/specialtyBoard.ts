@@ -28,7 +28,6 @@ export const SPECIALTY_STATIONS: SpecialtyStation[] = [
   { id: "ford", name: "Ford" },
   { id: "prairie-hill", name: "PrairieHill" },
   { id: "hodgkins", name: "Hodgkins" },
-  { id: "gray-tank", name: "Gray Tank" },
   { id: "liberty-tank", name: "Liberty" },
   { id: "herthside", name: "Hearthside" },
 ];
@@ -54,7 +53,7 @@ export const SPECIALTY_DESTINATIONS = [
 ] as const;
 
 /** Stations whose dest chips follow the pickup catalog instead of the global list. */
-const SPECIALTY_CATALOG_DEST_IDS = new Set(["gray-tank", "herthside", "hodgkins"]);
+const SPECIALTY_CATALOG_DEST_IDS = new Set(["herthside", "hodgkins"]);
 
 /**
  * Walking-floor cards whose + chips are commodities (stored in `destination`).
@@ -119,7 +118,6 @@ export function specialtyDestinationsFor(stationId: string): readonly string[] {
 }
 
 export function specialtyDestHint(stationId: string): string {
-  if (stationId === "gray-tank") return "Leachate destination for new open load";
   if (stationId === "herthside") return "Trash destination for new open load";
   if (stationId === "hodgkins") {
     return "Residual · Pontiac/Liberty · Glass · Strategic/Resource MGT";
@@ -201,6 +199,36 @@ export type SpecialtyDestKeep = {
 
 const STORE_KEY = "chitrader.load-tracker.specialty-board.v1";
 
+export type SpecialtyCloudReconcileInput = {
+  local: SpecialtyStore;
+  remote: SpecialtyStore;
+  deletedIds: Iterable<string>;
+  destKeeps: Iterable<SpecialtyDestKeep>;
+  /** Slot ids observed on a previous successful remote pull. */
+  seenRemoteIds?: Iterable<string>;
+};
+
+export type SpecialtyUpload = {
+  date: string;
+  slot: SpecialtySlot;
+};
+
+export type SpecialtyCloudReconcileResult = {
+  next: SpecialtyStore;
+  deletedIds: string[];
+  destKeeps: SpecialtyDestKeep[];
+  seenRemoteIds: string[];
+  toDeleteRemote: string[];
+  toUpload: SpecialtyUpload[];
+};
+
+export type SpecialtyConsumeResult = {
+  store: SpecialtyStore;
+  burnedIds: string[];
+  destKeeps: SpecialtyDestKeep[];
+  burned: number;
+};
+
 function newId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -217,6 +245,7 @@ export function readSpecialtyStore(): SpecialtyStore {
       days?: SpecialtyStore;
       deletedIds?: unknown;
       destKeeps?: unknown;
+      seenRemoteIds?: unknown;
     };
     if (parsed?.version !== 1 || typeof parsed.days !== "object" || !parsed.days) {
       return {};
@@ -307,18 +336,37 @@ export function readSpecialtyDestKeeps(): SpecialtyDestKeep[] {
   }
 }
 
+export function readSpecialtySeenRemoteIds(): string[] {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as { seenRemoteIds?: unknown };
+    return parseDeletedIds(parsed.seenRemoteIds);
+  } catch {
+    return [];
+  }
+}
+
 export function writeSpecialtyStore(
   store: SpecialtyStore,
   deletedIds?: string[],
   destKeeps?: SpecialtyDestKeep[],
+  seenRemoteIds?: string[],
 ): void {
   const ids = deletedIds ?? readSpecialtyDeletedIds();
   const keeps = destKeeps ?? readSpecialtyDestKeeps();
+  const seen = seenRemoteIds ?? readSpecialtySeenRemoteIds();
   // Tombstones always win at persist so a stale cloud merge cannot bounce − / consume.
   const days = applySpecialtyTombstones(store, ids, keeps);
   localStorage.setItem(
     STORE_KEY,
-    JSON.stringify({ version: 1, days, deletedIds: ids, destKeeps: keeps }),
+    JSON.stringify({
+      version: 1,
+      days,
+      deletedIds: ids,
+      destKeeps: keeps,
+      seenRemoteIds: seen,
+    }),
   );
 }
 
@@ -562,17 +610,49 @@ export function consumeSpecialtyOpensAny(
   chips: readonly string[],
   count: number,
 ): SpecialtyStore {
-  let next = store;
+  return consumeSpecialtyOpensTracked(store, date, stationId, chips, count).store;
+}
+
+/**
+ * Consume matching opens and return UUID tombstones + dest-keeps so a later
+ * cloud merge cannot resurrect the burned slots (same contract as load deletes).
+ */
+export function consumeSpecialtyOpensTracked(
+  store: SpecialtyStore,
+  date: string,
+  stationId: string,
+  chips: readonly string[],
+  count: number,
+  destKeeps: SpecialtyDestKeep[] = [],
+): SpecialtyConsumeResult {
+  const labels = uniqueSpecialtyChipLabels(chips);
   let remaining = Math.max(0, Math.floor(count));
-  for (const chip of uniqueSpecialtyChipLabels(chips)) {
+  if (!remaining || !labels.length) {
+    return { store, burnedIds: [], destKeeps, burned: 0 };
+  }
+
+  const burnedIds: string[] = [];
+  let next = store;
+  let keeps = destKeeps;
+  let burned = 0;
+
+  for (const chip of labels) {
     if (remaining <= 0) break;
     const have = countSpecialtyOpens(next, date, stationId, chip);
     const burn = Math.min(have, remaining);
     if (burn <= 0) continue;
+    const victims = matchingSpecialtySlotIds(next, date, stationId, chip, burn);
     next = consumeSpecialtyOpens(next, date, stationId, chip, burn);
+    burnedIds.push(...victims);
+    keeps = upsertSpecialtyDestKeep(
+      keeps,
+      destKeepAfterChange(next, date, stationId, chip),
+    );
     remaining -= burn;
+    burned += burn;
   }
-  return next;
+
+  return { store: next, burnedIds, destKeeps: keeps, burned };
 }
 
 export function notifySpecialtyBoardChanged(): void {
@@ -591,7 +671,6 @@ const SPECIALTY_NAME_ALIASES: Record<string, string> = {
   "dek reload": "dekalb-reload",
   prairiehill: "prairie-hill",
   "prairie hill": "prairie-hill",
-  "gray tank": "gray-tank",
   hearthside: "herthside",
   herthside: "herthside",
   "liberty tank": "liberty-tank",
@@ -674,8 +753,10 @@ function isSpecialtyBoardCommodity(
       sameSpecialtyDest(chip, commodity),
     );
   }
-  if (key === "TRASH") return false;
-  if (specialtyId === "gray-tank" || specialtyId === "liberty-tank") {
+  // Ordinary trash is off-board except Ford (commodity chip) and Hearthside
+  // (Newton County dest is the only catalog lane).
+  if (key === "TRASH") return specialtyId === "herthside";
+  if (specialtyId === "liberty-tank") {
     return key === "LEACHATE";
   }
   if (specialtyId === "hodgkins") return key === "RESIDUAL" || key === "GLASS";
@@ -929,4 +1010,78 @@ export function mergeSpecialtyStores(
     out[date].push(slot);
   }
   return omitUnkeptDestSlots(out, destKeeps ?? []);
+}
+
+/**
+ * One cloud refresh: merge remote with local, delete consumed/minused ids,
+ * and never re-upload a slot we already pulled (another device deleted it).
+ *
+ * UUID tombstones are never GC'd — same-id rows must stay gone the way load
+ * `deletedIds` stick. Dest-keeps GC only against this pull (pre-delete), so a
+ * successful cloud delete in the same turn cannot drop the pin before extras
+ * are actually gone from later pulls.
+ */
+export function reconcileSpecialtyCloud(
+  input: SpecialtyCloudReconcileInput,
+): SpecialtyCloudReconcileResult {
+  const deleted = new Set(
+    [...input.deletedIds].filter((id) => typeof id === "string" && id.length > 0),
+  );
+  let destKeeps = [...input.destKeeps];
+  const seen = new Set(
+    [...(input.seenRemoteIds ?? [])].filter(
+      (id) => typeof id === "string" && id.length > 0,
+    ),
+  );
+  const remoteSlots = Object.values(input.remote).flat();
+  const remoteIds = new Set(remoteSlots.map((s) => s.id));
+
+  // Empty remote + prior pulls is more often a bad/partial fetch than "wipe all".
+  const trustRemoteAbsence = remoteSlots.length > 0 || seen.size === 0;
+  if (trustRemoteAbsence) {
+    for (const id of seen) {
+      if (!remoteIds.has(id)) deleted.add(id);
+    }
+  }
+
+  const extras = destKeeps.flatMap((keep) =>
+    unkeptSpecialtyIds(
+      input.remote,
+      keep.date,
+      keep.stationId,
+      keep.destination,
+      keep.keepIds,
+    ),
+  );
+  for (const id of extras) deleted.add(id);
+
+  const lingering = [...deleted].filter((id) => remoteIds.has(id));
+  const toDeleteRemote = [...new Set([...lingering, ...extras])];
+
+  const localKept = applySpecialtyTombstones(input.local, deleted, destKeeps);
+  const toUpload: SpecialtyUpload[] = [];
+  for (const [date, slots] of Object.entries(localKept)) {
+    for (const slot of slots) {
+      if (remoteIds.has(slot.id) || deleted.has(slot.id) || seen.has(slot.id)) {
+        continue;
+      }
+      toUpload.push({ date: specialtyDateKey(date), slot });
+    }
+  }
+
+  const next = mergeSpecialtyStores(localKept, input.remote, deleted, destKeeps);
+  destKeeps = gcSpecialtyDestKeeps(input.remote, destKeeps);
+
+  const nextSeen = new Set(seen);
+  for (const id of remoteIds) nextSeen.add(id);
+  for (const id of deleted) nextSeen.add(id);
+
+  return {
+    next,
+    deletedIds: [...deleted],
+    destKeeps,
+    seenRemoteIds: [...nextSeen],
+    toDeleteRemote,
+    toUpload,
+  };
 }

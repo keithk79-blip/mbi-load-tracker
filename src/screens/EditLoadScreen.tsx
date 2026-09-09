@@ -65,7 +65,7 @@ export function EditLoadScreen({
   const dirty = !sameForm(form, original) || date !== load.date;
   const canSave = formComplete(form) && dirty;
 
-  const finishSave = () => {
+    const finishSave = async () => {
     const pickup = pickupLabel(form.stationId, form.pickup);
     const destination = form.destination.trim();
     const now = new Date().toISOString();
@@ -95,7 +95,7 @@ export function EditLoadScreen({
       load.commodity.trim().toLowerCase() !== form.commodity.trim().toLowerCase();
 
     if (lane && routeChanged) {
-      void consumeOpens(date, lane.specialtyId, lane.chips, 1);
+      await consumeOpens(date, lane.specialtyId, lane.chips, 1);
     }
 
     setDuplicate(null);
@@ -154,7 +154,7 @@ export function EditLoadScreen({
       }
     }
 
-    finishSave();
+    void finishSave();
   };
 
   if (changingTruck) {

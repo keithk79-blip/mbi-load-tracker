@@ -62,7 +62,7 @@ export function LogLoadScreen({
     setStep("form");
   };
 
-  const finishSave = () => {
+  const finishSave = async () => {
     const now = new Date().toISOString();
     const pickup = pickupLabel(form.stationId, form.pickup);
     const destination = form.destination.trim();
@@ -96,7 +96,7 @@ export function LogLoadScreen({
       form.commodity,
     );
     if (lane) {
-      void consumeOpens(targetDate, lane.specialtyId, lane.chips, qty);
+      await consumeOpens(targetDate, lane.specialtyId, lane.chips, qty);
     }
 
     setDuplicate(null);
@@ -150,7 +150,7 @@ export function LogLoadScreen({
       }
     }
 
-    finishSave();
+    void finishSave();
   };
 
   if (step === "truck") {
