@@ -9,15 +9,16 @@ import {
   type ReactNode,
 } from "react";
 import type { Load } from "../types";
-import { loadToRow, rowToLoad, type LoadRow } from "../lib/cloud";
+import { fetchAllPaged, loadToRow, rowToLoad, type LoadRow } from "../lib/cloud";
 import {
   deletedLoadIds,
   deviceLoadsForPush,
   mergeCloudLoads,
-  pendingDeleteIds,
-  restoreDeviceLoads,
+  reconcilePersistedSnapshot,
+  shouldApplyRealtimeDelete,
+  shouldApplyRealtimeUpsert,
   snapshotForDeviceBackup,
-  snapshotLosesDeviceDates,
+  snapshotLosesDeviceLoads,
 } from "../lib/cloudMerge";
 import { loadsToCsv } from "../lib/commodity";
 import {
@@ -35,7 +36,6 @@ import {
   gcLoadDeletedIds,
   loadsForDate,
   parseDeletedIds,
-  persistedDeletedIds,
   readStore,
   rememberDeletedIds,
   removeLoad,
@@ -148,29 +148,31 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
     const pending = readQueue();
     const cache = readCloudCache();
     const local = readStore();
+    const live = storeRef.current;
     const lastGood = lastGoodRef.current;
-    const tombstones = persistedDeletedIds(next, cache, local, lastGood);
+    const reconciled = reconcilePersistedSnapshot({
+      incoming: next,
+      live,
+      cache,
+      local,
+      lastGood,
+      pending,
+    });
+    if (!reconciled) return;
+    // Partial same-day loss (324 → 306) must not land in cache/local.
     if (
-      snapshotLosesDeviceDates(allLoads(next), cache, local, pending, tombstones) ||
-      snapshotLosesDeviceDates(allLoads(next), lastGood, local, pending, tombstones)
-    ) {
-      const recovered = restoreDeviceLoads(
-        allLoads(next),
-        Object.keys(cache.loadsByDate).length ? cache : lastGood,
+      snapshotLosesDeviceLoads(
+        allLoads(reconciled),
+        cache,
         local,
         pending,
-        tombstones,
-      );
-      // Empty recover is OK when every remaining device row is a tombstone
-      // (intentional delete of the last loads). Do not bail — persist that.
-      if (recovered.length) {
-        next = snapshotFromLoads(recovered, tombstones);
-      } else if (!tombstones.length && pendingDeleteIds(pending).size === 0) {
-        return;
-      } else {
-        next = snapshotFromLoads([], tombstones);
-      }
+        reconciled.deletedIds,
+        [live, lastGood],
+      )
+    ) {
+      return;
     }
+    next = reconciled;
     writeCloudCache(next);
     storeRef.current = next;
     setStore(next);
@@ -286,10 +288,14 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
   const refreshFromCloud = useCallback(async () => {
     const supabase = getSupabase();
     if (!supabase || !session) return;
-    const { data, error } = await supabase
-      .from("loads")
-      .select("*")
-      .order("updated_at", { ascending: false });
+    const { data, error } = await fetchAllPaged<LoadRow>(async (from, to) => {
+      const page = await supabase
+        .from("loads")
+        .select("*")
+        .order("updated_at", { ascending: false })
+        .range(from, to);
+      return { data: page.data as LoadRow[] | null, error: page.error };
+    });
     if (error || !Array.isArray(data)) {
       applyQueueStatus(readQueue().length, true);
       return;
@@ -302,13 +308,15 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
       Object.keys(cache.loadsByDate).length > 0
         ? cache
         : lastGoodRef.current;
+    const extra = [lastGoodRef.current, storeRef.current];
     const { merged, toUpsert } = mergeCloudLoads({
       remote,
       cache: deviceCache,
       local,
       pending,
+      extra,
     });
-    const deleted = deletedLoadIds(pending, deviceCache, local);
+    const deleted = deletedLoadIds(pending, deviceCache, local, ...extra);
     for (const row of remote) {
       if (deleted.has(row.id)) enqueueDelete(row.id);
     }
@@ -336,27 +344,20 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
         "postgres_changes",
         { event: "*", schema: "public", table: "loads" },
         (payload) => {
-          const pending = pendingIds();
-          setStore((prev) => {
-            if (payload.eventType === "DELETE") {
-              const row = payload.old as Partial<LoadRow>;
-              // Only honor deletes this device queued. An empty/stale remote
-              // must not wipe dates that still have real cache/local loads.
-              if (!row.id || !pending.has(row.id)) return prev;
-              const next = removeLoad(prev, row.id);
-              writeCloudCache(next);
-              return next;
-            }
-            const row = payload.new as LoadRow;
-            const tombstoned = new Set(prev.deletedIds ?? []);
-            if (!row?.id || pending.has(row.id) || tombstoned.has(row.id)) return prev;
-            const incoming = rowToLoad(row);
-            const existing = allLoads(prev).find((item) => item.id === incoming.id);
-            if (existing && existing.updatedAt > incoming.updatedAt) return prev;
-            const next = upsertLoad(prev, incoming);
-            writeCloudCache(next);
-            return next;
-          });
+          const queued = readQueue();
+          const pending = pendingIds(queued);
+          if (payload.eventType === "DELETE") {
+            const row = payload.old as Partial<LoadRow>;
+            const deletedId = row.id;
+            if (!shouldApplyRealtimeDelete(deletedId, queued)) return;
+            persistCloudCache(rememberDeletedIds(storeRef.current, [deletedId]));
+            return;
+          }
+          const row = payload.new as LoadRow;
+          if (!row?.id) return;
+          const incoming = rowToLoad(row);
+          if (!shouldApplyRealtimeUpsert(incoming, storeRef.current, pending)) return;
+          persistCloudCache(upsertLoad(storeRef.current, incoming));
         },
       )
       .subscribe();
@@ -372,7 +373,7 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, [cloud, configured, flushQueue, refreshFromCloud]);
+  }, [cloud, configured, flushQueue, persistCloudCache, refreshFromCloud]);
 
   const saveLoad = useCallback(
     (load: Load) => {

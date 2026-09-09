@@ -129,20 +129,17 @@ export function forgetDeletedId(store: Persisted, id: string): Persisted {
 }
 
 /**
- * Keep tombstones only while a live copy still exists on remote, cache, or
- * the device backup — same GC idea as specialty deletedIds.
+ * Load UUID tombstones are never GC'd. Dropping them after the remote row is
+ * gone lets a stale backup, Push all, or realtime echo resurrect the id —
+ * the same class of bounce specialty had before UUID tombstones stuck.
  */
 export function gcLoadDeletedIds(
   deletedIds: Iterable<string>,
-  remote: Load[],
-  cache: Persisted,
-  local: Persisted,
+  _remote?: Load[],
+  _cache?: Persisted,
+  _local?: Persisted,
 ): string[] {
-  const live = new Set<string>();
-  for (const load of remote) live.add(load.id);
-  for (const load of allLoads(cache)) live.add(load.id);
-  for (const load of allLoads(local)) live.add(load.id);
-  return parseDeletedIds([...deletedIds]).filter((id) => live.has(id));
+  return parseDeletedIds([...deletedIds]);
 }
 
 export function loadsForDate(store: Persisted, date: string): Load[] {

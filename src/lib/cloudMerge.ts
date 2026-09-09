@@ -19,6 +19,14 @@ function putUnseeded(map: Map<string, Load>, loads: Load[]): void {
   }
 }
 
+function pendingUpsertLoads(pending: QueueOp[], deleted: Set<string>): Load[] {
+  const loads: Load[] = [];
+  for (const op of pending) {
+    if (op.kind === "upsert" && !deleted.has(op.load.id)) loads.push(op.load);
+  }
+  return loads;
+}
+
 export function pendingDeleteIds(pending: QueueOp[]): Set<string> {
   const deleted = new Set<string>();
   for (const op of pending) {
@@ -96,6 +104,8 @@ export type CloudMergeInput = {
   cache: Persisted;
   local: Persisted;
   pending: QueueOp[];
+  /** Extra on-device snapshots (live storeRef, lastGood) merged the same as cache/local. */
+  extra?: Persisted[];
 };
 
 export type CloudMergeResult = {
@@ -117,6 +127,9 @@ function realDeviceLoads(
  * still has. Empty remote must never produce that wipe.
  * Tombstoned / pending-deleted ids are not "real" — deleting every load on a
  * day must be allowed to stick.
+ *
+ * This does **not** catch partial same-day loss (local 324, snapshot 306).
+ * Use `snapshotLosesDeviceLoads` / `snapshotDropsDeviceLoads` for that.
  */
 export function snapshotLosesDeviceDates(
   snapshot: Load[],
@@ -156,10 +169,125 @@ export function restoreDeviceLoads(
 ): Load[] {
   const deleted = deletedLoadIds(pending, cache, local, tombstones);
   const map = new Map<string, Load>();
-  putUnseeded(map, snapshot);
+  // Device first so equal updatedAt keeps the on-device copy over a stale refresh.
   putUnseeded(map, realDeviceLoads(cache, local, deleted));
+  putUnseeded(map, snapshot);
   for (const id of deleted) map.delete(id);
   return [...map.values()];
+}
+
+/**
+ * Ids present on cache/local (and extras) that `snapshot` dropped.
+ * Unlike `snapshotLosesDeviceDates`, this catches a busy day shrinking
+ * (e.g. 324 → 306 on 2026-09-09) rather than only a full-date wipe.
+ */
+export function snapshotDropsDeviceLoads(
+  snapshot: Load[],
+  cache: Persisted,
+  local: Persisted,
+  pending: QueueOp[],
+  tombstones: Iterable<string> = [],
+  extra: Persisted[] = [],
+): Load[] {
+  const deleted = deletedLoadIds(pending, cache, local, tombstones, ...extra);
+  const snapIds = new Set(
+    snapshot.filter((load) => !load.seeded && !deleted.has(load.id)).map((load) => load.id),
+  );
+  const device = new Map<string, Load>();
+  putUnseeded(device, realDeviceLoads(cache, local, deleted));
+  for (const store of extra) putUnseeded(device, realDeviceLoads(store, { version: 1, loadsByDate: {} }, deleted));
+  for (const id of deleted) device.delete(id);
+  return [...device.values()].filter((load) => !snapIds.has(load.id));
+}
+
+/** True when any non-tombstoned device load is missing from `snapshot`. */
+export function snapshotLosesDeviceLoads(
+  snapshot: Load[],
+  cache: Persisted,
+  local: Persisted,
+  pending: QueueOp[],
+  tombstones: Iterable<string> = [],
+  extra: Persisted[] = [],
+): boolean {
+  return snapshotDropsDeviceLoads(snapshot, cache, local, pending, tombstones, extra).length > 0;
+}
+
+export type PersistReconcileInput = {
+  incoming: Persisted;
+  live: Persisted;
+  cache: Persisted;
+  local: Persisted;
+  lastGood: Persisted;
+  pending: QueueOp[];
+};
+
+/**
+ * What cloud-cache / React store should become after save, delete, refresh, or
+ * realtime. Last-writer-wins by updatedAt; on-device rows and durable
+ * tombstones are never discarded because remote (or a stale in-flight merge)
+ * was missing them.
+ *
+ * Returns null only for the empty-cloud wipe case: every device source still
+ * has real loads, incoming is empty, and nothing is tombstoned.
+ */
+export function reconcilePersistedSnapshot(
+  input: PersistReconcileInput,
+): Persisted | null {
+  const tombstones = deletedLoadIds(
+    input.pending,
+    input.incoming,
+    input.live,
+    input.cache,
+    input.local,
+    input.lastGood,
+  );
+  const map = new Map<string, Load>();
+  putUnseeded(map, allLoads(input.lastGood));
+  putUnseeded(map, allLoads(input.cache));
+  putUnseeded(map, allLoads(input.local));
+  putUnseeded(map, allLoads(input.live));
+  putUnseeded(map, allLoads(input.incoming));
+  putUnseeded(map, pendingUpsertLoads(input.pending, tombstones));
+  for (const id of tombstones) map.delete(id);
+
+  const merged = [...map.values()];
+  if (
+    merged.length === 0 &&
+    snapshotLosesDeviceDates([], input.cache, input.local, input.pending, tombstones)
+  ) {
+    return null;
+  }
+  if (
+    merged.length === 0 &&
+    snapshotLosesDeviceDates([], input.lastGood, input.live, input.pending, tombstones)
+  ) {
+    return null;
+  }
+  return snapshotFromLoads(merged, tombstones);
+}
+
+/** Ignore stale/own upsert echoes and anything already tombstoned or in-flight. */
+export function shouldApplyRealtimeUpsert(
+  incoming: Load,
+  store: Persisted,
+  pending: ReadonlySet<string>,
+): boolean {
+  if (!incoming.id) return false;
+  if (pending.has(incoming.id)) return false;
+  const tombstoned = deletedLoadIds([], store);
+  if (tombstoned.has(incoming.id)) return false;
+  const existing = allLoads(store).find((item) => item.id === incoming.id);
+  if (existing && existing.updatedAt >= incoming.updatedAt) return false;
+  return true;
+}
+
+/** Apply another device's delete unless this device has a newer in-flight upsert. */
+export function shouldApplyRealtimeDelete(
+  id: string | undefined,
+  pending: QueueOp[],
+): id is string {
+  if (!id) return false;
+  return !pending.some((op) => op.kind === "upsert" && op.load.id === id);
 }
 
 /**
@@ -169,29 +297,47 @@ export function restoreDeviceLoads(
  * An empty remote array is not a delete of device dates.
  */
 export function mergeCloudLoads(input: CloudMergeInput): CloudMergeResult {
-  const deleted = deletedLoadIds(input.pending, input.cache, input.local);
-  const pendingUpserts: Load[] = [];
-  for (const op of input.pending) {
-    if (op.kind === "upsert" && !deleted.has(op.load.id)) pendingUpserts.push(op.load);
-  }
+  const extras = input.extra ?? [];
+  const deleted = deletedLoadIds(
+    input.pending,
+    input.cache,
+    input.local,
+    ...extras,
+  );
+  const pendingUpserts = pendingUpsertLoads(input.pending, deleted);
 
   const map = new Map<string, Load>();
-  for (const load of input.remote) {
-    if (!deleted.has(load.id)) map.set(load.id, load);
-  }
+  // Device copies first so a partial remote (306 of 324 same-day rows) cannot
+  // drop local-only loads the cloud has not caught up with yet. Newer
+  // updatedAt still wins when remote actually has a newer copy of that id.
   putUnseeded(map, allLoads(input.cache));
   putUnseeded(map, allLoads(input.local));
+  for (const extra of extras) putUnseeded(map, allLoads(extra));
   putUnseeded(map, pendingUpserts);
+  putUnseeded(
+    map,
+    input.remote.filter((load) => !deleted.has(load.id)),
+  );
 
   for (const id of deleted) map.delete(id);
 
-  const restored = restoreDeviceLoads(
-    [...map.values()],
+  let restored = [...map.values()];
+  restored = restoreDeviceLoads(
+    restored,
     input.cache,
     input.local,
     input.pending,
     deleted,
   );
+  for (const extra of extras) {
+    restored = restoreDeviceLoads(
+      restored,
+      extra,
+      { version: 1, loadsByDate: {} },
+      input.pending,
+      deleted,
+    );
+  }
 
   const remoteById = new Map(input.remote.map((load) => [load.id, load]));
   const toUpsert = restored.filter((load) => {
