@@ -369,12 +369,6 @@ export const STATIONS: Station[] = [
     },
   },
   {
-    id: "gray-tank",
-    name: "Gray Tank",
-    commodities: ["Leachate (tanker)"],
-    destinations: ["FRWRD", "CID", "Dekalb Sanitary"],
-  },
-  {
     id: "herthside",
     name: "Hearthside",
     commodities: ["Trash (MSW)"],
@@ -385,8 +379,8 @@ export const STATIONS: Station[] = [
   },
 ];
 
-if (STATIONS.length !== 30) {
-  throw new Error(`Expected 30 stations, got ${STATIONS.length}`);
+if (STATIONS.length !== 29) {
+  throw new Error(`Expected 29 stations, got ${STATIONS.length}`);
 }
 
 export const STATION_BY_ID: Record<string, Station> = Object.fromEntries(

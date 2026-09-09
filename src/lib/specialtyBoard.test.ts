@@ -43,7 +43,7 @@ function catalogLogPickup(
 }
 
 function boardCommodityFor(specialtyId: string | null, chip?: string): string {
-  if (specialtyId === "gray-tank" || specialtyId === "liberty-tank") {
+  if (specialtyId === "liberty-tank") {
     return "Leachate (tanker)";
   }
   if (specialtyId === "hodgkins") return "Residual";
@@ -90,6 +90,8 @@ describe("specialty walking-floor catalog", () => {
     });
     expect(isSpecialtyStationId("liberty-tank")).toBe(true);
     expect(SPECIALTY_STATIONS.some((s) => s.id === "grayslake")).toBe(false);
+    expect(SPECIALTY_STATIONS.some((s) => s.id === "gray-tank")).toBe(false);
+    expect(SPECIALTY_STATIONS.some((s) => s.name === "Gray Tank")).toBe(false);
     expect(SPECIALTY_STATIONS.some((s) => s.id === "newton-tank")).toBe(false);
   });
 
@@ -172,37 +174,11 @@ describe("specialty walking-floor catalog", () => {
     });
   });
 
-  it("lists only leachate dests on the Gray Tank specialty card", () => {
-    expect(specialtyDestinationsFor("gray-tank")).toEqual([
-      "FRWRD",
-      "CID",
-      "Dekalb Sanitary",
-    ]);
-    expect(specialtyDestinationsFor("gray-tank")).not.toContain("Hodgkins");
-    expect(specialtyDestinationsFor("gray-tank")).not.toContain("RSI");
-    expect(specialtyDestinationsFor("gray-tank")).not.toContain("KanSpcl");
-    expect(specialtyChipMode("gray-tank")).toBe("destination");
-  });
-
-  it("cascades Gray Tank log-load to leachate dests only", () => {
-    expect(applyPickupCascade("gray-tank", "Recycle", "Hodgkins")).toEqual({
-      commodity: "",
-      destination: "",
-      commodityValid: false,
-      destinationValid: false,
-    });
-    expect(applyPickupCascade("gray-tank", "Leachate (tanker)", "FRWRD")).toEqual({
-      commodity: "Leachate (tanker)",
-      destination: "FRWRD",
-      commodityValid: true,
-      destinationValid: true,
-    });
-    expect(applyPickupCascade("gray-tank", "Leachate (tanker)", "CID")).toMatchObject({
-      destinationValid: true,
-    });
-    expect(
-      applyPickupCascade("gray-tank", "Leachate (tanker)", "Dekalb Sanitary"),
-    ).toMatchObject({ destinationValid: true });
+  it("does not list Gray Tank as a specialty card or log-load pickup", () => {
+    expect(SPECIALTY_STATIONS.some((s) => s.id === "gray-tank")).toBe(false);
+    expect(isSpecialtyStationId("gray-tank")).toBe(false);
+    expect(resolveSpecialtyStationId("gray-tank", "Gray Tank")).toBeNull();
+    expect(resolveSpecialtyStationId(undefined, "Gray Tank")).toBeNull();
   });
 
   it("lists only Newton County on the Hearthside specialty card", () => {
@@ -458,6 +434,7 @@ describe("specialty walking-floor catalog", () => {
     expect(resolveSpecialtyStationId("wheeling", "Wheeling")).toBe("wheeling");
     expect(resolveSpecialtyStationId("Wheeling")).toBe("wheeling");
     expect(resolveSpecialtyStationId("herthside", "Hearthside")).toBe("herthside");
+    expect(resolveSpecialtyStationId("gray-tank", "Gray Tank")).toBeNull();
     expect(resolveSpecialtyStationId("grayslake", "GraysLake")).toBeNull();
     expect(resolveSpecialtyStationId("laraway", "Laraway")).toBeNull();
     expect(resolveSpecialtyStationId("prairie-hill-rfd", "Prairie Hill RFD")).toBeNull();
@@ -662,7 +639,7 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
     ).toBe("wheeling");
   });
 
-  it("still warns for Liberty leachate → CID and Gray Tank leachate → CID with zero opens", () => {
+  it("still warns for Liberty leachate → CID with zero opens, not Gray Tank", () => {
     expect(
       missingSpecialtyOpensWarn(
         {},
@@ -682,7 +659,7 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
         "CID",
         "Leachate (tanker)",
       ),
-    ).toEqual({ specialtyId: "gray-tank", opens: 0 });
+    ).toBeNull();
   });
 });
 
@@ -1012,7 +989,7 @@ describe("specialty consume on logged loads", () => {
     expect(
       unkeptSpecialtyIds(remote, date, "liberty-tank", "CID", keep.keepIds).sort(),
     ).toEqual(["remote-liberty-cid", localId].sort());
-    expect(countSpecialtyOpens(gone, date, "gray-tank", "CID")).toBe(0);
+    expect(countSpecialtyOpens(gone, date, "batavia", "CID")).toBe(0);
   });
 
   it("dest-chip minus of one Liberty CID keeps the remaining local slot and drops remote extras", () => {
@@ -1021,9 +998,9 @@ describe("specialty consume on logged loads", () => {
     local = addSpecialtySlot(local, date, "liberty-tank", "CID");
     const keptId = local[date][0].id;
     const removedId = local[date][1].id;
-    local = addSpecialtySlot(local, date, "gray-tank", "CID");
-    const grayId = local[date].find((s) => s.stationId === "gray-tank")?.id;
-    expect(grayId).toBeTruthy();
+    local = addSpecialtySlot(local, date, "batavia", "RSI");
+    const otherId = local[date].find((s) => s.stationId === "batavia")?.id;
+    expect(otherId).toBeTruthy();
 
     const remote: SpecialtyStore = {
       [date]: [
@@ -1049,7 +1026,7 @@ describe("specialty consume on logged loads", () => {
     expect(remainingSpecialtySlotIds(merged, date, "liberty-tank", "CID")).toEqual([
       keptId,
     ]);
-    expect(countSpecialtyOpens(merged, date, "gray-tank", "CID")).toBe(1);
+    expect(countSpecialtyOpens(merged, date, "batavia", "RSI")).toBe(1);
   });
 
   it("station minus of Liberty CID stays gone after UUID tombstone GC if dest-keep remains", () => {
@@ -1180,14 +1157,21 @@ describe("specialty consume on logged loads", () => {
     expect(countSpecialtyOpens(store, date, "prairie-hill", "C&D")).toBe(0);
   });
 
-  it("consumes Gray Tank → CID without touching a Liberty CID open", () => {
+  it("does not consume Liberty CID when logging Gray Tank leachate (not a pickup)", () => {
     const date = "2026-09-08";
     let store: SpecialtyStore = {};
-    store = addSpecialtySlot(store, date, "gray-tank", "CID");
     store = addSpecialtySlot(store, date, "liberty-tank", "CID");
-    store = logLoadConsume(store, date, "gray-tank", "Gray Tank", "CID");
-    expect(countSpecialtyOpens(store, date, "gray-tank", "CID")).toBe(0);
+    store = logLoadConsume(
+      store,
+      date,
+      "gray-tank",
+      "Gray Tank",
+      "CID",
+      1,
+      "Leachate (tanker)",
+    );
     expect(countSpecialtyOpens(store, date, "liberty-tank", "CID")).toBe(1);
+    expect(resolveSpecialtyBoardMatch("gray-tank", "Gray Tank", "CID", "Leachate (tanker)")).toBeNull();
   });
 
   it.each(SPECIALTY_STATIONS)(

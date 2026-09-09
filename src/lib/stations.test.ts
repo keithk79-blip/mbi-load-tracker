@@ -11,7 +11,7 @@ import {
 
 describe("pickup stations", () => {
   it("includes Liberty leachate plus DeKalb, Prairie Hill RFD, GraysLake, and Laraway", () => {
-    expect(STATIONS).toHaveLength(30);
+    expect(STATIONS).toHaveLength(29);
     expect(FREQUENT_STATION_IDS).toContain("liberty");
     expect(FREQUENT_STATION_IDS).toContain("dekalb");
     expect(FREQUENT_STATION_IDS).toContain("prairie-hill-rfd");
@@ -54,6 +54,9 @@ describe("pickup stations", () => {
 
     expect(commoditiesFor("laraway")).toEqual(["Leachate (tanker)"]);
     expect(destinationsFor("laraway")).toEqual(["CID", "Kankakee"]);
+
+    expect(STATIONS.some((s) => s.id === "gray-tank")).toBe(false);
+    expect(STATIONS.some((s) => s.name === "Gray Tank")).toBe(false);
   });
 
   it("allows Wheeling recycle to Groot, Hodgkins, and Lake Co MRF only", () => {
@@ -84,9 +87,11 @@ describe("pickup stations", () => {
     }
   });
 
-  it("restricts Gray Tank to leachate → FRWRD, CID, Dekalb Sanitary", () => {
-    expect(commoditiesFor("gray-tank")).toEqual(["Leachate (tanker)"]);
-    expect(destinationsFor("gray-tank")).toEqual(["FRWRD", "CID", "Dekalb Sanitary"]);
+  it("does not list Gray Tank as a log-load pickup", () => {
+    expect(STATIONS.find((s) => s.id === "gray-tank")).toBeUndefined();
+    expect(STATION_BY_NAME["gray tank"]).toBeUndefined();
+    expect(commoditiesFor("gray-tank")).toEqual([]);
+    expect(destinationsFor("gray-tank")).toEqual([]);
   });
 
   it("restricts Hearthside to Trash (MSW) → Newton County", () => {
@@ -365,7 +370,7 @@ describe("log-load commodity dest cascades", () => {
     expect(destinationsFor("roscoe", "Recycle")).toEqual(["Lake Co MRF", "Hodgkins"]);
   });
 
-  it("leaves Rockdale, Ford, Gray Tank, and Liberty leachate dests unchanged", () => {
+  it("leaves Rockdale, Ford, and Liberty leachate dests unchanged", () => {
     expect(destinationsFor("rockdale")).toEqual([
       "Willow Ranch",
       "Hodgkins",
@@ -391,7 +396,6 @@ describe("log-load commodity dest cascades", () => {
       "Willow Ranch",
       "Organix",
     ]);
-    expect(destinationsFor("gray-tank")).toEqual(["FRWRD", "CID", "Dekalb Sanitary"]);
     expect(destinationsFor("liberty")).toEqual([
       "CID",
       "Kankakee",

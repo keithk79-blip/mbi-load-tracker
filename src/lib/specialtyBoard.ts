@@ -28,7 +28,6 @@ export const SPECIALTY_STATIONS: SpecialtyStation[] = [
   { id: "ford", name: "Ford" },
   { id: "prairie-hill", name: "PrairieHill" },
   { id: "hodgkins", name: "Hodgkins" },
-  { id: "gray-tank", name: "Gray Tank" },
   { id: "liberty-tank", name: "Liberty" },
   { id: "herthside", name: "Hearthside" },
 ];
@@ -54,7 +53,7 @@ export const SPECIALTY_DESTINATIONS = [
 ] as const;
 
 /** Stations whose dest chips follow the pickup catalog instead of the global list. */
-const SPECIALTY_CATALOG_DEST_IDS = new Set(["gray-tank", "herthside", "hodgkins"]);
+const SPECIALTY_CATALOG_DEST_IDS = new Set(["herthside", "hodgkins"]);
 
 /**
  * Walking-floor cards whose + chips are commodities (stored in `destination`).
@@ -119,7 +118,6 @@ export function specialtyDestinationsFor(stationId: string): readonly string[] {
 }
 
 export function specialtyDestHint(stationId: string): string {
-  if (stationId === "gray-tank") return "Leachate destination for new open load";
   if (stationId === "herthside") return "Trash destination for new open load";
   if (stationId === "hodgkins") {
     return "Residual · Pontiac/Liberty · Glass · Strategic/Resource MGT";
@@ -673,7 +671,6 @@ const SPECIALTY_NAME_ALIASES: Record<string, string> = {
   "dek reload": "dekalb-reload",
   prairiehill: "prairie-hill",
   "prairie hill": "prairie-hill",
-  "gray tank": "gray-tank",
   hearthside: "herthside",
   herthside: "herthside",
   "liberty tank": "liberty-tank",
@@ -759,7 +756,7 @@ function isSpecialtyBoardCommodity(
   // Ordinary trash is off-board except Ford (commodity chip) and Hearthside
   // (Newton County dest is the only catalog lane).
   if (key === "TRASH") return specialtyId === "herthside";
-  if (specialtyId === "gray-tank" || specialtyId === "liberty-tank") {
+  if (specialtyId === "liberty-tank") {
     return key === "LEACHATE";
   }
   if (specialtyId === "hodgkins") return key === "RESIDUAL" || key === "GLASS";
