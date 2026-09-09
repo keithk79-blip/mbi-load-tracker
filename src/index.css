@@ -1479,6 +1479,11 @@ button.log-load-top {
   color: #ffd0d0;
 }
 
+.calloff-kind-late-early {
+  border: 1px solid #d66a1f;
+  color: #ffd2a8;
+}
+
 .calloff-kind-call-off.selected {
   background: #1d3a5c;
   border-color: #7eb6ff;
@@ -1501,6 +1506,12 @@ button.log-load-top {
   background: #5a1c1c;
   border-color: #ff8a8a;
   color: #ffe8e8;
+}
+
+.calloff-kind-late-early.selected {
+  background: #4a240c;
+  border-color: #f08a3a;
+  color: #ffe8d0;
 }
 
 .calloff-add-error {
@@ -1547,6 +1558,12 @@ button.log-load-top {
   border-color: #c44545;
   background: #4a1818;
   color: #ffd6d6;
+}
+
+.calloff-chip-late-early {
+  border-color: #e07a28;
+  background: #4a2410;
+  color: #ffd8b5;
 }
 
 .calloff-remove {

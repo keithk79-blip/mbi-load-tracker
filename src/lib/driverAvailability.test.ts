@@ -2,13 +2,18 @@ import { describe, expect, it } from "vitest";
 import { parseSheetDate } from "./chicagoDate";
 import {
   availableDrivers,
+  CALL_OFF_KIND_OPTIONS,
+  CALL_OFF_KIND_TONES,
   callOffAppliesToDay,
   callOffKindFromReason,
   fullDayOffCount,
   fullDayOffEntries,
+  isCallOffKind,
   isFullDayOff,
   parseCallOffCsv,
+  reasonForKind,
   withManualOffs,
+  type CallOffKind,
   type CallOffRow,
 } from "./driverAvailability";
 
@@ -35,6 +40,7 @@ const SUBTRACT = [
   "NCNS",
   "ncns",
   "No Call No Show",
+  "Late/Early",
 ];
 
 const KEEP = [
@@ -154,8 +160,38 @@ describe("parseSheetDate + CSV", () => {
   });
 });
 
+describe("CALL_OFF_KIND_OPTIONS + tones", () => {
+  it("lists Late/Early with the other manual types", () => {
+    expect(CALL_OFF_KIND_OPTIONS.map((row) => row.kind)).toEqual([
+      "call-off",
+      "p-day",
+      "okd-off",
+      "ncns",
+      "late-early",
+    ]);
+    expect(
+      CALL_OFF_KIND_OPTIONS.find((row) => row.kind === "late-early")?.label,
+    ).toBe("Late/Early");
+    expect(isCallOffKind("late-early")).toBe(true);
+  });
+
+  it("maps Late/Early to orange, distinct from existing pill tones", () => {
+    expect(CALL_OFF_KIND_TONES["late-early"]).toBe("orange");
+    expect(CALL_OFF_KIND_TONES["call-off"]).toBe("blue");
+    expect(CALL_OFF_KIND_TONES["p-day"]).toBe("green");
+    expect(CALL_OFF_KIND_TONES["okd-off"]).toBe("gold");
+    expect(CALL_OFF_KIND_TONES["ncns"]).toBe("red");
+    const tones = Object.values(CALL_OFF_KIND_TONES);
+    expect(new Set(tones).size).toBe(CALL_OFF_KIND_OPTIONS.length);
+    expect(tones.filter((tone) => tone === "orange")).toEqual(["orange"]);
+    for (const option of CALL_OFF_KIND_OPTIONS) {
+      expect(CALL_OFF_KIND_TONES[option.kind as CallOffKind]).toBeTruthy();
+    }
+  });
+});
+
 describe("callOffKindFromReason", () => {
-  it("maps sheet reasons onto the four pill types and defaults the rest to Call Off", () => {
+  it("maps sheet reasons onto the pill types and defaults the rest to Call Off", () => {
     expect(callOffKindFromReason("Call Off")).toBe("call-off");
     expect(callOffKindFromReason("Call Off, taking kid to school")).toBe("call-off");
     expect(callOffKindFromReason("P-Day")).toBe("p-day");
@@ -164,8 +200,11 @@ describe("callOffKindFromReason", () => {
     expect(callOffKindFromReason("ok'd day off")).toBe("okd-off");
     expect(callOffKindFromReason("NCNS")).toBe("ncns");
     expect(callOffKindFromReason("No Call No Show")).toBe("ncns");
+    expect(callOffKindFromReason("Late/Early")).toBe("late-early");
+    expect(callOffKindFromReason("late-early")).toBe("late-early");
     expect(callOffKindFromReason("FMLA Day")).toBe("call-off");
     expect(callOffKindFromReason("Jury Duty")).toBe("call-off");
+    expect(reasonForKind("late-early")).toBe("Late/Early");
   });
 });
 
@@ -202,17 +241,37 @@ describe("fullDayOffEntries + manuals", () => {
     });
   });
 
-  it("subtracts all four manual kinds and does not double-count a sheet name", () => {
+  it("subtracts all five manual kinds and does not double-count a sheet name", () => {
     const rows = withManualOffs(sheet, [
       { name: "Call Off Driver", kind: "call-off" },
       { name: "P Day Driver", kind: "p-day" },
       { name: "Okd Driver", kind: "okd-off" },
       { name: "Ncns Driver", kind: "ncns" },
+      { name: "Late Early Driver", kind: "late-early" },
       { name: "Pablo Cruz", kind: "ncns" },
     ], "2026-09-08");
     expect(availableDrivers(143, rows, "2026-09-08")).toMatchObject({
-      offs: 6,
-      available: 137,
+      offs: 7,
+      available: 136,
     });
+  });
+
+  it("shows Late/Early manuals on the call-off list and subtracts them", () => {
+    const entries = fullDayOffEntries(
+      sheet,
+      [{ name: "Derek Winters", kind: "late-early" }],
+      "2026-09-08",
+    );
+    expect(entries).toContainEqual({
+      name: "Derek Winters",
+      kind: "late-early",
+      source: "manual",
+    });
+    const rows = withManualOffs(
+      sheet,
+      [{ name: "Derek Winters", kind: "late-early" }],
+      "2026-09-08",
+    );
+    expect(availableDrivers(143, rows, "2026-09-08").offs).toBe(3);
   });
 });
