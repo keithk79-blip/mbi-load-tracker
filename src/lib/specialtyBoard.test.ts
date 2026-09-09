@@ -103,11 +103,11 @@ describe("specialty walking-floor catalog", () => {
     expect(specialtyDestinationsFor("wheeling")).not.toContain("RSI");
     expect(SPECIALTY_DESTINATIONS).toContain("Groot");
     expect(SPECIALTY_DESTINATIONS).not.toContain("GraysLake");
-    expect(applyPickupCascade("wheeling", "Recycle", "GraysLake")).toMatchObject({
+    expect(applyPickupCascade("wheeling", "Recycle", "GraysLake")).toEqual({
       commodity: "Recycle",
-      destination: "GraysLake",
+      destination: "",
       commodityValid: true,
-      destinationValid: true,
+      destinationValid: false,
     });
     expect(applyPickupCascade("wheeling", "Trash (MSW)", "GraysLake")).toEqual({
       commodity: "Trash (MSW)",
@@ -272,6 +272,13 @@ describe("specialty walking-floor catalog", () => {
       commodityValid: true,
       destinationValid: true,
     });
+    expect(
+      resolveSpecialtyBoardMatch("apollo", "Apollo", "Christiansen Farms", "Yard Waste"),
+    ).toEqual({
+      specialtyId: "apollo",
+      chip: "Christianson Farms",
+      chips: ["Christianson Farms"],
+    });
   });
 
   it("lists only Hodgkins, DeKalb, Covanta, RSI, Prairie Hill, Lake Co MRF, DuPage on Elgin specialty chips", () => {
@@ -303,9 +310,11 @@ describe("specialty walking-floor catalog", () => {
     expect(specialtyDestinationsFor("melrose")).not.toContain("Covanta");
     expect(specialtyDestinationsFor("melrose")).not.toContain("Liberty");
     expect(specialtyDestinationsFor("melrose")).not.toContain("Rockford");
-    expect(applyPickupCascade("melrose", "Wood", "Covanta")).toMatchObject({
+    expect(applyPickupCascade("melrose", "Wood", "Covanta")).toEqual({
+      commodity: "Wood",
+      destination: "",
       commodityValid: true,
-      destinationValid: true,
+      destinationValid: false,
     });
     expect(applyPickupCascade("melrose", "Recycle", "Homewood")).toMatchObject({
       commodityValid: true,
@@ -322,9 +331,11 @@ describe("specialty walking-floor catalog", () => {
     expect(specialtyDestinationsFor("batavia")).not.toContain("DeKalb");
     expect(specialtyDestinationsFor("batavia")).not.toContain("Rockford");
     expect(specialtyDestinationsFor("batavia")).not.toContain("Resource MGT");
-    expect(applyPickupCascade("batavia", "Recycle", "Resource MGT")).toMatchObject({
+    expect(applyPickupCascade("batavia", "Recycle", "Resource MGT")).toEqual({
+      commodity: "Recycle",
+      destination: "",
       commodityValid: true,
-      destinationValid: true,
+      destinationValid: false,
     });
   });
 
@@ -358,9 +369,11 @@ describe("specialty walking-floor catalog", () => {
     ]);
     expect(specialtyDestinationsFor("arc")).not.toContain("Winnebago");
     expect(specialtyDestinationsFor("arc")).not.toContain("Pontiac");
-    expect(applyPickupCascade("arc", "Yard Waste", "Winnebago")).toMatchObject({
+    expect(applyPickupCascade("arc", "Yard Waste", "Winnebago")).toEqual({
+      commodity: "Yard Waste",
+      destination: "",
       commodityValid: true,
-      destinationValid: true,
+      destinationValid: false,
     });
     expect(applyPickupCascade("arc", "Recycle", "Resource MGT")).toMatchObject({
       commodityValid: true,
@@ -398,7 +411,7 @@ describe("specialty walking-floor catalog", () => {
     });
   });
 
-  it("lists only Christianson Farms on McCook specialty chips and log-load", () => {
+  it("keeps McCook specialty chips as Christianson Farms and aliases the log-load spelling", () => {
     expect(specialtyDestinationsFor("mccook")).toEqual(["Christianson Farms"]);
     expect(specialtyDestinationsFor("mccook")).not.toContain("Hodgkins");
     expect(applyPickupCascade("mccook", "Trash (MSW)", "Hodgkins")).toEqual({
@@ -406,6 +419,10 @@ describe("specialty walking-floor catalog", () => {
       destination: "",
       commodityValid: true,
       destinationValid: false,
+    });
+    expect(applyPickupCascade("mccook", "Yard Waste", "Christiansen Farms")).toMatchObject({
+      commodityValid: true,
+      destinationValid: true,
     });
     expect(applyPickupCascade("mccook", "Yard Waste", "Christianson Farms")).toMatchObject({
       commodityValid: true,

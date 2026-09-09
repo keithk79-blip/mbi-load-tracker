@@ -7,6 +7,7 @@ import {
   commoditiesFor,
   destinationsFor,
   getStation,
+  sameDestination,
 } from "../data/stations";
 import { applyPickupCascade, pickupLabel } from "../lib/cascade";
 import { rankPickupStations } from "../lib/pickupRank";
@@ -96,7 +97,7 @@ export function LoadForm({
     original!.destination !== value.destination &&
     value.stationId !== CUSTOM_ID &&
     original!.destination !== "" &&
-    !destinations.includes(original!.destination);
+    !destinations.some((item) => sameDestination(item, original!.destination));
 
   return (
     <div className="form-stack">
@@ -242,7 +243,7 @@ export function LoadForm({
               <Chip
                 key={item}
                 label={item}
-                selected={value.destination === item}
+                selected={sameDestination(value.destination, item)}
                 muted={!value.stationId}
                 onClick={() =>
                   value.stationId && onChange({ ...value, destination: item })
