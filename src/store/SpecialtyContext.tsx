@@ -13,17 +13,15 @@ import {
   addSpecialtySlot,
   applySpecialtyTombstones,
   boardForDate,
-  consumeSpecialtyOpens,
-  countSpecialtyOpens,
+  consumeSpecialtyOpensTracked,
   countSpecialtyOpensAny,
   destKeepAfterChange,
-  gcSpecialtyDestKeeps,
-  matchingSpecialtySlotIds,
-  mergeSpecialtyStores,
   notifySpecialtyBoardChanged,
   readSpecialtyDeletedIds,
   readSpecialtyDestKeeps,
+  readSpecialtySeenRemoteIds,
   readSpecialtyStore,
+  reconcileSpecialtyCloud,
   remainingSpecialtySlotIds,
   removeSpecialtySlot,
   resolveSpecialtyStationId,
@@ -31,7 +29,6 @@ import {
   sameSpecialtyStation,
   specialtyDateKey,
   uniqueSpecialtyChipLabels,
-  unkeptSpecialtyIds,
   upsertSpecialtyDestKeep,
   writeSpecialtyStore,
   type SpecialtyDestKeep,
@@ -103,6 +100,7 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
   const uploadingRef = useRef(false);
   const deletedIdsRef = useRef<Set<string>>(new Set(readSpecialtyDeletedIds()));
   const destKeepsRef = useRef<SpecialtyDestKeep[]>(readSpecialtyDestKeeps());
+  const seenRemoteIdsRef = useRef<Set<string>>(new Set(readSpecialtySeenRemoteIds()));
   const epochRef = useRef(0);
   const refreshTailRef = useRef(Promise.resolve());
 
@@ -113,9 +111,12 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
   const persistLocal = useCallback((next: SpecialtyStore) => {
     const ids = [...deletedIdsRef.current];
     const keeps = destKeepsRef.current;
+    const seen = [...seenRemoteIdsRef.current];
     // Strip UUID tombstones and dest-keeps at persist so a stale refresh cannot restore.
-    writeSpecialtyStore(next, ids, keeps);
-    setStore(applySpecialtyTombstones(next, ids, keeps));
+    const stripped = applySpecialtyTombstones(next, ids, keeps);
+    writeSpecialtyStore(next, ids, keeps, seen);
+    storeRef.current = stripped;
+    setStore(stripped);
     notifySpecialtyBoardChanged();
   }, []);
 
@@ -123,24 +124,22 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
     if (!ids.length) return;
     for (const id of ids) deletedIdsRef.current.add(id);
     // Flush tombstones immediately so an in-flight cloud pull cannot miss them.
-    writeSpecialtyStore(storeRef.current, [...deletedIdsRef.current], destKeepsRef.current);
+    writeSpecialtyStore(
+      storeRef.current,
+      [...deletedIdsRef.current],
+      destKeepsRef.current,
+      [...seenRemoteIdsRef.current],
+    );
   }, []);
 
   const rememberDestKeep = useCallback((keep: SpecialtyDestKeep) => {
     destKeepsRef.current = upsertSpecialtyDestKeep(destKeepsRef.current, keep);
-    writeSpecialtyStore(storeRef.current, [...deletedIdsRef.current], destKeepsRef.current);
-  }, []);
-
-  const gcDeleted = useCallback((remote: SpecialtyStore) => {
-    const remoteIds = new Set(
-      Object.values(remote)
-        .flat()
-        .map((s) => s.id),
+    writeSpecialtyStore(
+      storeRef.current,
+      [...deletedIdsRef.current],
+      destKeepsRef.current,
+      [...seenRemoteIdsRef.current],
     );
-    for (const id of [...deletedIdsRef.current]) {
-      if (!remoteIds.has(id)) deletedIdsRef.current.delete(id);
-    }
-    destKeepsRef.current = gcSpecialtyDestKeeps(remote, destKeepsRef.current);
   }, []);
 
   const pullRemote = useCallback(async (): Promise<SpecialtyStore | null> => {
@@ -170,17 +169,6 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const mergeWithTombstones = useCallback(
-    (left: SpecialtyStore, right: SpecialtyStore) =>
-      mergeSpecialtyStores(
-        left,
-        right,
-        deletedIdsRef.current,
-        destKeepsRef.current,
-      ),
-    [],
-  );
-
   const cloudDeleteUnkept = useCallback(
     async (
       date: string,
@@ -207,102 +195,12 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
             !keep.has(row.id),
         )
         .map((row) => row.id);
-      if (extra.length) await cloudDeleteIds(extra);
-    },
-    [cloudDeleteIds, session],
-  );
-
-  const idsToDeleteFromRemote = useCallback((remote: SpecialtyStore): string[] => {
-    const lingering = [...deletedIdsRef.current].filter((id) =>
-      Object.values(remote)
-        .flat()
-        .some((s) => s.id === id),
-    );
-    const extras = destKeepsRef.current.flatMap((keep) =>
-      unkeptSpecialtyIds(
-        remote,
-        keep.date,
-        keep.stationId,
-        keep.destination,
-        keep.keepIds,
-      ),
-    );
-    return [...new Set([...lingering, ...extras])];
-  }, []);
-
-  const uploadMissingLocal = useCallback(
-    async (remote: SpecialtyStore, local: SpecialtyStore) => {
-      const deleted = deletedIdsRef.current;
-      const supabase = getSupabase();
-      if (!supabase || !session || uploadingRef.current) {
-        return mergeWithTombstones(local, remote);
-      }
-      uploadingRef.current = true;
-      try {
-        const remoteIds = new Set(
-          Object.values(remote)
-            .flat()
-            .map((s) => s.id),
-        );
-        const inserts: {
-          id: string;
-          date: string;
-          station_id: string;
-          destination: string;
-          created_at: string;
-          created_by: string | null;
-        }[] = [];
-        const keptLocal = applySpecialtyTombstones(
-          local,
-          deleted,
-          destKeepsRef.current,
-        );
-        for (const [date, slots] of Object.entries(keptLocal)) {
-          for (const slot of slots) {
-            if (remoteIds.has(slot.id) || deleted.has(slot.id)) continue;
-            inserts.push({
-              id: slot.id,
-              date: specialtyDateKey(date),
-              station_id: slot.stationId,
-              destination: slot.destination,
-              created_at: slot.createdAt,
-              created_by: user?.id ?? null,
-            });
-          }
-        }
-
-        if (!inserts.length) {
-          // Nothing to upload — remote is authority (cross-device deletes apply),
-          // but locally consumed/minused dests must not come back from a stale pull.
-          return mergeWithTombstones({}, remote);
-        }
-
-        const { error } = await supabase.from("specialty_opens").upsert(inserts);
-        if (error) {
-          console.warn("specialty upload failed", error.message);
-          // Never persist empty remote alone after a failed upload.
-          return mergeWithTombstones(local, remote);
-        }
-
-        const pulled = await pullRemote();
-        if (!pulled) {
-          return mergeWithTombstones(local, remote);
-        }
-
-        const pulledCount = Object.values(pulled).flat().length;
-        if (pulledCount === 0 && inserts.length > 0) {
-          // Pull came back empty but we still have local slots we tried to upload.
-          return mergeWithTombstones(local, remote);
-        }
-
-        // Successful upload + non-empty pull: remote/pulled is authority,
-        // still filtered by UUID tombstones and dest-keeps.
-        return mergeWithTombstones({}, pulled);
-      } finally {
-        uploadingRef.current = false;
+      if (extra.length) {
+        rememberDeleted(extra);
+        await cloudDeleteIds(extra);
       }
     },
-    [mergeWithTombstones, pullRemote, session, user?.id],
+    [cloudDeleteIds, rememberDeleted, session],
   );
 
   const refreshInner = useCallback(async () => {
@@ -315,26 +213,45 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
     // Pull failure: leave local store untouched.
     if (!remote) return;
     if (epoch !== epochRef.current) return;
-    const toDelete = idsToDeleteFromRemote(remote);
-    if (toDelete.length) await cloudDeleteIds(toDelete);
-    const remoteAfter = toDelete.length ? ((await pullRemote()) ?? remote) : remote;
+
+    const result = reconcileSpecialtyCloud({
+      local: readSpecialtyStore(),
+      remote,
+      deletedIds: deletedIdsRef.current,
+      destKeeps: destKeepsRef.current,
+      seenRemoteIds: seenRemoteIdsRef.current,
+    });
+
+    if (result.toDeleteRemote.length) await cloudDeleteIds(result.toDeleteRemote);
     if (epoch !== epochRef.current) return;
-    const local = readSpecialtyStore();
-    const next = await uploadMissingLocal(remoteAfter, local);
+
+    if (result.toUpload.length && !uploadingRef.current) {
+      const supabase = getSupabase();
+      if (supabase && session) {
+        uploadingRef.current = true;
+        try {
+          const inserts = result.toUpload.map(({ date, slot }) => ({
+            id: slot.id,
+            date,
+            station_id: slot.stationId,
+            destination: slot.destination,
+            created_at: slot.createdAt,
+            created_by: user?.id ?? null,
+          }));
+          const { error } = await supabase.from("specialty_opens").upsert(inserts);
+          if (error) console.warn("specialty upload failed", error.message);
+        } finally {
+          uploadingRef.current = false;
+        }
+      }
+    }
     if (epoch !== epochRef.current) return;
-    // Only GC after this pull is still current, so a stale in-flight merge
-    // cannot drop tombstones then persist the deleted Liberty CID row.
-    gcDeleted(remoteAfter);
-    persistLocal(next);
-  }, [
-    cloud,
-    cloudDeleteIds,
-    gcDeleted,
-    idsToDeleteFromRemote,
-    persistLocal,
-    pullRemote,
-    uploadMissingLocal,
-  ]);
+
+    deletedIdsRef.current = new Set(result.deletedIds);
+    destKeepsRef.current = result.destKeeps;
+    seenRemoteIdsRef.current = new Set(result.seenRemoteIds);
+    persistLocal(result.next);
+  }, [cloud, cloudDeleteIds, persistLocal, pullRemote, session, user?.id]);
 
   const refresh = useCallback(() => {
     const run = refreshTailRef.current.then(refreshInner, refreshInner);
@@ -477,52 +394,38 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
       const chips = uniqueSpecialtyChipLabels(
         typeof destination === "string" ? [destination] : destination,
       );
-      let remaining = Math.max(0, Math.floor(count));
-      if (!remaining || !chips.length) return 0;
+      const tracked = consumeSpecialtyOpensTracked(
+        storeRef.current,
+        date,
+        stationId,
+        chips,
+        count,
+        destKeepsRef.current,
+      );
+      if (tracked.burned === 0) return 0;
 
-      const allVictims: string[] = [];
-      const burnedChips: string[] = [];
-      let next = storeRef.current;
-      let totalBurn = 0;
-
-      for (const chip of chips) {
-        if (remaining <= 0) break;
-        const opens = countSpecialtyOpens(next, date, stationId, chip);
-        const burn = Math.min(opens, remaining);
-        if (burn === 0) continue;
-        const victims = matchingSpecialtySlotIds(
-          next,
-          date,
-          stationId,
-          chip,
-          burn,
-        );
-        next = consumeSpecialtyOpens(next, date, stationId, chip, burn);
-        allVictims.push(...victims);
-        burnedChips.push(chip);
-        remaining -= burn;
-        totalBurn += burn;
-      }
-
-      if (totalBurn === 0) return 0;
       bumpEpoch();
-      rememberDeleted(allVictims);
-      for (const chip of burnedChips) {
-        rememberDestKeep(destKeepAfterChange(next, date, stationId, chip));
-      }
-      persistLocal(next);
-      if (cloud && allVictims.length) {
-        await cloudDeleteIds(allVictims);
-        for (const chip of burnedChips) {
+      rememberDeleted(tracked.burnedIds);
+      destKeepsRef.current = tracked.destKeeps;
+      writeSpecialtyStore(
+        storeRef.current,
+        [...deletedIdsRef.current],
+        destKeepsRef.current,
+        [...seenRemoteIdsRef.current],
+      );
+      persistLocal(tracked.store);
+      if (cloud && tracked.burnedIds.length) {
+        await cloudDeleteIds(tracked.burnedIds);
+        for (const chip of chips) {
           await cloudDeleteUnkept(
             date,
             stationId,
             chip,
-            remainingSpecialtySlotIds(next, date, stationId, chip),
+            remainingSpecialtySlotIds(tracked.store, date, stationId, chip),
           );
         }
       }
-      return totalBurn;
+      return tracked.burned;
     },
     [
       bumpEpoch,
@@ -531,7 +434,6 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
       cloudDeleteUnkept,
       persistLocal,
       rememberDeleted,
-      rememberDestKeep,
     ],
   );
 
