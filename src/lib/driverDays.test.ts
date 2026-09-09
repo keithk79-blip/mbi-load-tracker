@@ -145,6 +145,26 @@ describe("applyLiveSheet lock", () => {
     });
   });
 
+  it("subtracts Late/Early manuals from the Saturday yard sum", () => {
+    const next = applyLiveSheet(
+      {},
+      {
+        base: 143,
+        saturdayBase: 33,
+        offs,
+        manualOffs: [{ name: "Extra", kind: "late-early" }],
+      },
+      "2026-09-05",
+      "t1",
+    );
+    expect(next["2026-09-05"]).toMatchObject({
+      base: 33,
+      offs: 1,
+      available: 32,
+      source: "saturday",
+    });
+  });
+
   it("subtracts manual offs from the Saturday yard sum (sheet Saturday offs still ignored)", () => {
     const next = applyLiveSheet(
       {},

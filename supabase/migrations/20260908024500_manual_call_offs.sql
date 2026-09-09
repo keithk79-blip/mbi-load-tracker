@@ -5,7 +5,7 @@ create table if not exists public.manual_call_offs (
   date date not null,
   name_key text not null,
   name text not null,
-  kind text not null check (kind in ('call-off', 'p-day', 'okd-off', 'ncns')),
+  kind text not null check (kind in ('call-off', 'p-day', 'okd-off', 'ncns', 'late-early')),
   created_at timestamptz not null default now(),
   primary key (date, name_key)
 );

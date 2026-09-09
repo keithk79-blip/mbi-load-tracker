@@ -13,14 +13,29 @@ export type CallOffRow = {
 };
 
 /** Dispatcher-facing type for a full-day off pill. Color only — no type text on the chip. */
-export type CallOffKind = "call-off" | "p-day" | "okd-off" | "ncns";
+export type CallOffKind =
+  | "call-off"
+  | "p-day"
+  | "okd-off"
+  | "ncns"
+  | "late-early";
 
 export const CALL_OFF_KIND_OPTIONS = [
   { kind: "call-off", label: "Call Off" },
   { kind: "p-day", label: "P-Day" },
   { kind: "okd-off", label: "Ok'd Off" },
   { kind: "ncns", label: "NCNS" },
+  { kind: "late-early", label: "Late/Early" },
 ] as const;
+
+/** Pill tone for each kind. CSS `.calloff-chip-*` / `.calloff-kind-*` follow these. */
+export const CALL_OFF_KIND_TONES = {
+  "call-off": "blue",
+  "p-day": "green",
+  "okd-off": "gold",
+  "ncns": "red",
+  "late-early": "orange",
+} as const satisfies Record<CallOffKind, string>;
 
 export type ManualCallOff = {
   name: string;
@@ -49,6 +64,8 @@ export function reasonForKind(kind: CallOffKind): string {
       return "Ok'd Off";
     case "ncns":
       return "NCNS";
+    case "late-early":
+      return "Late/Early";
     default:
       return "Call Off";
   }
@@ -62,6 +79,7 @@ export function callOffKindFromReason(reason: string): CallOffKind {
   }
   if (/\bp[\s-]?days?\b/.test(n)) return "p-day";
   if (/\bok'?d (day )?off\b/.test(n)) return "okd-off";
+  if (/\blate[\s/-]*early\b/.test(n)) return "late-early";
   return "call-off";
 }
 
@@ -146,6 +164,7 @@ const FULL_DAY_OFF_RE = [
   /\bretir(?:e|ed|ing)\b/,
   /\bncns\b/,
   /\bno[\s-]?call[\s-]?no[\s-]?show\b/,
+  /\blate[\s/-]*early\b/,
 ];
 
 /**

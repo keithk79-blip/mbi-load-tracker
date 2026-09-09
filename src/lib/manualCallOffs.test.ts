@@ -23,6 +23,20 @@ describe("addManualOff / removeManualOff", () => {
     expect(second.store).toEqual(first.store);
   });
 
+  it("adds Late/Early the same way as other manual kinds", () => {
+    const result = addManualOff(
+      {},
+      "2026-09-09",
+      "Glen Barker",
+      "late-early",
+      new Set(),
+    );
+    expect(result.added).toEqual({ name: "Glen Barker", kind: "late-early" });
+    expect(result.store["2026-09-09"]).toEqual([
+      { name: "Glen Barker", kind: "late-early" },
+    ]);
+  });
+
   it("rejects a name already occupied by the sheet list", () => {
     const result = addManualOff(
       {},
