@@ -7,6 +7,7 @@ import {
   addSpecialtySlot,
   applySpecialtyTombstones,
   consumeSpecialtyOpens,
+  consumeSpecialtyOpensAny,
   countSpecialtyOpens,
   destKeepAfterChange,
   isSpecialtyStationId,
@@ -69,7 +70,13 @@ function logLoadConsume(
     commodity ?? boardCommodityFor(resolved, destination),
   );
   if (!match) return store;
-  return consumeSpecialtyOpens(store, date, match.specialtyId, match.chip, qty);
+  return consumeSpecialtyOpensAny(
+    store,
+    date,
+    match.specialtyId,
+    match.chips,
+    qty,
+  );
 }
 
 describe("specialty walking-floor catalog", () => {
@@ -575,7 +582,7 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
     ).toBe("ford");
     expect(
       resolveSpecialtyBoardMatch("ford", "Ford", "RSI", "Trash (MSW)"),
-    ).toEqual({ specialtyId: "ford", chip: "Trash" });
+    ).toEqual({ specialtyId: "ford", chip: "Trash", chips: ["Trash", "RSI"] });
     expect(
       missingSpecialtyOpensWarn({}, date, "ford", "Ford", "RSI", "Trash (MSW)"),
     ).toEqual({ specialtyId: "ford", opens: 0 });
@@ -593,10 +600,18 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
   it("warns for Wheeling Recycle on the Recycle chip regardless of dest", () => {
     expect(
       resolveSpecialtyBoardMatch("wheeling", "Wheeling", "Groot", "Recycle"),
-    ).toEqual({ specialtyId: "wheeling", chip: "Recycle" });
+    ).toEqual({
+      specialtyId: "wheeling",
+      chip: "Recycle",
+      chips: ["Recycle", "Groot"],
+    });
     expect(
       resolveSpecialtyBoardMatch("wheeling", "Wheeling", "GraysLake", "Recycle"),
-    ).toEqual({ specialtyId: "wheeling", chip: "Recycle" });
+    ).toEqual({
+      specialtyId: "wheeling",
+      chip: "Recycle",
+      chips: ["Recycle", "GraysLake"],
+    });
     expect(
       resolveSpecialtyBoardLane("wheeling", "Wheeling", "Hodgkins", "Recycle"),
     ).toBe("wheeling");
@@ -657,6 +672,69 @@ describe("specialty consume on logged loads", () => {
     expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(0);
   });
 
+  it("consumes a legacy Wheeling Groot dest open when Recycle → Groot is logged", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "wheeling", "Groot");
+    store = addSpecialtySlot(store, date, "wheeling", "Hodgkins");
+    expect(
+      missingSpecialtyOpensWarn(
+        store,
+        date,
+        "wheeling",
+        "Wheeling",
+        "Groot",
+        "Recycle",
+      ),
+    ).toBeNull();
+
+    store = logLoadConsume(store, date, "wheeling", "Wheeling", "Groot", 1, "Recycle");
+    expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "wheeling", "Hodgkins")).toBe(1);
+    expect(countSpecialtyOpens(store, date, "wheeling", "Recycle")).toBe(0);
+  });
+
+  it("consumes a legacy Wheeling Hodgkins dest open when Recycle → Hodgkins is logged", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "wheeling", "Groot");
+    store = addSpecialtySlot(store, date, "wheeling", "Hodgkins");
+    store = logLoadConsume(
+      store,
+      date,
+      "wheeling",
+      "Wheeling",
+      "Hodgkins",
+      1,
+      "Recycle",
+    );
+    expect(countSpecialtyOpens(store, date, "wheeling", "Hodgkins")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(1);
+  });
+
+  it("consumes a legacy Roscoe Hodgkins dest open when Recycle → Hodgkins is logged", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "roscoe", "Hodgkins");
+    store = logLoadConsume(store, date, "roscoe", "Roscoe", "Hodgkins", 1, "Recycle");
+    expect(countSpecialtyOpens(store, date, "roscoe", "Hodgkins")).toBe(0);
+  });
+
+  it("prefers a Recycle commodity open over a Groot dest open for qty=1", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "wheeling", "Recycle");
+    store = addSpecialtySlot(store, date, "wheeling", "Groot");
+    store = logLoadConsume(store, date, "wheeling", "Wheeling", "Groot", 1, "Recycle");
+    expect(countSpecialtyOpens(store, date, "wheeling", "Recycle")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(1);
+  });
+
+  it("qty=2 Recycle → Groot burns Recycle then Groot without double-burning qty=1", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "wheeling", "Recycle");
+    store = addSpecialtySlot(store, date, "wheeling", "Groot");
+    store = logLoadConsume(store, date, "wheeling", "Wheeling", "Groot", 2, "Recycle");
+    expect(countSpecialtyOpens(store, date, "wheeling", "Recycle")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "wheeling", "Groot")).toBe(0);
+  });
+
   it("does not consume a Wheeling Recycle open from a Yard Waste log to the same dest", () => {
     const date = "2026-09-08";
     let store = addSpecialtySlot({}, date, "wheeling", "Recycle");
@@ -714,6 +792,99 @@ describe("specialty consume on logged loads", () => {
     expect(countSpecialtyOpens(store, date, "melrose", "Hodgkins")).toBe(0);
     expect(countSpecialtyOpens(store, date, "melrose", "RSI")).toBe(1);
   });
+
+  it("consumes Batavia Hodgkins qty=2 and leaves RSI; trash does not wipe the card", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "batavia", "Hodgkins");
+    store = addSpecialtySlot(store, date, "batavia", "Hodgkins");
+    store = addSpecialtySlot(store, date, "batavia", "RSI");
+    store = logLoadConsume(
+      store,
+      date,
+      "batavia",
+      "Batavia",
+      "Hodgkins",
+      2,
+      "Recycle",
+    );
+    expect(countSpecialtyOpens(store, date, "batavia", "Hodgkins")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "batavia", "RSI")).toBe(1);
+    store = logLoadConsume(
+      store,
+      date,
+      "batavia",
+      "Batavia",
+      "RSI",
+      1,
+      "Trash (MSW)",
+    );
+    expect(countSpecialtyOpens(store, date, "batavia", "RSI")).toBe(1);
+    store = logLoadConsume(store, date, "batavia", "Batavia", "RSI", 1, "Recycle");
+    expect(countSpecialtyOpens(store, date, "batavia", "RSI")).toBe(0);
+  });
+
+  it("consumes Liberty CID x2 then Kankakee without touching the other dest", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "liberty-tank", "CID");
+    store = addSpecialtySlot(store, date, "liberty-tank", "CID");
+    store = addSpecialtySlot(store, date, "liberty-tank", "Kankakee");
+    store = logLoadConsume(
+      store,
+      date,
+      "liberty",
+      "Liberty",
+      "CID",
+      2,
+      "Leachate (tanker)",
+    );
+    expect(countSpecialtyOpens(store, date, "liberty-tank", "CID")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "liberty-tank", "Kankakee")).toBe(1);
+    store = logLoadConsume(
+      store,
+      date,
+      "liberty",
+      "Liberty",
+      "Kankakee",
+      1,
+      "Leachate (tanker)",
+    );
+    expect(countSpecialtyOpens(store, date, "liberty-tank", "Kankakee")).toBe(0);
+  });
+
+  it.each(
+    SPECIALTY_STATIONS.filter((s) => s.id !== "herthside").flatMap((station) =>
+      specialtyDestinationsFor(station.id).map((chip) => ({
+        id: station.id,
+        name: station.name,
+        chip,
+      })),
+    ),
+  )(
+    "consumes $id chip $chip when the matching load is logged",
+    ({ id, name, chip }) => {
+      const date = "2026-09-08";
+      let store = addSpecialtySlot({}, date, id, chip);
+      const log = catalogLogPickup(id, name);
+      const commodity =
+        specialtyChipMode(id) === "commodity"
+          ? chip === "Trash"
+            ? "Trash (MSW)"
+            : chip
+          : boardCommodityFor(id, chip);
+      const destination =
+        specialtyChipMode(id) === "commodity" ? "Groot" : chip;
+      store = logLoadConsume(
+        store,
+        date,
+        log.stationId,
+        log.pickup,
+        destination,
+        1,
+        commodity,
+      );
+      expect(countSpecialtyOpens(store, date, id, chip)).toBe(0);
+    },
+  );
 
   it("matches Wheeling opens stored under the display name or a timestamped date key", () => {
     const date = "2026-09-08";

@@ -95,7 +95,7 @@ export function EditLoadScreen({
       load.commodity.trim().toLowerCase() !== form.commodity.trim().toLowerCase();
 
     if (lane && routeChanged) {
-      void consumeOpens(date, lane.specialtyId, lane.chip, 1);
+      void consumeOpens(date, lane.specialtyId, lane.chips, 1);
     }
 
     setDuplicate(null);
@@ -141,7 +141,7 @@ export function EditLoadScreen({
       load.commodity.trim().toLowerCase() !== form.commodity.trim().toLowerCase();
 
     if (!forceSpecialty && lane && routeChanged) {
-      const opens = opensFor(date, lane.specialtyId, lane.chip);
+      const opens = opensFor(date, lane.specialtyId, lane.chips);
       if (opens < 1) {
         setDuplicate(null);
         setSpecialtyWarn({

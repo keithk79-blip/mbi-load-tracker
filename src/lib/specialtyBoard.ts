@@ -537,6 +537,44 @@ export function consumeSpecialtyOpens(
   return next;
 }
 
+/** Opens whose dest/commodity label matches any of `chips` (deduped). */
+export function countSpecialtyOpensAny(
+  store: SpecialtyStore,
+  date: string,
+  stationId: string,
+  chips: readonly string[],
+): number {
+  return uniqueSpecialtyChipLabels(chips).reduce(
+    (n, chip) => n + countSpecialtyOpens(store, date, stationId, chip),
+    0,
+  );
+}
+
+/**
+ * Burn up to `count` opens that match any chip, in chip order.
+ * Qty is a shared budget — one log does not burn both a Recycle open and a
+ * Groot open unless qty is at least 2.
+ */
+export function consumeSpecialtyOpensAny(
+  store: SpecialtyStore,
+  date: string,
+  stationId: string,
+  chips: readonly string[],
+  count: number,
+): SpecialtyStore {
+  let next = store;
+  let remaining = Math.max(0, Math.floor(count));
+  for (const chip of uniqueSpecialtyChipLabels(chips)) {
+    if (remaining <= 0) break;
+    const have = countSpecialtyOpens(next, date, stationId, chip);
+    const burn = Math.min(have, remaining);
+    if (burn <= 0) continue;
+    next = consumeSpecialtyOpens(next, date, stationId, chip, burn);
+    remaining -= burn;
+  }
+  return next;
+}
+
 export function notifySpecialtyBoardChanged(): void {
   window.dispatchEvent(new Event("specialty-board-changed"));
 }
@@ -666,15 +704,52 @@ export function specialtyLaneChipLabel(
   return chips.find((chip) => sameSpecialtyDest(chip, needle)) ?? null;
 }
 
+/** Deduped chip labels in consume order (first occurrence wins). */
+export function uniqueSpecialtyChipLabels(chips: readonly string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const chip of chips) {
+    const key = specialtyDestKey(chip);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(chip.trim());
+  }
+  return out;
+}
+
+/**
+ * Ordered consume candidates for this load on a specialty card.
+ * Commodity-mode: the + commodity chip first, then the load destination so
+ * leftover dest-labeled opens (Wheeling Groot / Hodgkins) still burn.
+ * Destination-mode: only the matching dest chip from the card's + list.
+ */
+export function specialtyLaneChips(
+  specialtyId: string,
+  destination: string,
+  commodity: string,
+): string[] {
+  const chips: string[] = [];
+  const allowed = specialtyLaneChipLabel(specialtyId, destination, commodity);
+  if (allowed) chips.push(allowed);
+  if (specialtyChipMode(specialtyId) === "commodity" && destination.trim()) {
+    chips.push(destination.trim());
+  }
+  return uniqueSpecialtyChipLabels(chips);
+}
+
 export type SpecialtyBoardLane = {
   specialtyId: string;
+  /** Preferred chip (commodity on commodity-mode, dest on dest-mode). */
   chip: string;
+  /** Consume-order chips: preferred first, then dest on commodity cards. */
+  chips: string[];
 };
 
 /**
- * Specialty Loads lane: board station + chip for that card.
+ * Specialty Loads lane: board station + chip(s) for that card.
  * Walking-floor commodity cards match the load commodity; Liberty / dest cards
  * match destination. Ordinary trash is a board lane only on Ford.
+ * Commodity-mode also lists the load destination so legacy dest opens burn.
  */
 export function resolveSpecialtyBoardMatch(
   stationId: string | undefined,
@@ -684,12 +759,12 @@ export function resolveSpecialtyBoardMatch(
 ): SpecialtyBoardLane | null {
   const specialtyId = resolveSpecialtyStationId(stationId, pickup);
   if (!specialtyId) return null;
-  const chip = specialtyLaneChipLabel(specialtyId, destination, commodity);
-  if (!chip) return null;
+  const chips = specialtyLaneChips(specialtyId, destination, commodity);
+  if (!chips.length) return null;
   if (!isSpecialtyBoardCommodity(specialtyId, commodity, destination, pickup)) {
     return null;
   }
-  return { specialtyId, chip };
+  return { specialtyId, chip: chips[0], chips };
 }
 
 export function resolveSpecialtyBoardLane(
@@ -720,7 +795,7 @@ export function missingSpecialtyOpensWarn(
   );
   if (!lane) return null;
   const need = Math.max(0, Math.floor(qty));
-  const opens = countSpecialtyOpens(store, date, lane.specialtyId, lane.chip);
+  const opens = countSpecialtyOpensAny(store, date, lane.specialtyId, lane.chips);
   if (opens >= need) return null;
   return { specialtyId: lane.specialtyId, opens };
 }

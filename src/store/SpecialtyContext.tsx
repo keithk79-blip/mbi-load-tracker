@@ -15,6 +15,7 @@ import {
   boardForDate,
   consumeSpecialtyOpens,
   countSpecialtyOpens,
+  countSpecialtyOpensAny,
   destKeepAfterChange,
   gcSpecialtyDestKeeps,
   matchingSpecialtySlotIds,
@@ -29,6 +30,7 @@ import {
   sameSpecialtyDest,
   sameSpecialtyStation,
   specialtyDateKey,
+  uniqueSpecialtyChipLabels,
   unkeptSpecialtyIds,
   upsertSpecialtyDestKeep,
   writeSpecialtyStore,
@@ -58,10 +60,14 @@ type SpecialtyContextValue = {
   consumeOpens: (
     date: string,
     stationId: string,
-    destination: string,
+    destination: string | readonly string[],
     count: number,
   ) => Promise<number>;
-  opensFor: (date: string, stationId: string, destination: string) => number;
+  opensFor: (
+    date: string,
+    stationId: string,
+    destination: string | readonly string[],
+  ) => number;
   refresh: () => Promise<void>;
   cloud: boolean;
 };
@@ -465,45 +471,58 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
     async (
       date: string,
       stationId: string,
-      destination: string,
+      destination: string | readonly string[],
       count: number,
     ) => {
-      const opens = countSpecialtyOpens(
-        storeRef.current,
-        date,
-        stationId,
-        destination,
+      const chips = uniqueSpecialtyChipLabels(
+        typeof destination === "string" ? [destination] : destination,
       );
-      const burn = Math.min(opens, Math.max(0, Math.floor(count)));
-      if (burn === 0) return 0;
-      bumpEpoch();
-      const victims = matchingSpecialtySlotIds(
-        storeRef.current,
-        date,
-        stationId,
-        destination,
-        burn,
-      );
-      const next = consumeSpecialtyOpens(
-        storeRef.current,
-        date,
-        stationId,
-        destination,
-        burn,
-      );
-      rememberDeleted(victims);
-      rememberDestKeep(destKeepAfterChange(next, date, stationId, destination));
-      persistLocal(next);
-      if (cloud && victims.length) {
-        await cloudDeleteIds(victims);
-        await cloudDeleteUnkept(
+      let remaining = Math.max(0, Math.floor(count));
+      if (!remaining || !chips.length) return 0;
+
+      const allVictims: string[] = [];
+      const burnedChips: string[] = [];
+      let next = storeRef.current;
+      let totalBurn = 0;
+
+      for (const chip of chips) {
+        if (remaining <= 0) break;
+        const opens = countSpecialtyOpens(next, date, stationId, chip);
+        const burn = Math.min(opens, remaining);
+        if (burn === 0) continue;
+        const victims = matchingSpecialtySlotIds(
+          next,
           date,
           stationId,
-          destination,
-          remainingSpecialtySlotIds(next, date, stationId, destination),
+          chip,
+          burn,
         );
+        next = consumeSpecialtyOpens(next, date, stationId, chip, burn);
+        allVictims.push(...victims);
+        burnedChips.push(chip);
+        remaining -= burn;
+        totalBurn += burn;
       }
-      return burn;
+
+      if (totalBurn === 0) return 0;
+      bumpEpoch();
+      rememberDeleted(allVictims);
+      for (const chip of burnedChips) {
+        rememberDestKeep(destKeepAfterChange(next, date, stationId, chip));
+      }
+      persistLocal(next);
+      if (cloud && allVictims.length) {
+        await cloudDeleteIds(allVictims);
+        for (const chip of burnedChips) {
+          await cloudDeleteUnkept(
+            date,
+            stationId,
+            chip,
+            remainingSpecialtySlotIds(next, date, stationId, chip),
+          );
+        }
+      }
+      return totalBurn;
     },
     [
       bumpEpoch,
@@ -524,7 +543,12 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
       removeOpen,
       consumeOpens,
       opensFor: (date, stationId, destination) =>
-        countSpecialtyOpens(store, date, stationId, destination),
+        countSpecialtyOpensAny(
+          store,
+          date,
+          stationId,
+          typeof destination === "string" ? [destination] : destination,
+        ),
       refresh,
       cloud,
     }),
