@@ -189,7 +189,7 @@ describe("endOfDaySummary", () => {
     expect(loadMatchesCallYard(load({ pickup: "Melrose" }), heights)).toBe(false);
   });
 
-  it("groups overall loads, SUBS, pickups, and Close/left per call-grid station", () => {
+  it("groups overall loads, SUBS, pickups, and Closed per call-grid station", () => {
     const loads = [
       load({ id: "1", truck: "418", stationId: "melrose", pickup: "Melrose" }),
       load({ id: "2", truck: "VZ", stationId: "melrose", pickup: "Melrose" }),

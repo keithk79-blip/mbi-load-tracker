@@ -234,7 +234,7 @@ export function endOfDayCards(summary: EndOfDaySummary): EndOfDayCard[] {
   ];
 }
 
-/** Overall loads, trash, leachate, walking-floor, SUBS, per-station pickups, and Close/left. */
+/** Overall loads, trash, leachate, walking-floor, SUBS, per-station pickups, and Closed. */
 export function endOfDaySummary(
   loads: Load[],
   board: StationDayBoard,
