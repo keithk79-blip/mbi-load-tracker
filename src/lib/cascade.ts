@@ -3,6 +3,7 @@ import {
   commoditiesFor,
   destinationsFor,
   getStation,
+  sameDestination,
 } from "../data/stations";
 
 export type CascadeResult = {
@@ -30,7 +31,9 @@ export function applyPickupCascade(
   const nextCommodity = !commodity || commodities.includes(commodity) ? commodity : "";
   const destinations = destinationsFor(stationId, nextCommodity);
   const commodityValid = !commodity || commodities.includes(commodity);
-  const destinationValid = !destination || destinations.includes(destination);
+  const destinationValid =
+    !destination ||
+    destinations.some((item) => sameDestination(item, destination));
 
   return {
     commodity: nextCommodity,

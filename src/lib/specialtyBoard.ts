@@ -610,6 +610,7 @@ const SPECIALTY_DEST_ALIASES: Record<string, string> = {
   "loop paper": "loop",
   resource: "resource mgt",
   "resource management": "resource mgt",
+  "christiansen farms": "christianson farms",
   prairiehill: "prairie hill",
   "grays lake": "grayslake",
   "trash (msw)": "trash",

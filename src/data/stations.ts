@@ -15,18 +15,31 @@ export const CUSTOM = {
   exampleDestinations: ["CID", "Kankakee", "Reworld", "Other..."],
 } as const;
 
+/** Misspellings / old labels that should still match the canonical dest chip. */
+export const DESTINATION_ALIASES: Record<string, string> = {
+  "christianson farms": "Christiansen Farms",
+  resource: "Resource MGT",
+};
+
 export const STATIONS: Station[] = [
   {
     id: "chicago-heights",
     name: "Chicago Heights",
     commodities: ["Trash (MSW)"],
     destinations: ["Newton County", "Pontiac"],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["Newton County", "Pontiac"],
+    },
   },
   {
     id: "calumet",
     name: "Calumet",
     commodities: ["Trash (MSW)", "Yard Waste"],
     destinations: ["Newton County", "Pontiac", "Organix", "Willow Ranch"],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["Newton County", "Pontiac"],
+      "Yard Waste": ["Organix", "Willow Ranch"],
+    },
   },
   {
     id: "apollo",
@@ -35,29 +48,46 @@ export const STATIONS: Station[] = [
     destinations: [
       "Newton County",
       "Pontiac",
-      "Christianson Farms",
-      "Hodgkins",
+      "Christiansen Farms",
       "Homewood",
       "Organix",
     ],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["Pontiac", "Newton County"],
+      Recycle: ["Homewood"],
+      "Yard Waste": ["Christiansen Farms", "Organix"],
+    },
   },
   {
     id: "medill",
     name: "Medill",
-    commodities: ["Trash (MSW)", "Recycle", "Yard Waste"],
+    commodities: ["Trash (MSW)", "Yard Waste"],
     destinations: ["Newton County", "Organix", "Pontiac", "Willow Ranch"],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["Pontiac", "Newton County"],
+      "Yard Waste": ["Organix", "Willow Ranch"],
+    },
   },
   {
     id: "lrs",
     name: "LRS",
     commodities: ["Trash (MSW)", "C&D", "Recycle"],
     destinations: ["Pontiac", "Ecology", "Dick's San"],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["Pontiac"],
+      Recycle: ["Dick's San"],
+      "C&D": ["Ecology", "Pontiac"],
+    },
   },
   {
     id: "schererville",
     name: "Schererville",
     commodities: ["Trash (MSW)", "Recycle"],
     destinations: ["Newton County", "Homewood", "County Line"],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["Newton County", "County Line"],
+      Recycle: ["Homewood"],
+    },
   },
   {
     id: "arc",
@@ -69,9 +99,13 @@ export const STATIONS: Station[] = [
       "Hodgkins",
       "Thelens",
       "Pontiac",
-      "Resource",
       "Resource MGT",
     ],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["Winnebago", "Pontiac"],
+      "Yard Waste": ["Organix", "Thelens"],
+      Recycle: ["Hodgkins", "Resource MGT"],
+    },
   },
   {
     id: "northlake",
@@ -86,11 +120,16 @@ export const STATIONS: Station[] = [
       "Dixon",
       "Pontiac",
     ],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["Winnebago", "Newton County", "Dixon", "Pontiac"],
+      "Yard Waste": ["Thelens", "Organix"],
+      Recycle: ["Hodgkins"],
+    },
   },
   {
     id: "melrose",
     name: "Melrose",
-    commodities: ["Wood", "Recycle", "Trash (MSW)", "Cardboard"],
+    commodities: ["Wood", "Recycle", "Trash (MSW)", "Cardboard", "Yard Waste"],
     destinations: [
       "Rockford",
       "DeKalb",
@@ -104,6 +143,20 @@ export const STATIONS: Station[] = [
       "Zion",
       "Homewood",
     ],
+    destinationsByCommodity: {
+      "Trash (MSW)": [
+        "DeKalb",
+        "Liberty",
+        "Prairie Hill",
+        "Covanta",
+        "Rockford",
+        "Zion",
+      ],
+      Recycle: ["Hodgkins", "Homewood"],
+      "Yard Waste": ["Willow Ranch"],
+      Cardboard: ["RSI"],
+      Wood: [],
+    },
   },
   {
     id: "liberty",
@@ -154,6 +207,11 @@ export const STATIONS: Station[] = [
       "Rockford",
       "Resource MGT",
     ],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["DeKalb", "Prairie Hill", "Rockford"],
+      Recycle: ["Hodgkins", "Lake Co MRF"],
+      Cardboard: ["RSI", "Resource MGT"],
+    },
   },
   {
     id: "elgin",
@@ -169,12 +227,21 @@ export const STATIONS: Station[] = [
       "Lake Co MRF",
       "DuPage",
     ],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["DeKalb", "Covanta", "Rockford", "Prairie Hill"],
+      Recycle: ["Hodgkins", "RSI", "Lake Co MRF"],
+      Wood: ["DeKalb"],
+      Cardboard: ["Lake Co MRF", "DuPage"],
+    },
   },
   {
     id: "evanston",
     name: "Evanston",
     commodities: ["Trash (MSW)"],
     destinations: ["Rockford", "DeKalb", "Zion"],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["Rockford", "DeKalb", "Zion"],
+    },
   },
   {
     id: "hooker-street",
@@ -189,6 +256,10 @@ export const STATIONS: Station[] = [
       "Prairie View",
       "Winnebago",
     ],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["DeKalb", "Liberty", "Rockford", "Winnebago", "Prairie View"],
+      Recycle: ["RSI", "Hodgkins"],
+    },
   },
   {
     id: "wheeling",
@@ -207,19 +278,9 @@ export const STATIONS: Station[] = [
       "Zion",
     ],
     destinationsByCommodity: {
-      Recycle: [
-        "Groot",
-        "GraysLake",
-        "DeKalb",
-        "Rockford",
-        "Hodgkins",
-        "Lake Co MRF",
-        "Liberty",
-        "Willow Ranch",
-        "Prairie Hill",
-        "Thelens",
-        "Zion",
-      ],
+      Recycle: ["Groot", "Hodgkins", "Lake Co MRF"],
+      "Trash (MSW)": ["DeKalb", "Rockford", "Liberty", "Zion"],
+      "Yard Waste": ["Thelens", "Willow Ranch"],
     },
   },
   {
@@ -227,6 +288,10 @@ export const STATIONS: Station[] = [
     name: "Tri-State",
     commodities: ["Trash (MSW)", "Tires"],
     destinations: ["Liberty", "Prairie View"],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["Liberty", "Prairie View"],
+      Tires: ["Liberty", "Prairie View"],
+    },
   },
   {
     id: "citiwaste",
@@ -240,12 +305,21 @@ export const STATIONS: Station[] = [
       "Pontiac",
       "Loop",
     ],
+    destinationsByCommodity: {
+      "C&D": ["Pontiac", "Loop"],
+      "Yard Waste": ["Joyce Farms"],
+      Recycle: ["Hodgkins", "WCN MRF", "Homewood"],
+    },
   },
   {
     id: "roscoe",
     name: "Roscoe",
     commodities: ["Trash (MSW)", "Recycle"],
     destinations: ["Rockford", "Lake Co MRF", "Hodgkins"],
+    destinationsByCommodity: {
+      "Trash (MSW)": ["Rockford"],
+      Recycle: ["Lake Co MRF", "Hodgkins"],
+    },
   },
   {
     id: "rockdale",
@@ -264,7 +338,7 @@ export const STATIONS: Station[] = [
     id: "mccook",
     name: "McCook",
     commodities: ["Trash (MSW)", "Recycle", "Yard Waste", "Cardboard"],
-    destinations: ["Christianson Farms"],
+    destinations: ["Christiansen Farms"],
   },
   {
     id: "dekalb-reload",
@@ -349,6 +423,17 @@ export function commoditiesFor(stationId: string | undefined): string[] {
   return getStation(stationId)?.commodities ?? [];
 }
 
+export function canonicalDestination(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+  const key = trimmed.toLowerCase().replace(/\s+/g, " ");
+  return DESTINATION_ALIASES[key] ?? trimmed;
+}
+
+export function sameDestination(a: string, b: string): boolean {
+  return canonicalDestination(a) === canonicalDestination(b);
+}
+
 export function destinationsFor(
   stationId: string | undefined,
   commodity?: string,
@@ -357,8 +442,8 @@ export function destinationsFor(
   const station = getStation(stationId);
   if (!station) return [];
   const key = commodity?.trim();
-  if (key && station.destinationsByCommodity?.[key]) {
-    return station.destinationsByCommodity[key];
+  if (key && station.destinationsByCommodity) {
+    return station.destinationsByCommodity[key] ?? [];
   }
   return station.destinations;
 }
@@ -369,10 +454,3 @@ export function resolveStationId(pickup: string, stationId?: string): string {
   const match = STATION_BY_NAME[pickup.trim().toLowerCase()];
   return match?.id ?? CUSTOM_ID;
 }
-
-
-
-
-
-
-
