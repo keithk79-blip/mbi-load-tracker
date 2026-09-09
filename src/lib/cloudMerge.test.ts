@@ -3,11 +3,16 @@ import {
   collectDeviceLoads,
   deviceLoadsForPush,
   mergeCloudLoads,
+  reconcilePersistedSnapshot,
+  shouldApplyRealtimeDelete,
+  shouldApplyRealtimeUpsert,
+  snapshotDropsDeviceLoads,
   snapshotForDeviceBackup,
   snapshotLosesDeviceDates,
+  snapshotLosesDeviceLoads,
 } from "./cloudMerge";
 import type { QueueOp } from "./queue";
-import type { Persisted } from "./storage";
+import { allLoads, type Persisted } from "./storage";
 import type { Load } from "../types";
 
 function load(
@@ -331,6 +336,278 @@ describe("snapshotLosesDeviceDates", () => {
     const gone = [load("A", "2026-09-08")];
     expect(
       snapshotLosesDeviceDates([], store([], ["A"]), store(gone, ["A"]), []),
+    ).toBe(false);
+  });
+
+  it("does not flag a busy day that only lost some rows (324 → 306)", () => {
+    const today = busyToday(324);
+    const remote = today.slice(0, 306);
+    expect(snapshotLosesDeviceDates(remote, store(today), store(today), [])).toBe(
+      false,
+    );
+    expect(snapshotLosesDeviceLoads(remote, store(today), store(today), [])).toBe(
+      true,
+    );
+    expect(snapshotDropsDeviceLoads(remote, store(today), store(today), [])).toHaveLength(
+      18,
+    );
+  });
+});
+
+const TODAY = "2026-09-09";
+
+function busyToday(n: number, date = TODAY): Load[] {
+  return Array.from({ length: n }, (_, i) =>
+    load(`sep9-${String(i).padStart(3, "0")}`, date, {
+      truck: String(100 + (i % 80)),
+      updatedAt: `${date}T12:${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}.000Z`,
+    }),
+  );
+}
+
+function upsertOp(row: Load): QueueOp {
+  return {
+    opId: `up-${row.id}`,
+    kind: "upsert",
+    load: row,
+    queuedAt: row.updatedAt,
+  };
+}
+
+describe("2026-09-09 count oscillation (324 → 306 class)", () => {
+  const today = busyToday(324);
+  const remote306 = today.slice(0, 306);
+  const localOnly18 = today.slice(306);
+
+  it("local add then stale remote refresh keeps all 324 and upserts the 18", () => {
+    const { merged, toUpsert } = mergeCloudLoads({
+      remote: remote306,
+      cache: store(today),
+      local: store(today),
+      pending: [],
+    });
+
+    const onToday = merged.filter((row) => row.date === TODAY);
+    expect(onToday).toHaveLength(324);
+    expect(toUpsert.map((row) => row.id).sort()).toEqual(
+      localOnly18.map((row) => row.id).sort(),
+    );
+    expect(toUpsert).toHaveLength(18);
+  });
+
+  it("stale persist of 306 with live/local 324 does not shrink the day", () => {
+    const live = store(today);
+    const incoming = store(remote306);
+    const next = reconcilePersistedSnapshot({
+      incoming,
+      live,
+      cache: incoming,
+      local: live,
+      lastGood: live,
+      pending: [],
+    });
+
+    expect(next).not.toBeNull();
+    expect(allIds(next!).filter((id) => id.startsWith("sep9-"))).toHaveLength(324);
+    expect((next!.loadsByDate[TODAY] ?? []).length).toBe(324);
+  });
+
+  it("after persist, cache still has 324 (remote subset is not written through)", () => {
+    const live = store(today);
+    const cache = reconcilePersistedSnapshot({
+      incoming: store(remote306),
+      live,
+      cache: store(remote306),
+      local: live,
+      lastGood: live,
+      pending: [],
+    });
+    expect(cache).not.toBeNull();
+    expect((cache!.loadsByDate[TODAY] ?? []).length).toBe(324);
+    expect(snapshotLosesDeviceLoads(allLoads(cache!), live, live, [])).toBe(false);
+    expect(
+      snapshotLosesDeviceLoads(allLoads(store(remote306)), live, live, []),
+    ).toBe(true);
+  });
+
+  it("restore-from-local-backup when remote and cache are missing the 18", () => {
+    const local = store(today);
+    const cache = store(remote306);
+    const { merged, toUpsert } = mergeCloudLoads({
+      remote: remote306,
+      cache,
+      local,
+      pending: [],
+    });
+
+    expect(merged.filter((row) => row.date === TODAY)).toHaveLength(324);
+    expect(toUpsert).toHaveLength(18);
+
+    const next = reconcilePersistedSnapshot({
+      incoming: store(merged),
+      live: cache,
+      cache,
+      local,
+      lastGood: cache,
+      pending: [],
+    });
+    expect((next!.loadsByDate[TODAY] ?? []).length).toBe(324);
+  });
+
+  it("in-flight refresh extra (storeRef) restores loads cache/local already lost", () => {
+    const live = store(today);
+    const poisoned = store(remote306);
+    const { merged } = mergeCloudLoads({
+      remote: remote306,
+      cache: poisoned,
+      local: poisoned,
+      pending: [],
+      extra: [live],
+    });
+    expect(merged.filter((row) => row.date === TODAY)).toHaveLength(324);
+  });
+
+  it("count stays 324 across merge then stale persist", () => {
+    const counts: number[] = [];
+    const { merged } = mergeCloudLoads({
+      remote: remote306,
+      cache: store(today),
+      local: store(today),
+      pending: [],
+    });
+    counts.push(merged.filter((row) => row.date === TODAY).length);
+
+    const afterPersist = reconcilePersistedSnapshot({
+      incoming: store(remote306),
+      live: store(merged),
+      cache: store(merged),
+      local: store(today),
+      lastGood: store(today),
+      pending: [],
+    });
+    counts.push((afterPersist!.loadsByDate[TODAY] ?? []).length);
+
+    expect(counts).toEqual([324, 324]);
+  });
+
+  it("local delete then remote still has the row stays deleted and is not upserted", () => {
+    const gone = today[0];
+    const kept = today.slice(1);
+    const { merged, toUpsert } = mergeCloudLoads({
+      remote: today,
+      cache: store(kept, [gone.id]),
+      local: store(today, [gone.id]),
+      pending: [],
+    });
+
+    expect(merged.map((row) => row.id)).not.toContain(gone.id);
+    expect(merged.filter((row) => row.date === TODAY)).toHaveLength(323);
+    expect(toUpsert.map((row) => row.id)).not.toContain(gone.id);
+  });
+
+  it("concurrent upsert echo with older or equal updatedAt is ignored", () => {
+    const row = today[0];
+    const echoOlder = load(row.id, TODAY, {
+      ...row,
+      truck: "ECHO",
+      updatedAt: "2026-09-09T01:00:00.000Z",
+    });
+    const echoEqual = load(row.id, TODAY, { ...row, truck: "ECHO" });
+    const pending = new Set<string>();
+
+    expect(shouldApplyRealtimeUpsert(echoOlder, store(today), pending)).toBe(false);
+    expect(shouldApplyRealtimeUpsert(echoEqual, store(today), pending)).toBe(false);
+    expect(
+      shouldApplyRealtimeUpsert(
+        load(row.id, TODAY, {
+          ...row,
+          truck: "418",
+          updatedAt: "2026-09-09T23:59:59.000Z",
+        }),
+        store(today),
+        pending,
+      ),
+    ).toBe(true);
+  });
+
+  it("realtime echo of an in-flight upsert is ignored so the day does not rewrite", () => {
+    const row = localOnly18[0];
+    expect(
+      shouldApplyRealtimeUpsert(row, store(today), new Set([row.id])),
+    ).toBe(false);
+  });
+
+  it("Push all does not resurrect tombstones even after GC-style remote absence", () => {
+    const gone = today[0];
+    const kept = today.slice(1);
+    const cacheAfterDelete = store(kept, [gone.id]);
+    const staleLocal = store(today);
+
+    const toPush = deviceLoadsForPush(cacheAfterDelete, staleLocal, []);
+    expect(toPush.map((row) => row.id)).not.toContain(gone.id);
+    expect(toPush).toHaveLength(323);
+
+    const afterRemoteCaughtUp = reconcilePersistedSnapshot({
+      incoming: store(kept, [gone.id]),
+      live: cacheAfterDelete,
+      cache: cacheAfterDelete,
+      local: store(kept, [gone.id]),
+      lastGood: cacheAfterDelete,
+      pending: [],
+    });
+    expect(afterRemoteCaughtUp!.deletedIds).toContain(gone.id);
+    expect(allIds(afterRemoteCaughtUp!)).not.toContain(gone.id);
+  });
+
+  it("tombstone beats a remote upsert of the same id on persist", () => {
+    const gone = today[0];
+    const kept = today.slice(1);
+    const next = reconcilePersistedSnapshot({
+      incoming: store(today),
+      live: store(kept, [gone.id]),
+      cache: store(kept, [gone.id]),
+      local: store(kept, [gone.id]),
+      lastGood: store(kept, [gone.id]),
+      pending: [],
+    });
+    expect(next!.deletedIds).toContain(gone.id);
+    expect(allIds(next!)).not.toContain(gone.id);
+    expect((next!.loadsByDate[TODAY] ?? []).length).toBe(323);
+  });
+
+  it("pending upsert wins over a stale remote copy of the same id", () => {
+    const newer = load("sep9-000", TODAY, {
+      truck: "999",
+      updatedAt: "2026-09-09T18:00:00.000Z",
+    });
+    const { merged } = mergeCloudLoads({
+      remote: remote306,
+      cache: store(today),
+      local: store(today),
+      pending: [upsertOp(newer)],
+    });
+    expect(merged.find((row) => row.id === "sep9-000")?.truck).toBe("999");
+    expect(merged.filter((row) => row.date === TODAY)).toHaveLength(324);
+  });
+
+  it("does not apply a remote delete while a pending upsert for that id exists", () => {
+    const inflight = localOnly18[0];
+    expect(shouldApplyRealtimeDelete(inflight.id, [upsertOp(inflight)])).toBe(false);
+    expect(shouldApplyRealtimeDelete(inflight.id, [])).toBe(true);
+    expect(shouldApplyRealtimeDelete(undefined, [])).toBe(false);
+  });
+
+  it("empty remote still restores the local 2026-09-09 backup", () => {
+    const { merged, toUpsert } = mergeCloudLoads({
+      remote: [],
+      cache: store([]),
+      local: store(today),
+      pending: [],
+    });
+    expect(merged.filter((row) => row.date === TODAY)).toHaveLength(324);
+    expect(toUpsert).toHaveLength(324);
+    expect(
+      snapshotLosesDeviceDates(merged, store([]), store(today), []),
     ).toBe(false);
   });
 });
