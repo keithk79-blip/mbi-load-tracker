@@ -96,7 +96,7 @@ export function LogLoadScreen({
       form.commodity,
     );
     if (lane) {
-      void consumeOpens(targetDate, lane.specialtyId, lane.chip, qty);
+      void consumeOpens(targetDate, lane.specialtyId, lane.chips, qty);
     }
 
     setDuplicate(null);
@@ -137,7 +137,7 @@ export function LogLoadScreen({
       form.commodity,
     );
     if (!forceSpecialty && lane) {
-      const opens = opensFor(targetDate, lane.specialtyId, lane.chip);
+      const opens = opensFor(targetDate, lane.specialtyId, lane.chips);
       if (opens < qty) {
         setDuplicate(null);
         setSpecialtyWarn({
