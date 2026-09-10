@@ -22,7 +22,9 @@ import {
   resolveSpecialtyBoardMatch,
   resolveSpecialtyStationId,
   specialtyChipMode,
+  specialtyDestHint,
   specialtyDestinationsFor,
+  specialtyDestKey,
   unkeptSpecialtyIds,
   type SpecialtyStore,
 } from "./specialtyBoard";
@@ -43,7 +45,7 @@ function catalogLogPickup(
 }
 
 function boardCommodityFor(specialtyId: string | null, chip?: string): string {
-  if (specialtyId === "liberty-tank") {
+  if (specialtyId === "liberty-tank" || specialtyId === "grayslake") {
     return "Leachate (tanker)";
   }
   if (specialtyId === "hodgkins") return "Residual";
@@ -89,7 +91,10 @@ describe("specialty walking-floor catalog", () => {
       name: "Liberty",
     });
     expect(isSpecialtyStationId("liberty-tank")).toBe(true);
-    expect(SPECIALTY_STATIONS.some((s) => s.id === "grayslake")).toBe(false);
+    expect(SPECIALTY_STATIONS.find((s) => s.id === "grayslake")).toEqual({
+      id: "grayslake",
+      name: "GraysLake",
+    });
     expect(SPECIALTY_STATIONS.some((s) => s.id === "gray-tank")).toBe(false);
     expect(SPECIALTY_STATIONS.some((s) => s.name === "Gray Tank")).toBe(false);
     expect(SPECIALTY_STATIONS.some((s) => s.id === "newton-tank")).toBe(false);
@@ -301,12 +306,14 @@ describe("specialty walking-floor catalog", () => {
     });
   });
 
-  it("lists only Hodgkins, Lake Co MRF, RSI on Batavia specialty chips", () => {
+  it("lists Hodgkins, Lake Co MRF, RSI, and Trash on Batavia specialty chips", () => {
     expect(specialtyDestinationsFor("batavia")).toEqual([
       "Hodgkins",
       "Lake Co MRF",
       "RSI",
+      "Trash",
     ]);
+    expect(specialtyDestHint("batavia")).toBe("Hodgkins · Lake Co MRF · RSI · Trash");
     expect(specialtyDestinationsFor("batavia")).not.toContain("DeKalb");
     expect(specialtyDestinationsFor("batavia")).not.toContain("Rockford");
     expect(specialtyDestinationsFor("batavia")).not.toContain("Resource MGT");
@@ -316,6 +323,53 @@ describe("specialty walking-floor catalog", () => {
       commodityValid: true,
       destinationValid: false,
     });
+    expect(applyPickupCascade("batavia", "Trash (MSW)", "Trash")).toEqual({
+      commodity: "Trash (MSW)",
+      destination: "Trash",
+      commodityValid: true,
+      destinationValid: true,
+    });
+  });
+
+  it("lists FRWRD, CID, Dekalb Sanitary on the GraysLake specialty card", () => {
+    expect(SPECIALTY_STATIONS.find((s) => s.id === "grayslake")).toEqual({
+      id: "grayslake",
+      name: "GraysLake",
+    });
+    expect(specialtyDestinationsFor("grayslake")).toEqual([
+      "FRWRD",
+      "CID",
+      "Dekalb Sanitary",
+    ]);
+    expect(specialtyDestHint("grayslake")).toBe("FRWRD · CID · Dekalb Sanitary");
+    expect(specialtyDestinationsFor("grayslake")).not.toContain("Hodgkins");
+    expect(specialtyDestinationsFor("grayslake")).not.toContain("RSI");
+    expect(specialtyDestinationsFor("grayslake")).not.toContain("KanSpcl");
+    expect(specialtyChipMode("grayslake")).toBe("destination");
+    expect(resolveSpecialtyStationId("grayslake", "GraysLake")).toBe("grayslake");
+    expect(resolveSpecialtyStationId(undefined, "Grays Lake")).toBe("grayslake");
+    expect(applyPickupCascade("grayslake", "Recycle", "Hodgkins")).toEqual({
+      commodity: "",
+      destination: "",
+      commodityValid: false,
+      destinationValid: false,
+    });
+    expect(applyPickupCascade("grayslake", "Leachate (tanker)", "FRWRD")).toEqual({
+      commodity: "Leachate (tanker)",
+      destination: "FRWRD",
+      commodityValid: true,
+      destinationValid: true,
+    });
+    expect(applyPickupCascade("grayslake", "Leachate (tanker)", "CID")).toMatchObject({
+      destinationValid: true,
+    });
+    expect(
+      applyPickupCascade("grayslake", "Leachate (tanker)", "Dekalb Sanitary"),
+    ).toMatchObject({ destinationValid: true });
+    expect(
+      applyPickupCascade("grayslake", "Leachate (tanker)", "Dekalb San"),
+    ).toMatchObject({ destinationValid: true });
+    expect(specialtyDestKey("Dekalb San")).toBe(specialtyDestKey("Dekalb Sanitary"));
   });
 
   it("lists only Hodgkins, Thelens, Organix on the N. Lake specialty card", () => {
@@ -435,7 +489,7 @@ describe("specialty walking-floor catalog", () => {
     expect(resolveSpecialtyStationId("Wheeling")).toBe("wheeling");
     expect(resolveSpecialtyStationId("herthside", "Hearthside")).toBe("herthside");
     expect(resolveSpecialtyStationId("gray-tank", "Gray Tank")).toBeNull();
-    expect(resolveSpecialtyStationId("grayslake", "GraysLake")).toBeNull();
+    expect(resolveSpecialtyStationId("grayslake", "GraysLake")).toBe("grayslake");
     expect(resolveSpecialtyStationId("laraway", "Laraway")).toBeNull();
     expect(resolveSpecialtyStationId("prairie-hill-rfd", "Prairie Hill RFD")).toBeNull();
   });
@@ -516,7 +570,7 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
     ).toBeNull();
   });
 
-  it("never warns for Trash (MSW) from specialty pickups except Ford and Hearthside", () => {
+  it("never warns for Trash (MSW) from specialty pickups except Ford, Hearthside, and Batavia→Trash", () => {
     for (const station of SPECIALTY_STATIONS) {
       if (station.id === "ford" || station.id === "herthside") continue;
       const dest = specialtyDestinationsFor(station.id)[0];
@@ -571,9 +625,32 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
         "MSW",
       ),
     ).toBeNull();
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "batavia",
+        "Batavia",
+        "DeKalb",
+        "Trash (MSW)",
+      ),
+    ).toBeNull();
+    expect(
+      resolveSpecialtyBoardLane("batavia", "Batavia", "Rockford", "Trash (MSW)"),
+    ).toBeNull();
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "batavia",
+        "Batavia",
+        "Trash",
+        "Trash (MSW)",
+      ),
+    ).toEqual({ specialtyId: "batavia", opens: 0 });
   });
 
-  it("treats Ford Trash and Hearthside Newton County trash as specialty lanes", () => {
+  it("treats Ford Trash, Hearthside Newton County, and Batavia→Trash as specialty lanes", () => {
     expect(
       resolveSpecialtyBoardLane("ford", "Ford", "RSI", "Trash (MSW)"),
     ).toBe("ford");
@@ -603,6 +680,16 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
     ).toBeNull();
     expect(
       resolveSpecialtyBoardLane("melrose", "Melrose", "Hodgkins", "Trash (MSW)"),
+    ).toBeNull();
+    expect(
+      resolveSpecialtyBoardMatch("batavia", "Batavia", "Trash", "Trash (MSW)"),
+    ).toEqual({
+      specialtyId: "batavia",
+      chip: "Trash",
+      chips: ["Trash"],
+    });
+    expect(
+      resolveSpecialtyBoardLane("batavia", "Batavia", "Prairie Hill", "Trash (MSW)"),
     ).toBeNull();
   });
 
@@ -639,7 +726,7 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
     ).toBe("wheeling");
   });
 
-  it("still warns for Liberty leachate → CID with zero opens, not Gray Tank", () => {
+  it("still warns for Liberty and GraysLake leachate → CID with zero opens, not Gray Tank", () => {
     expect(
       missingSpecialtyOpensWarn(
         {},
@@ -650,6 +737,16 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
         "Leachate (tanker)",
       ),
     ).toEqual({ specialtyId: "liberty-tank", opens: 0 });
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "grayslake",
+        "GraysLake",
+        "CID",
+        "Leachate (tanker)",
+      ),
+    ).toEqual({ specialtyId: "grayslake", opens: 0 });
     expect(
       missingSpecialtyOpensWarn(
         {},
@@ -830,6 +927,72 @@ describe("specialty consume on logged loads", () => {
     expect(countSpecialtyOpens(store, date, "batavia", "RSI")).toBe(1);
     store = logLoadConsume(store, date, "batavia", "Batavia", "RSI", 1, "Recycle");
     expect(countSpecialtyOpens(store, date, "batavia", "RSI")).toBe(0);
+  });
+
+  it("consumes Batavia→Trash (MSW) against the Trash chip and leaves Hodgkins", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "batavia", "Trash");
+    store = addSpecialtySlot(store, date, "batavia", "Hodgkins");
+    store = logLoadConsume(
+      store,
+      date,
+      "batavia",
+      "Batavia",
+      "DeKalb",
+      1,
+      "Trash (MSW)",
+    );
+    expect(countSpecialtyOpens(store, date, "batavia", "Trash")).toBe(1);
+    store = logLoadConsume(
+      store,
+      date,
+      "batavia",
+      "Batavia",
+      "Trash",
+      1,
+      "Trash (MSW)",
+    );
+    expect(countSpecialtyOpens(store, date, "batavia", "Trash")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "batavia", "Hodgkins")).toBe(1);
+  });
+
+  it("consumes GraysLake FRWRD / CID / Dekalb San aliases without touching Liberty", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "grayslake", "FRWRD");
+    store = addSpecialtySlot(store, date, "grayslake", "CID");
+    store = addSpecialtySlot(store, date, "grayslake", "Dekalb Sanitary");
+    store = addSpecialtySlot(store, date, "liberty-tank", "CID");
+    store = logLoadConsume(
+      store,
+      date,
+      "grayslake",
+      "GraysLake",
+      "FRWRD",
+      1,
+      "Leachate (tanker)",
+    );
+    expect(countSpecialtyOpens(store, date, "grayslake", "FRWRD")).toBe(0);
+    store = logLoadConsume(
+      store,
+      date,
+      "grayslake",
+      "Grays Lake",
+      "CID",
+      1,
+      "Leachate (tanker)",
+    );
+    expect(countSpecialtyOpens(store, date, "grayslake", "CID")).toBe(0);
+    store = logLoadConsume(
+      store,
+      date,
+      "grayslake",
+      "GraysLake",
+      "Dekalb San",
+      1,
+      "Leachate (tanker)",
+    );
+    expect(countSpecialtyOpens(store, date, "grayslake", "Dekalb Sanitary")).toBe(0);
+    expect(countSpecialtyOpens(store, date, "liberty-tank", "CID")).toBe(1);
   });
 
   it("consumes Liberty CID x2 then Kankakee without touching the other dest", () => {

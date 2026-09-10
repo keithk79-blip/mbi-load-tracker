@@ -19,6 +19,7 @@ export const CUSTOM = {
 export const DESTINATION_ALIASES: Record<string, string> = {
   "christianson farms": "Christiansen Farms",
   resource: "Resource MGT",
+  "dekalb san": "Dekalb Sanitary",
 };
 
 export const STATIONS: Station[] = [
@@ -206,9 +207,10 @@ export const STATIONS: Station[] = [
       "Lake Co MRF",
       "Rockford",
       "Resource MGT",
+      "Trash",
     ],
     destinationsByCommodity: {
-      "Trash (MSW)": ["DeKalb", "Prairie Hill", "Rockford"],
+      "Trash (MSW)": ["DeKalb", "Prairie Hill", "Rockford", "Trash"],
       Recycle: ["Hodgkins", "Lake Co MRF"],
       Cardboard: ["RSI", "Resource MGT"],
     },

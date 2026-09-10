@@ -148,6 +148,8 @@ describe("pickup stations", () => {
     expect(sameDestination("Christianson Farms", "Christiansen Farms")).toBe(true);
     expect(canonicalDestination("Resource")).toBe("Resource MGT");
     expect(sameDestination("Resource", "Resource MGT")).toBe(true);
+    expect(canonicalDestination("Dekalb San")).toBe("Dekalb Sanitary");
+    expect(sameDestination("Dekalb San", "Dekalb Sanitary")).toBe(true);
   });
 });
 
@@ -273,6 +275,7 @@ describe("log-load commodity dest cascades", () => {
       "DeKalb",
       "Prairie Hill",
       "Rockford",
+      "Trash",
     ]);
     expect(destinationsFor("batavia", "Recycle")).toEqual([
       "Hodgkins",
