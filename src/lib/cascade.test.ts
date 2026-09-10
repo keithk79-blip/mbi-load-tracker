@@ -159,6 +159,7 @@ describe("applyPickupCascade log-load dest locks", () => {
     expectKeep("batavia", "Trash (MSW)", "DeKalb");
     expectKeep("batavia", "Trash (MSW)", "Prairie Hill");
     expectKeep("batavia", "Trash (MSW)", "Rockford");
+    expectKeep("batavia", "Trash (MSW)", "Trash");
     expectKeep("batavia", "Recycle", "Hodgkins");
     expectKeep("batavia", "Recycle", "Lake Co MRF");
     expectKeep("batavia", "Cardboard", "RSI");

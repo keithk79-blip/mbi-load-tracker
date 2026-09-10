@@ -28,6 +28,7 @@ export const SPECIALTY_STATIONS: SpecialtyStation[] = [
   { id: "ford", name: "Ford" },
   { id: "prairie-hill", name: "PrairieHill" },
   { id: "hodgkins", name: "Hodgkins" },
+  { id: "grayslake", name: "GraysLake" },
   { id: "liberty-tank", name: "Liberty" },
   { id: "herthside", name: "Hearthside" },
 ];
@@ -53,7 +54,7 @@ export const SPECIALTY_DESTINATIONS = [
 ] as const;
 
 /** Stations whose dest chips follow the pickup catalog instead of the global list. */
-const SPECIALTY_CATALOG_DEST_IDS = new Set(["herthside", "hodgkins"]);
+const SPECIALTY_CATALOG_DEST_IDS = new Set(["grayslake", "herthside", "hodgkins"]);
 
 /**
  * Walking-floor cards whose + chips are commodities (stored in `destination`).
@@ -81,7 +82,7 @@ const SPECIALTY_DEST_OVERRIDES: Record<string, readonly string[]> = {
     "DuPage",
   ],
   melrose: ["Hodgkins", "RSI", "Willow Ranch", "Homewood"],
-  batavia: ["Hodgkins", "Lake Co MRF", "RSI"],
+  batavia: ["Hodgkins", "Lake Co MRF", "RSI", "Trash"],
   northlake: ["Hodgkins", "Thelens", "Organix"],
   arc: ["Organix", "Hodgkins", "Thelens", "Resource MGT"],
   citiwaste: [
@@ -132,7 +133,10 @@ export function specialtyDestHint(stationId: string): string {
     return "Hodgkins · RSI · Willow Ranch · Homewood";
   }
   if (stationId === "batavia") {
-    return "Hodgkins · Lake Co MRF · RSI";
+    return "Hodgkins · Lake Co MRF · RSI · Trash";
+  }
+  if (stationId === "grayslake") {
+    return "FRWRD · CID · Dekalb Sanitary";
   }
   if (stationId === "northlake") {
     return "Hodgkins · Thelens · Organix";
@@ -671,6 +675,8 @@ const SPECIALTY_NAME_ALIASES: Record<string, string> = {
   "dek reload": "dekalb-reload",
   prairiehill: "prairie-hill",
   "prairie hill": "prairie-hill",
+  "grays lake": "grayslake",
+  grayslake: "grayslake",
   hearthside: "herthside",
   herthside: "herthside",
   "liberty tank": "liberty-tank",
@@ -692,6 +698,7 @@ const SPECIALTY_DEST_ALIASES: Record<string, string> = {
   "christiansen farms": "christianson farms",
   prairiehill: "prairie hill",
   "grays lake": "grayslake",
+  "dekalb san": "dekalb sanitary",
   "trash (msw)": "trash",
   msw: "trash",
   "kan spcl": "kanspcl",
@@ -739,7 +746,8 @@ export function resolveSpecialtyStationId(
 /**
  * Specialty-board commodity for this card.
  * Commodity-keyed walking-floor cards match the + chip list (Ford Trash only).
- * Dest-keyed cards never treat ordinary trash as a board lane.
+ * Dest-keyed cards treat ordinary trash as a board lane only when dest is an
+ * explicit Trash chip (Batavia) or the card is Hearthside.
  */
 function isSpecialtyBoardCommodity(
   specialtyId: string,
@@ -753,10 +761,17 @@ function isSpecialtyBoardCommodity(
       sameSpecialtyDest(chip, commodity),
     );
   }
-  // Ordinary trash is off-board except Ford (commodity chip) and Hearthside
-  // (Newton County dest is the only catalog lane).
-  if (key === "TRASH") return specialtyId === "herthside";
-  if (specialtyId === "liberty-tank") {
+  // Ordinary trash is off-board except Ford (commodity chip), Hearthside
+  // (Newton County dest), and dest-mode cards with an explicit Trash chip
+  // (Batavia end-of-night tally — dest must be that chip, not DeKalb/Rockford).
+  if (key === "TRASH") {
+    if (specialtyId === "herthside") return true;
+    return specialtyDestinationsFor(specialtyId).some(
+      (chip) =>
+        sameSpecialtyDest(chip, "Trash") && sameSpecialtyDest(destination, chip),
+    );
+  }
+  if (specialtyId === "liberty-tank" || specialtyId === "grayslake") {
     return key === "LEACHATE";
   }
   if (specialtyId === "hodgkins") return key === "RESIDUAL" || key === "GLASS";
@@ -830,7 +845,8 @@ export type SpecialtyBoardLane = {
 /**
  * Specialty Loads lane: board station + chip(s) for that card.
  * Walking-floor commodity cards match the load commodity; Liberty / dest cards
- * match destination. Ordinary trash is a board lane only on Ford.
+ * match destination. Ordinary trash is a board lane only on Ford, Hearthside,
+ * and Batavia's explicit Trash dest chip.
  * Commodity-mode also lists the load destination so legacy dest opens burn.
  */
 export function resolveSpecialtyBoardMatch(
