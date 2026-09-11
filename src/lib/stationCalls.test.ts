@@ -3,7 +3,10 @@ import {
   STATION_CALL_YARDS,
   adjacentStationId,
   applyStationCallTombstones,
+  boardsEquivalent,
+  cleanStationDayRow,
   commitStationCell,
+  commitStationNote,
   effectiveClose,
   emptyBoard,
   mergeBoardCells,
@@ -13,6 +16,7 @@ import {
   resetStationCallTombstones,
   setStationClose,
   setStationHour,
+  setStationNote,
   startForStation,
   type StationCallStore,
   type StationDayBoard,
@@ -58,6 +62,7 @@ describe("station call carry-over", () => {
     const board = emptyBoard();
     expect(board["apollo"]?.hours).toEqual({});
     expect(board["apollo"]?.close).toBeNull();
+    expect(board["apollo"]?.note).toBeNull();
   });
 });
 
@@ -141,8 +146,10 @@ function boardWith(
   patch: Partial<{
     hours: StationDayBoard[string]["hours"];
     close: StationDayBoard[string]["close"];
+    note: StationDayBoard[string]["note"];
     hoursAt: StationDayBoard[string]["hoursAt"];
     closeAt: string;
+    noteAt: string;
   }>,
 ): StationDayBoard {
   const board = emptyBoard();
@@ -225,5 +232,128 @@ describe("station call merge / clears", () => {
       hoursAt: { "8": "2026-09-09T11:00:00.000Z" },
     });
     expect(mergeBoardCells(local, remote)["hooker"]!.hours["8"]).toBe("12");
+  });
+});
+
+describe("station call notes", () => {
+  it("commits empty and whitespace as blank", () => {
+    expect(commitStationNote("")).toBeNull();
+    expect(commitStationNote("   ")).toBeNull();
+    expect(commitStationNote("\n\t")).toBeNull();
+  });
+
+  it("caps very long notes", () => {
+    expect(commitStationNote("x".repeat(3000))?.length).toBe(2000);
+  });
+
+  it("cleanRow keeps a note and drops junk / blank notes", () => {
+    const kept = cleanStationDayRow({
+      hours: { "6": "4" },
+      close: "5",
+      note: "  Melrose late  ",
+      noteAt: "2026-09-11T12:00:00.000Z",
+      extra: "nope",
+    });
+    expect(kept.hours["6"]).toBe("4");
+    expect(kept.close).toBe("5");
+    expect(kept.note).toBe("Melrose late");
+    expect(kept.noteAt).toBe("2026-09-11T12:00:00.000Z");
+
+    const blank = cleanStationDayRow({ note: "   ", hours: { "8": "2" } });
+    expect(blank.note).toBeNull();
+    expect(blank.hours["8"]).toBe("2");
+
+    const missing = cleanStationDayRow({ hours: { "9": "1" } });
+    expect(missing.note).toBeNull();
+    expect(missing.noteAt).toBeUndefined();
+  });
+
+  it("setStationNote stamps noteAt and does not wipe hours", () => {
+    let store: StationCallStore = {};
+    store = setStationHour(store, "2026-09-11", "melrose", "7", "6");
+    store = setStationNote(store, "2026-09-11", "melrose", "scale backup", "2026-09-11T15:00:00.000Z");
+    const row = store["2026-09-11"]!.melrose!;
+    expect(row.note).toBe("scale backup");
+    expect(row.noteAt).toBe("2026-09-11T15:00:00.000Z");
+    expect(row.hours["7"]).toBe("6");
+
+    store = setStationHour(store, "2026-09-11", "melrose", "8", "7");
+    expect(store["2026-09-11"]!.melrose!.note).toBe("scale backup");
+  });
+
+  it("clears a note to null with a timestamp", () => {
+    let store: StationCallStore = {};
+    store = setStationNote(store, "2026-09-11", "batavia", "hold", "2026-09-11T10:00:00.000Z");
+    store = setStationNote(store, "2026-09-11", "batavia", "  ", "2026-09-11T11:00:00.000Z");
+    expect(store["2026-09-11"]!.batavia!.note).toBeNull();
+    expect(store["2026-09-11"]!.batavia!.noteAt).toBe("2026-09-11T11:00:00.000Z");
+  });
+
+  it("merge: never-set local note does not overwrite a remote note", () => {
+    const local = emptyBoard();
+    const remote = boardWith("melrose", { note: "WF waiting", noteAt: "2026-09-11T12:00:00.000Z" });
+    expect(mergeBoardCells(local, remote)["melrose"]!.note).toBe("WF waiting");
+  });
+
+  it("merge: newer note wins independently of hour cells", () => {
+    const local = boardWith("calumet", {
+      hours: { "9": "3" },
+      hoursAt: { "9": "2026-09-11T14:00:00.000Z" },
+      note: "old",
+      noteAt: "2026-09-11T10:00:00.000Z",
+    });
+    const remote = boardWith("calumet", {
+      hours: { "9": "1" },
+      hoursAt: { "9": "2026-09-11T12:00:00.000Z" },
+      note: "newer note",
+      noteAt: "2026-09-11T13:00:00.000Z",
+    });
+    const merged = mergeBoardCells(local, remote);
+    expect(merged["calumet"]!.hours["9"]).toBe("3");
+    expect(merged["calumet"]!.note).toBe("newer note");
+  });
+
+  it("merge: explicit local note clear beats a stale remote fill", () => {
+    const local = boardWith("elgin", {
+      note: null,
+      noteAt: "2026-09-11T16:00:00.000Z",
+    });
+    const remote = boardWith("elgin", {
+      note: "stale",
+      noteAt: "2026-09-11T12:00:00.000Z",
+    });
+    expect(mergeBoardCells(local, remote)["elgin"]!.note).toBeNull();
+  });
+
+  it("boardsEquivalent treats missing and blank notes as the same", () => {
+    const a = boardWith("hooker", { note: null });
+    const b = emptyBoard();
+    expect(boardsEquivalent(a, b)).toBe(true);
+    const c = boardWith("hooker", { note: "hi", noteAt: "2026-09-11T12:00:00.000Z" });
+    expect(boardsEquivalent(a, c)).toBe(false);
+  });
+
+  it("reconcile pushes a local note so cloud picks it up", () => {
+    let local: StationCallStore = {};
+    local = setStationNote(local, "2026-09-11", "northlake", "doors stuck", "2026-09-11T14:00:00.000Z");
+    const remote: StationCallStore = { "2026-09-11": emptyBoard() };
+    const { merged, toPush } = reconcileStationCallCloud(local, remote);
+    expect(merged["2026-09-11"]!.northlake!.note).toBe("doors stuck");
+    expect(toPush).toHaveLength(1);
+    expect(toPush[0]!.board["northlake"]!.note).toBe("doors stuck");
+  });
+
+  it("hour tombstones still blank a bounced 0 when a note is present", () => {
+    let store: StationCallStore = {};
+    store = setStationNote(store, "2026-09-11", "wheeling", "gate closed");
+    store = setStationHour(store, "2026-09-11", "wheeling", "13", "0");
+    store = setStationHour(store, "2026-09-11", "wheeling", "13", null);
+    const bounced = boardWith("wheeling", {
+      hours: { "13": "0" },
+      note: "gate closed",
+    });
+    const applied = applyStationCallTombstones({ "2026-09-11": bounced });
+    expect(applied["2026-09-11"]!["wheeling"]!.hours["13"]).toBeNull();
+    expect(applied["2026-09-11"]!["wheeling"]!.note).toBe("gate closed");
   });
 });

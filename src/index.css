@@ -2108,7 +2108,7 @@ body.app-ready .splash {
 }
 .station-calls-table tbody th {
   text-align: left;
-  padding: 0 6px;
+  padding: 0;
   width: 68px;
   font-size: 10px;
   font-weight: 700;
@@ -2119,6 +2119,111 @@ body.app-ready .splash {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.station-call-name {
+  display: block;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0 8px 0 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  font-size: 10px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+  cursor: pointer;
+  border-radius: 0;
+}
+.station-call-name.has-note {
+  padding-right: 11px;
+}
+.station-call-name.has-note::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 8px 8px 0;
+  border-color: transparent var(--amber) transparent transparent;
+  pointer-events: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .station-calls-table tbody th:hover,
+  .station-calls-table tbody tr:nth-child(even) th:hover {
+    background: #2a1618;
+  }
+}
+.station-call-note-pop {
+  position: fixed;
+  z-index: 70;
+  width: min(280px, calc(100vw - 16px));
+  padding: 10px 10px 8px;
+  background: #1c1f26;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  color: var(--text);
+}
+.station-call-note-pop-title {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.station-call-note-peek {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.station-call-note-input {
+  display: block;
+  width: 100%;
+  min-height: 84px;
+  margin: 0;
+  padding: 8px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #12141a;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.station-call-note-input:focus {
+  outline: 2px solid var(--amber);
+  outline-offset: -2px;
+}
+.station-call-note-input::placeholder {
+  color: var(--muted);
+}
+.station-call-note-pop-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.station-call-note-done {
+  border: 0;
+  background: transparent;
+  color: var(--amber);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 6px 4px;
+  min-height: 36px;
 }
 .station-calls-table tbody tr:nth-child(even) th,
 .station-calls-table tbody tr:nth-child(even) td {

@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import { formatHeaderDate } from "../lib/chicagoDate";
 import { getSupabase } from "../lib/supabase";
 import { useAuth } from "../store/AuthContext";
@@ -8,6 +16,7 @@ import {
   adjacentStationId,
   boardForDate,
   commitStationCell,
+  commitStationNote,
   fetchStationCallStoreFromCloud,
   parseNumericCell,
   pushStationCallDay,
@@ -15,7 +24,9 @@ import {
   reconcileStationCallCloud,
   setStationClose,
   setStationHour,
+  setStationNote,
   startForStation,
+  stationCellFilled,
   writeStationCallStore,
   type StationCellValue,
   type StationHourKey,
@@ -23,6 +34,17 @@ import {
 
 /** Editable columns only: hour keys plus Close. Start is a read-only span. */
 type StationCallCol = StationHourKey | "close";
+type NotePopMode = "peek" | "edit";
+
+function allowHoverPeek(pointerType: string): boolean {
+  if (pointerType !== "mouse" && pointerType !== "pen") return false;
+  if (typeof window === "undefined") return false;
+  // Phones: tap opens the editor. Hover media is none / pointer is coarse.
+  if (window.matchMedia("(pointer: coarse)").matches) return false;
+  if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) return true;
+  // Desktop VMs and some remote sessions omit hover media; a mouse still peeks.
+  return pointerType === "mouse" && navigator.maxTouchPoints === 0;
+}
 
 function focusStationCallCell(stationId: string, col: StationCallCol): boolean {
   const next = document.querySelector<HTMLInputElement>(
@@ -122,11 +144,232 @@ function CellInput({
   );
 }
 
+function StationNameCell({
+  stationId,
+  label,
+  note,
+  open,
+  onPeek,
+  onEdit,
+  onClose,
+  onCommit,
+}: {
+  stationId: string;
+  label: string;
+  note: string | null | undefined;
+  open: NotePopMode | null;
+  onPeek: () => void;
+  onEdit: () => void;
+  onClose: () => void;
+  onCommit: (next: string | null) => void;
+}) {
+  const filled = stationCellFilled(note);
+  const shown = filled ? note : "";
+  const [draft, setDraft] = useState(shown);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const areaRef = useRef<HTMLTextAreaElement>(null);
+  const hideTimer = useRef<number | null>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  const cancelHide = () => {
+    if (hideTimer.current != null) {
+      window.clearTimeout(hideTimer.current);
+      hideTimer.current = null;
+    }
+  };
+
+  const schedulePeekHide = () => {
+    cancelHide();
+    hideTimer.current = window.setTimeout(() => {
+      hideTimer.current = null;
+      if (open === "peek") onClose();
+    }, 180);
+  };
+
+  const beginEdit = () => {
+    cancelHide();
+    if (open !== "edit") setDraft(shown);
+    onEdit();
+  };
+
+  const place = useCallback(() => {
+    const el = btnRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const width = Math.min(280, window.innerWidth - 16);
+    const estimated = open === "edit" ? 188 : 96;
+    let left = r.right + 6;
+    if (left + width > window.innerWidth - 8) {
+      left = Math.max(8, window.innerWidth - width - 8);
+    }
+    let top = r.top;
+    if (top + estimated > window.innerHeight - 8) {
+      top = Math.max(8, window.innerHeight - estimated - 8);
+    }
+    setPos({ top, left });
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    place();
+  }, [open, place, shown]);
+
+  useEffect(() => {
+    if (open !== "edit") return;
+    const id = window.requestAnimationFrame(() => {
+      const el = areaRef.current;
+      if (!el) return;
+      el.focus();
+      const end = el.value.length;
+      el.setSelectionRange(end, end);
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const node = event.target as Node | null;
+      if (node && btnRef.current?.contains(node)) return;
+      if (node && popRef.current?.contains(node)) return;
+      if (open === "edit") onCommit(commitStationNote(draft));
+      onClose();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      if (open === "edit") onCommit(commitStationNote(draft));
+      onClose();
+    };
+    const onScrollOrResize = () => {
+      if (open === "peek") {
+        onClose();
+        return;
+      }
+      place();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [open, draft, onClose, onCommit, place]);
+
+  useEffect(() => () => cancelHide(), []);
+
+  const pop =
+    open && typeof document !== "undefined"
+      ? createPortal(
+          <div
+            ref={popRef}
+            className={`station-call-note-pop${open === "edit" ? " is-edit" : " is-peek"}`}
+            role={open === "edit" ? "dialog" : "tooltip"}
+            aria-label={`${label} note`}
+            style={{ top: pos.top, left: pos.left }}
+            onPointerEnter={() => {
+              cancelHide();
+            }}
+            onPointerLeave={(event) => {
+              if (event.pointerType !== "mouse") return;
+              if (open === "peek") schedulePeekHide();
+            }}
+            onClick={() => {
+              if (open === "peek") beginEdit();
+            }}
+          >
+            <p className="station-call-note-pop-title">{label}</p>
+            {open === "edit" ? (
+              <>
+                <textarea
+                  ref={areaRef}
+                  className="station-call-note-input"
+                  value={draft}
+                  rows={4}
+                  placeholder="Add a note…"
+                  aria-label={`${label} note text`}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      onCommit(commitStationNote(draft));
+                      onClose();
+                    }
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      onCommit(commitStationNote(draft));
+                      onClose();
+                    }
+                  }}
+                />
+                <div className="station-call-note-pop-actions">
+                  <button
+                    type="button"
+                    className="station-call-note-done"
+                    onClick={() => {
+                      onCommit(commitStationNote(draft));
+                      onClose();
+                    }}
+                  >
+                    Done
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="station-call-note-peek">{shown}</p>
+            )}
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <th scope="row" className={filled ? "has-station-note" : undefined}>
+      <button
+        ref={btnRef}
+        type="button"
+        className={`station-call-name${filled ? " has-note" : ""}`}
+        data-station={stationId}
+        aria-haspopup="dialog"
+        aria-expanded={open === "edit"}
+        aria-label={filled ? `${label}, has note` : `${label}, add note`}
+        onPointerEnter={(event) => {
+          if (!allowHoverPeek(event.pointerType)) return;
+          if (!filled) return;
+          if (open === "edit") return;
+          cancelHide();
+          onPeek();
+        }}
+        onPointerLeave={(event) => {
+          if (event.pointerType !== "mouse") return;
+          if (open === "peek") schedulePeekHide();
+        }}
+        onClick={beginEdit}
+      >
+        {label}
+      </button>
+      {pop}
+    </th>
+  );
+}
+
 export function StationCallsCard({ date }: { date: string }) {
   const { configured, session, user } = useAuth();
   const cloud = configured && !!session;
   const [store, setStore] = useState(() => readStationCallStore());
   const board = useMemo(() => boardForDate(store, date), [store, date]);
+  const [noteOpen, setNoteOpen] = useState<{
+    date: string;
+    id: string;
+    mode: NotePopMode;
+  } | null>(null);
+  const activeNote = noteOpen?.date === date ? noteOpen : null;
 
   useEffect(() => {
     if (!cloud) return;
@@ -193,6 +436,16 @@ export function StationCallsCard({ date }: { date: string }) {
     [persist, store, date],
   );
 
+  const onNote = useCallback(
+    (stationId: string, value: string | null) => {
+      const prev = board[stationId]?.note ?? null;
+      if (prev === value) return;
+      if (!stationCellFilled(prev) && !stationCellFilled(value)) return;
+      persist(setStationNote(store, date, stationId, value));
+    },
+    [persist, store, date, board],
+  );
+
   return (
     <article className="station-calls-card">
       <div className="station-calls-head">
@@ -201,6 +454,7 @@ export function StationCallsCard({ date }: { date: string }) {
           <p className="station-calls-sub">
             {formatHeaderDate(date)} · Start from prior Close · hour cells blank until you call
             {cloud ? " · synced" : " · this device only"}
+            {" · hover or tap a station name for a note"}
           </p>
         </div>
       </div>
@@ -222,7 +476,26 @@ export function StationCallsCard({ date }: { date: string }) {
               const start = startForStation(store, date, yard.id);
               return (
                 <tr key={yard.id}>
-                  <th scope="row">{yard.label}</th>
+                  <StationNameCell
+                    stationId={yard.id}
+                    label={yard.label}
+                    note={row.note}
+                    open={activeNote?.id === yard.id ? activeNote.mode : null}
+                    onPeek={() =>
+                      setNoteOpen((cur) =>
+                        cur?.date === date && cur.mode === "edit"
+                          ? cur
+                          : { date, id: yard.id, mode: "peek" },
+                      )
+                    }
+                    onEdit={() => setNoteOpen({ date, id: yard.id, mode: "edit" })}
+                    onClose={() =>
+                      setNoteOpen((cur) =>
+                        cur?.date === date && cur.id === yard.id ? null : cur,
+                      )
+                    }
+                    onCommit={(next) => onNote(yard.id, next)}
+                  />
                   <td>
                     <span className={`station-call-start${start === 0 ? " is-zero" : ""}`}>
                       {start}
