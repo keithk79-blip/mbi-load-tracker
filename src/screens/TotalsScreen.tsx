@@ -52,7 +52,7 @@ function useStationCallBoard(date: string) {
     let alive = true;
     void fetchStationCallStoreFromCloud().then((remote) => {
       if (!alive || !remote) return;
-      const merged = mergeStationCallStores(readStationCallStore(), remote);
+      const merged = mergeStationCallStores(readStationCallStore(), remote.days);
       writeStationCallStore(merged);
     });
     return () => {
