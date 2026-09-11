@@ -98,8 +98,24 @@ export function countBrokerLoads(loads: Load[]): number {
   return loads.filter((load) => isBrokerTruck(load.truck)).length;
 }
 
-/** Yard waste, recycle, residual/residue, cardboard, or Groot-related hauls. */
+/** Letters-only key so Van Drunen / Vandrunen / van-drunen all match. */
+function lettersKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z]/g, "");
+}
+
+/**
+ * Van Drunen sits on the specialty / walking-floor board, not the MSW hour grid.
+ * Match pickup (and station id) aliases; do not invent a catalog bubble.
+ */
+export function isVanDrunenPickup(load: Load): boolean {
+  return [load.pickup, load.stationId].some((field) =>
+    lettersKey(field).includes("vandrunen"),
+  );
+}
+
+/** Yard waste, recycle, residual/residue, cardboard, Groot, or Van Drunen pickups. */
 export function isWalkingFloorLoad(load: Load): boolean {
+  if (isVanDrunenPickup(load)) return true;
   const commodityKey = tallyLabel(load.commodity);
   if (
     commodityKey === "YARD" ||
@@ -115,6 +131,17 @@ export function isWalkingFloorLoad(load: Load): boolean {
 
 export function countWalkingFloorLoads(loads: Load[]): number {
   return loads.filter(isWalkingFloorLoad).length;
+}
+
+/**
+ * Today / EOD TRASH bubble: MSW and C&D, except Van Drunen pickups (those are
+ * WALKING-FLOOR even when the commodity is Trash/MSW).
+ */
+export function countTrashLoads(loads: Load[]): number {
+  return loads.filter(
+    (load) =>
+      tallyLabel(load.commodity) === "TRASH" && !isVanDrunenPickup(load),
+  ).length;
 }
 
 export type DaySummaryCard = {
@@ -134,7 +161,7 @@ export function daySummaryCards(loads: Load[]): DaySummaryCard[] {
     {
       key: "trash",
       label: "TRASH",
-      count: countByTallyLabel(loads, "TRASH"),
+      count: countTrashLoads(loads),
     },
     {
       key: "leachate",
@@ -247,7 +274,7 @@ export function endOfDaySummary(
   return {
     loads: loads.length,
     subs: countBrokerLoads(loads),
-    trash: countByTallyLabel(loads, "TRASH"),
+    trash: countTrashLoads(loads),
     leachate: countByTallyLabel(loads, "LEACHATE"),
     walkingFloor: countWalkingFloorLoads(loads),
     stations: STATION_CALL_YARDS.map((yard) => {

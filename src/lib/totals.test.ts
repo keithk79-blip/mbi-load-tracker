@@ -1,13 +1,21 @@
 import { describe, expect, it } from "vitest";
 import type { Load } from "../types";
-import { emptyBoard, setStationClose, type StationDayBoard } from "./stationCalls";
+import { SPECIALTY_STATIONS } from "./specialtyBoard";
+import {
+  emptyBoard,
+  setStationClose,
+  STATION_CALL_YARDS,
+  type StationDayBoard,
+} from "./stationCalls";
 import {
   countBrokerLoads,
   countByTallyLabel,
+  countTrashLoads,
   countWalkingFloorLoads,
   daySummaryCards,
   endOfDayCards,
   endOfDaySummary,
+  isVanDrunenPickup,
   isWalkingFloorLoad,
   loadMatchesCallYard,
   rankCommodities,
@@ -86,6 +94,66 @@ describe("walking-floor tallies", () => {
       }),
     ];
     expect(countWalkingFloorLoads(loads)).toBe(1);
+  });
+
+  it("counts Van Drunen pickups as walking-floor even when the commodity is trash", () => {
+    const vanDrunen = load({
+      id: "vd",
+      pickup: "Van Drunen",
+      commodity: "Trash",
+      destination: "Newton",
+      stationId: "custom",
+    });
+    expect(isVanDrunenPickup(vanDrunen)).toBe(true);
+    expect(isWalkingFloorLoad(vanDrunen)).toBe(true);
+    expect(countTrashLoads([vanDrunen])).toBe(0);
+    expect(countWalkingFloorLoads([vanDrunen])).toBe(1);
+  });
+
+  it("does not treat Melrose trash as walking-floor, even to Newton", () => {
+    const melrose = load({
+      pickup: "Melrose",
+      commodity: "Trash (MSW)",
+      destination: "Newton",
+      stationId: "melrose",
+    });
+    expect(isVanDrunenPickup(melrose)).toBe(false);
+    expect(isWalkingFloorLoad(melrose)).toBe(false);
+    expect(countTrashLoads([melrose])).toBe(1);
+  });
+
+  it("does not treat Van Drunen as a destination match", () => {
+    const row = load({
+      pickup: "Melrose",
+      destination: "Van Drunen",
+      stationId: "melrose",
+    });
+    expect(isVanDrunenPickup(row)).toBe(false);
+    expect(isWalkingFloorLoad(row)).toBe(false);
+  });
+
+  it("matches Van Drunen / Vandrunen pickup aliases without a catalog bubble", () => {
+    const aliases = [
+      load({ pickup: "Van Drunen", stationId: "custom" }),
+      load({ pickup: "Vandrunen", stationId: "custom" }),
+      load({ pickup: "van-drunen", stationId: "custom" }),
+      load({ pickup: "VAN DRUNEN", stationId: "custom" }),
+      load({ pickup: "Custom", stationId: "van-drunen" }),
+    ];
+    for (const row of aliases) {
+      expect(isVanDrunenPickup(row)).toBe(true);
+      expect(isWalkingFloorLoad(row)).toBe(true);
+    }
+    expect(
+      SPECIALTY_STATIONS.some((station) =>
+        `${station.id}${station.name}`.toLowerCase().includes("drunen"),
+      ),
+    ).toBe(false);
+    expect(
+      STATION_CALL_YARDS.some((yard) =>
+        `${yard.id}${yard.label}`.toLowerCase().includes("drunen"),
+      ),
+    ).toBe(false);
   });
 });
 
@@ -202,6 +270,67 @@ describe("daySummaryCards", () => {
     expect(value("TRASH") + value("LEACHATE") + value("WALKING-FLOOR")).toBe(
       value("LOADS"),
     );
+  });
+
+  it("puts Van Drunen trash on WALKING-FLOOR, not TRASH, and still counts LOADS", () => {
+    const loads = [
+      load({
+        id: "vd-trash",
+        pickup: "Van Drunen",
+        commodity: "Trash",
+        destination: "Newton",
+        stationId: "custom",
+      }),
+      load({
+        id: "melrose-trash",
+        pickup: "Melrose",
+        commodity: "Trash (MSW)",
+        destination: "Covanta",
+        stationId: "melrose",
+      }),
+    ];
+
+    expect(countTrashLoads(loads)).toBe(1);
+    expect(countWalkingFloorLoads(loads)).toBe(1);
+    expect(countByTallyLabel(loads, "TRASH")).toBe(2);
+
+    const cards = daySummaryCards(loads);
+    const value = (label: string) =>
+      cards.find((card) => card.label === label)?.count ?? 0;
+
+    expect(value("TRASH")).toBe(1);
+    expect(value("WALKING-FLOOR")).toBe(1);
+    expect(value("LOADS")).toBe(2);
+    expect(value("LEACHATE")).toBe(0);
+  });
+
+  it("keeps non–Van Drunen C&D in TRASH while Van Drunen C&D is WALKING-FLOOR", () => {
+    const loads = [
+      load({
+        id: "cd-citiwaste",
+        pickup: "Citiwaste",
+        commodity: "C&D",
+        destination: "Pontiac",
+        stationId: "citiwaste",
+      }),
+      load({
+        id: "cd-vd",
+        pickup: "Vandrunen",
+        commodity: "C&D",
+        destination: "Newton",
+        stationId: "custom",
+      }),
+    ];
+
+    expect(countTrashLoads(loads)).toBe(1);
+    expect(countWalkingFloorLoads(loads)).toBe(1);
+
+    const cards = daySummaryCards(loads);
+    const value = (label: string) =>
+      cards.find((card) => card.label === label)?.count ?? 0;
+    expect(value("TRASH")).toBe(1);
+    expect(value("WALKING-FLOOR")).toBe(1);
+    expect(value("LOADS")).toBe(2);
   });
 });
 
@@ -385,6 +514,39 @@ describe("endOfDaySummary", () => {
       ["LOADS", 4],
       ["SUBS", 0],
     ]);
+  });
+
+  it("puts Van Drunen trash on WALKING-FLOOR, not TRASH, like Today", () => {
+    const loads = [
+      load({
+        id: "vd",
+        pickup: "Van Drunen",
+        commodity: "Trash",
+        destination: "Newton",
+        stationId: "custom",
+      }),
+      load({
+        id: "melrose",
+        pickup: "Melrose",
+        commodity: "Trash (MSW)",
+        stationId: "melrose",
+      }),
+    ];
+    const summary = endOfDaySummary(loads, emptyBoard());
+    expect(summary.trash).toBe(1);
+    expect(summary.walkingFloor).toBe(1);
+    expect(summary.loads).toBe(2);
+    expect(summary.leachate).toBe(0);
+    expect(endOfDayCards(summary).map((card) => [card.label, card.count])).toEqual([
+      ["TRASH", 1],
+      ["LEACHATE", 0],
+      ["WALKING-FLOOR", 1],
+      ["LOADS", 2],
+      ["SUBS", 0],
+    ]);
+    expect(summary.stations.some((row) => /drunen/i.test(`${row.id}${row.label}`))).toBe(
+      false,
+    );
   });
 
   it("shows decimal and letter Close values in Left", () => {
