@@ -58,6 +58,11 @@ export type StationDayRow = {
   hours: StationHourMap;
   /** Blank until set; otherwise carries to next day's Start when numeric. */
   close: StationCellValue | null;
+  /**
+   * Per date + station comment on the yard name. Blank until set;
+   * `null` is an explicit clear (same tombstone shape as Close).
+   */
+  note: string | null;
   /** Last local/remote write per hour (ISO). Newer wins on merge, including clears. */
   hoursAt?: StationHourAtMap;
   /**
@@ -65,6 +70,11 @@ export type StationDayRow = {
    * from an explicit Close clear.
    */
   closeAt?: string;
+  /**
+   * Last note write (ISO). Required to tell default `note: null` (never set)
+   * from an explicit note clear.
+   */
+  noteAt?: string;
 };
 
 export type StationCellInput = string | number | null;
@@ -78,7 +88,7 @@ const STORE_KEY = "chitrader.load-tracker.station-calls.v1";
 const memoryCleared = new Set<string>();
 
 function emptyRow(): StationDayRow {
-  return { hours: {}, close: null };
+  return { hours: {}, close: null, note: null };
 }
 
 function nowIso(at?: string): string {
@@ -228,9 +238,29 @@ function cloneRow(row: StationDayRow): StationDayRow {
   return {
     hours: { ...row.hours },
     close: row.close,
+    note: row.note ?? null,
     hoursAt: row.hoursAt ? { ...row.hoursAt } : undefined,
     closeAt: row.closeAt,
+    noteAt: row.noteAt,
   };
+}
+
+const NOTE_MAX_LEN = 2000;
+
+/** Trimmed note for save: empty/whitespace → null so the marker stays quiet. */
+export function commitStationNote(raw: string): string | null {
+  const t = raw.trim();
+  if (t === "") return null;
+  return t.length > NOTE_MAX_LEN ? t.slice(0, NOTE_MAX_LEN) : t;
+}
+
+function readNote(raw: unknown): string | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "number") {
+    if (!Number.isFinite(raw)) return null;
+    return commitStationNote(String(raw));
+  }
+  return commitStationNote(String(raw));
 }
 
 function cleanRow(raw: unknown): StationDayRow {
@@ -239,8 +269,10 @@ function cleanRow(raw: unknown): StationDayRow {
   const obj = raw as {
     hours?: Record<string, unknown>;
     close?: unknown;
+    note?: unknown;
     hoursAt?: Record<string, unknown>;
     closeAt?: unknown;
+    noteAt?: unknown;
   };
   if (obj.hours && typeof obj.hours === "object") {
     for (const hour of STATION_CALL_HOURS) {
@@ -249,6 +281,7 @@ function cleanRow(raw: unknown): StationDayRow {
     }
   }
   row.close = normalizeStationCell(obj.close) ?? null;
+  row.note = readNote(obj.note);
   if (obj.hoursAt && typeof obj.hoursAt === "object") {
     const hoursAt: StationHourAtMap = {};
     for (const hour of STATION_CALL_HOURS) {
@@ -259,7 +292,14 @@ function cleanRow(raw: unknown): StationDayRow {
   }
   const closeAt = readIsoAt(obj.closeAt);
   if (closeAt) row.closeAt = closeAt;
+  const noteAt = readIsoAt(obj.noteAt);
+  if (noteAt) row.noteAt = noteAt;
   return row;
+}
+
+/** Public parse for tests and any future import of a board row. */
+export function cleanStationDayRow(raw: unknown): StationDayRow {
+  return cleanRow(raw);
 }
 
 export function readStationCallStore(): StationCallStore {
@@ -374,6 +414,25 @@ export function setStationClose(
   return { ...store, [date]: board };
 }
 
+export function setStationNote(
+  store: StationCallStore,
+  date: string,
+  stationId: string,
+  value: string | null,
+  at?: string,
+): StationCallStore {
+  const board = { ...(store[date] ?? emptyBoard()) };
+  const prev = cloneRow(board[stationId] ?? emptyRow());
+  const stamp = nowIso(at);
+  const note = value === null ? null : commitStationNote(value);
+  board[stationId] = {
+    ...prev,
+    note,
+    noteAt: stamp,
+  };
+  return { ...store, [date]: board };
+}
+
 export async function fetchStationCallStoreFromCloud(): Promise<StationCallStore | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
@@ -451,6 +510,13 @@ function closeMergeInput(row: StationDayRow): CellPick {
   return { value: row.close, at: row.closeAt };
 }
 
+function noteMergeInput(row: StationDayRow): CellPick {
+  if ((row.note === null || row.note === undefined) && !row.noteAt) {
+    return { value: undefined };
+  }
+  return { value: row.note ?? null, at: row.noteAt };
+}
+
 function cellsVisuallyEqual(
   a: StationCellValue | null | undefined,
   b: StationCellValue | null | undefined,
@@ -464,6 +530,7 @@ export function boardsEquivalent(a: StationDayBoard, b: StationDayBoard): boolea
     const la = a[yard.id] ?? emptyRow();
     const lb = b[yard.id] ?? emptyRow();
     if (!cellsVisuallyEqual(la.close, lb.close)) return false;
+    if (!cellsVisuallyEqual(la.note, lb.note)) return false;
     for (const hour of STATION_CALL_HOURS) {
       if (!cellsVisuallyEqual(la.hours[hour.key], lb.hours[hour.key])) return false;
     }
@@ -475,6 +542,7 @@ export function hasExplicitClears(board: StationDayBoard): boolean {
   for (const yard of STATION_CALL_YARDS) {
     const row = board[yard.id] ?? emptyRow();
     if (row.close === null && row.closeAt) return true;
+    if (row.note === null && row.noteAt) return true;
     for (const hour of STATION_CALL_HOURS) {
       if (row.hours[hour.key] === null) return true;
     }
@@ -516,12 +584,17 @@ export function mergeBoardCells(
     const lClose = closeMergeInput(l);
     const rClose = closeMergeInput(r);
     const closePick = pickMergedCell(lClose.value, rClose.value, lClose.at, rClose.at);
+    const lNote = noteMergeInput(l);
+    const rNote = noteMergeInput(r);
+    const notePick = pickMergedCell(lNote.value, rNote.value, lNote.at, rNote.at);
     const row: StationDayRow = {
       hours,
       close: closePick.value === undefined ? null : closePick.value,
+      note: notePick.value === undefined ? null : notePick.value,
     };
     if (Object.keys(hoursAt).length) row.hoursAt = hoursAt;
     if (closePick.at) row.closeAt = closePick.at;
+    if (notePick.at) row.noteAt = notePick.at;
     out[yard.id] = row;
   }
   return out;
@@ -536,6 +609,7 @@ export function boardFillScore(board: StationDayBoard): number {
       if (stationCellFilled(row.hours[hour.key])) score += 1;
     }
     if (stationCellFilled(row.close)) score += 1;
+    if (stationCellFilled(row.note)) score += 1;
   }
   return score;
 }
