@@ -4,6 +4,26 @@ import { chicagoToday } from "./chicagoDate";
 /** Same key in the browser and the Tauri WebView — each environment keeps its own store. */
 export const STORAGE_KEY = "chitrader.load-tracker.v1";
 
+/** ISO time of the last successful non-empty paged cloud refresh on this device. */
+export const LAST_CLOUD_SYNC_KEY = "chitrader.load-tracker.last-cloud-sync.v1";
+
+export function readLastSuccessfulSyncAt(): string | null {
+  try {
+    const raw = localStorage.getItem(LAST_CLOUD_SYNC_KEY);
+    if (!raw || typeof raw !== "string") return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    if (Number.isNaN(Date.parse(trimmed))) return null;
+    return trimmed;
+  } catch {
+    return null;
+  }
+}
+
+export function writeLastSuccessfulSyncAt(iso: string): void {
+  localStorage.setItem(LAST_CLOUD_SYNC_KEY, iso);
+}
+
 export type Persisted = {
   version: 1;
   /** Loads keyed by America/Chicago calendar date `YYYY-MM-DD`. */
