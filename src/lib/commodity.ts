@@ -33,12 +33,12 @@ export function commodityTone(commodity: string): TagTone {
 
 /**
  * Bucket for Today / EOD summary cards, commodity filters, and rank grouping.
- * C&D rolls into TRASH (MSW), matching the Dispatch Board sheet: C&D hauls are
- * entered on the Trash hour grid and already sit inside Total MSW. They are not
- * a leftover outside TRASH / LEACHATE / WALKING-FLOOR.
- * Load tags still show the typed commodity; commodityRankLabel keeps "C&D" as a
- * display name. Rank rows group by this tally bucket, so C&D appears under
- * Trash (MSW) rather than as its own rank.
+ * C&D and Tires roll into TRASH (MSW), matching the Dispatch Board sheet: those
+ * hauls are entered on the Trash hour grid and already sit inside Total MSW.
+ * They are not a leftover outside TRASH / LEACHATE / WALKING-FLOOR.
+ * Load tags still show the typed commodity; commodityRankLabel keeps "C&D" and
+ * "Tires" as display names. Rank rows group by this tally bucket, so they
+ * appear under Trash (MSW) rather than as their own ranks.
  */
 export function tallyLabel(commodity: string): string {
   const c = commodity.toLowerCase();
@@ -51,7 +51,7 @@ export function tallyLabel(commodity: string): string {
   if (c.includes("wood")) return "WOOD";
   if (c.includes("cardboard")) return "CARDBOARD";
   if (c.includes("c&d")) return "TRASH";
-  if (c.includes("tire")) return "TIRES";
+  if (c.includes("tire")) return "TRASH";
   return commodity.toUpperCase();
 }
 
