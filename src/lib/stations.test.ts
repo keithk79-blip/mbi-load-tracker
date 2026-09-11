@@ -327,21 +327,25 @@ describe("log-load commodity dest cascades", () => {
     expect(destinationsFor("hooker-street", "Recycle")).toEqual(["RSI", "Hodgkins"]);
   });
 
-  it("locks Wheeling dests and keeps Prairie Hill only on the unfiltered union", () => {
+  it("locks Wheeling dests and offers Prairie Hill RFD on trash only", () => {
     expect(destinationsFor("wheeling")).toContain("Prairie Hill");
+    expect(destinationsFor("wheeling")).toContain("Prairie Hill RFD");
     expect(destinationsFor("wheeling", "Trash (MSW)")).toEqual([
       "DeKalb",
       "Rockford",
       "Liberty",
       "Zion",
+      "Prairie Hill RFD",
     ]);
     expect(destinationsFor("wheeling", "Yard Waste")).toEqual([
       "Thelens",
       "Willow Ranch",
     ]);
     expect(destinationsFor("wheeling", "Recycle")).not.toContain("Prairie Hill");
+    expect(destinationsFor("wheeling", "Recycle")).not.toContain("Prairie Hill RFD");
     expect(destinationsFor("wheeling", "Trash (MSW)")).not.toContain("Prairie Hill");
     expect(destinationsFor("wheeling", "Yard Waste")).not.toContain("Prairie Hill");
+    expect(destinationsFor("wheeling", "Yard Waste")).not.toContain("Prairie Hill RFD");
   });
 
   it("allows both Tri-State commodities to Liberty and Prairie View", () => {
