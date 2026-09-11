@@ -29,6 +29,7 @@ import {
   writeQueue,
 } from "../lib/queue";
 import { buildSeedLoads } from "../lib/seed";
+import { sortLoads } from "../lib/sortLoads";
 import { getSupabase, isCloudConfigured } from "../lib/supabase";
 import {
   allLoads,
@@ -70,14 +71,6 @@ type LoadsContextValue = {
 const CACHE_KEY = "chitrader.load-tracker.cloud-cache.v1";
 
 const LoadsContext = createContext<LoadsContextValue | null>(null);
-
-function sortLoads(loads: Load[]): Load[] {
-  return [...loads].sort((a, b) => {
-    const byUpdated = b.updatedAt.localeCompare(a.updatedAt);
-    if (byUpdated !== 0) return byUpdated;
-    return b.createdAt.localeCompare(a.createdAt);
-  });
-}
 
 function readCloudCache(): Persisted {
   try {

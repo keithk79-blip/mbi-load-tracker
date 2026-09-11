@@ -107,6 +107,39 @@ describe("mergeCloudLoads", () => {
     expect(snapshotLosesDeviceDates([], store([]), store(sep8), [])).toBe(true);
   });
 
+  it("returns merged loads in createdAt dispatch order, not updatedAt", () => {
+    const first = load("first", "2026-09-11", {
+      createdAt: "2026-09-11T10:00:00.000Z",
+      updatedAt: "2026-09-11T18:00:00.000Z",
+    });
+    const second = load("second", "2026-09-11", {
+      createdAt: "2026-09-11T10:05:00.000Z",
+      updatedAt: "2026-09-11T10:05:00.000Z",
+    });
+    const qty0 = load("qty-0", "2026-09-11", {
+      createdAt: "2026-09-11T11:00:00.000Z",
+      updatedAt: "2026-09-11T19:00:00.000Z",
+    });
+    const qty1 = load("qty-1", "2026-09-11", {
+      createdAt: "2026-09-11T11:00:01.000Z",
+      updatedAt: "2026-09-11T19:00:01.000Z",
+    });
+
+    const { merged } = mergeCloudLoads({
+      remote: [first, qty1, second, qty0],
+      cache: store([]),
+      local: store([]),
+      pending: [],
+    });
+
+    expect(merged.map((row) => row.id)).toEqual([
+      "first",
+      "second",
+      "qty-0",
+      "qty-1",
+    ]);
+  });
+
   it("drops stale cache-only rows that are not in the pending queue when remote is complete", () => {
     const remote = [load("already-cloud", "2026-09-07")];
     const cache = store([
