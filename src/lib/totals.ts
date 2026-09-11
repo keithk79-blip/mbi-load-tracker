@@ -181,8 +181,8 @@ export function countWalkingFloorLoads(loads: Load[]): number {
 }
 
 /**
- * Today / EOD TRASH bubble: MSW and C&D, except Van Drunen pickups and the
- * GraysLake Recycle → Hodgkins lane (those are WALKING-FLOOR even when the
+ * Today / EOD TRASH bubble: MSW, C&D, and Tires, except Van Drunen pickups and
+ * the GraysLake Recycle → Hodgkins lane (those are WALKING-FLOOR even when the
  * commodity text looks like Trash/MSW).
  */
 export function countTrashLoads(loads: Load[]): number {
