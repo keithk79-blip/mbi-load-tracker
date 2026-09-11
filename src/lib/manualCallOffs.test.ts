@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   addManualOff,
+  cleanManualList,
+  cleanManualOffs,
   deletedManualKey,
   gcDeletedManualKeys,
   mergeManualOffStores,
@@ -35,6 +37,27 @@ describe("addManualOff / removeManualOff", () => {
     expect(result.store["2026-09-09"]).toEqual([
       { name: "Glen Barker", kind: "late-early" },
     ]);
+  });
+
+  it("cleaners keep late-early and drop unknown kinds", () => {
+    expect(
+      cleanManualList([
+        { name: "Glen Barker", kind: "late-early" },
+        { name: "Skip", kind: "not-a-kind" },
+        { name: "Ada", kind: "call-off" },
+      ]),
+    ).toEqual([
+      { name: "Ada", kind: "call-off" },
+      { name: "Glen Barker", kind: "late-early" },
+    ]);
+    expect(
+      cleanManualOffs({
+        "2026-09-11": [{ name: "Glen Barker", kind: "late-early" }],
+        "nope": [{ name: "Ada", kind: "call-off" }],
+      }),
+    ).toEqual({
+      "2026-09-11": [{ name: "Glen Barker", kind: "late-early" }],
+    });
   });
 
   it("rejects a name already occupied by the sheet list", () => {

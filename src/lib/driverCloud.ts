@@ -90,13 +90,64 @@ type ManualRemoteRow = {
   kind: string;
 };
 
-export async function fetchRemoteManualOffs(): Promise<ManualOffsStore | null> {
+/** PostgREST / supabase-js error fields we actually read. */
+export type CloudErrorLike = {
+  code?: string | null;
+  message?: string | null;
+} | null | undefined;
+
+export type ManualOffsWriteResult = {
+  ok: boolean;
+  error: string | null;
+};
+
+export type ManualOffsFetchResult = {
+  store: ManualOffsStore | null;
+  error: string | null;
+};
+
+export function describeManualOffsCloudError(error: CloudErrorLike): string {
+  const raw = typeof error?.message === "string" ? error.message.trim() : "";
+  const code = typeof error?.code === "string" ? error.code : "";
+  const missingTable =
+    code === "PGRST205" ||
+    /schema cache/i.test(raw) ||
+    (/manual_call_offs/i.test(raw) &&
+      (/does not exist/i.test(raw) || /could not find the table/i.test(raw)));
+  if (missingTable) {
+    return "Call-offs did not reach the cloud — run Load-Tracker-manual-call-offs.sql in Supabase once.";
+  }
+  return raw
+    ? `Call-offs did not reach the cloud — ${raw}`
+    : "Call-offs did not reach the cloud.";
+}
+
+export function manualOffsResultFromError(
+  op: string,
+  error: CloudErrorLike,
+): ManualOffsWriteResult {
+  if (!error) return { ok: true, error: null };
+  const message = describeManualOffsCloudError(error);
+  console.warn(`manual_call_offs ${op} failed`, error.message ?? message);
+  return { ok: false, error: message };
+}
+
+export async function fetchRemoteManualOffs(): Promise<ManualOffsFetchResult> {
   const supabase = getSupabase();
-  if (!supabase) return null;
+  if (!supabase) return { store: null, error: null };
   const { data, error } = await supabase
     .from("manual_call_offs")
     .select("date, name, kind");
-  if (error || !data) return null;
+  if (error) {
+    const failed = manualOffsResultFromError("fetch", error);
+    return { store: null, error: failed.error };
+  }
+  if (!data) {
+    const failed = manualOffsResultFromError("fetch", {
+      message: "empty response",
+    });
+    return { store: null, error: failed.error };
+  }
   const byDate: Record<string, unknown[]> = {};
   for (const row of data as ManualRemoteRow[]) {
     const date = typeof row.date === "string" ? row.date.slice(0, 10) : "";
@@ -104,18 +155,18 @@ export async function fetchRemoteManualOffs(): Promise<ManualOffsStore | null> {
     if (!byDate[date]) byDate[date] = [];
     byDate[date].push({ name: row.name, kind: row.kind });
   }
-  return cleanManualOffs(byDate);
+  return { store: cleanManualOffs(byDate), error: null };
 }
 
 export async function upsertRemoteManualOff(
   date: string,
   off: ManualCallOff,
-): Promise<void> {
+): Promise<ManualOffsWriteResult> {
   const supabase = getSupabase();
-  if (!supabase) return;
+  if (!supabase) return { ok: true, error: null };
   const name = off.name.trim();
-  if (!name) return;
-  await supabase.from("manual_call_offs").upsert(
+  if (!name) return { ok: true, error: null };
+  const { error } = await supabase.from("manual_call_offs").upsert(
     {
       date,
       name_key: callOffNameKey(name),
@@ -124,30 +175,32 @@ export async function upsertRemoteManualOff(
     },
     { onConflict: "date,name_key" },
   );
+  return manualOffsResultFromError("upsert", error);
 }
 
 export async function deleteRemoteManualOff(
   date: string,
   name: string,
-): Promise<void> {
+): Promise<ManualOffsWriteResult> {
   const supabase = getSupabase();
-  if (!supabase) return;
+  if (!supabase) return { ok: true, error: null };
   const key = callOffNameKey(name);
-  if (!key) return;
-  await supabase
+  if (!key) return { ok: true, error: null };
+  const { error } = await supabase
     .from("manual_call_offs")
     .delete()
     .eq("date", date)
     .eq("name_key", key);
+  return manualOffsResultFromError("delete", error);
 }
 
 /** Push names that exist locally but not on the remote snapshot (unsynced adds). */
 export async function pushMissingManualOffs(
   local: ManualOffsStore,
   remote: ManualOffsStore,
-): Promise<void> {
+): Promise<ManualOffsWriteResult> {
   const supabase = getSupabase();
-  if (!supabase) return;
+  if (!supabase) return { ok: true, error: null };
   const rows: { date: string; name_key: string; name: string; kind: string }[] = [];
   for (const [date, list] of Object.entries(local)) {
     const remoteKeys = new Set(
@@ -164,6 +217,9 @@ export async function pushMissingManualOffs(
       });
     }
   }
-  if (!rows.length) return;
-  await supabase.from("manual_call_offs").upsert(rows, { onConflict: "date,name_key" });
+  if (!rows.length) return { ok: true, error: null };
+  const { error } = await supabase
+    .from("manual_call_offs")
+    .upsert(rows, { onConflict: "date,name_key" });
+  return manualOffsResultFromError("push-missing", error);
 }
