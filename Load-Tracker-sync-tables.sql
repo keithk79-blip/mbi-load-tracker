@@ -1,5 +1,6 @@
--- Specialty open loads + station call hour grid (shared across devices).
+-- Specialty open loads + station call hour grid + manual call-offs (shared across devices).
 -- Paste into Supabase SQL Editor and Run.
+-- Manual call-offs are also in Load-Tracker-manual-call-offs.sql (one-shot paste).
 
 create table if not exists public.specialty_opens (
   id uuid primary key default gen_random_uuid(),
@@ -63,3 +64,60 @@ begin
   alter publication supabase_realtime add table public.station_call_days;
 exception when duplicate_object then null;
 end $$;
+
+-- Manual same-day call-offs (Available drivers card).
+-- Keep in sync with Load-Tracker-manual-call-offs.sql (paste-ready one-shot).
+
+create table if not exists public.manual_call_offs (
+  date date not null,
+  name_key text not null,
+  name text not null,
+  kind text not null,
+  created_at timestamptz not null default now(),
+  primary key (date, name_key)
+);
+
+alter table public.manual_call_offs
+  drop constraint if exists manual_call_offs_kind_check;
+
+alter table public.manual_call_offs
+  add constraint manual_call_offs_kind_check
+  check (kind in ('call-off', 'p-day', 'okd-off', 'ncns', 'late-early'));
+
+create index if not exists manual_call_offs_date_idx
+  on public.manual_call_offs (date);
+
+alter table public.manual_call_offs enable row level security;
+
+drop policy if exists "crew_select_manual_call_offs" on public.manual_call_offs;
+create policy "crew_select_manual_call_offs"
+  on public.manual_call_offs for select
+  to authenticated
+  using (true);
+
+drop policy if exists "crew_insert_manual_call_offs" on public.manual_call_offs;
+create policy "crew_insert_manual_call_offs"
+  on public.manual_call_offs for insert
+  to authenticated
+  with check (true);
+
+drop policy if exists "crew_update_manual_call_offs" on public.manual_call_offs;
+create policy "crew_update_manual_call_offs"
+  on public.manual_call_offs for update
+  to authenticated
+  using (true)
+  with check (true);
+
+drop policy if exists "crew_delete_manual_call_offs" on public.manual_call_offs;
+create policy "crew_delete_manual_call_offs"
+  on public.manual_call_offs for delete
+  to authenticated
+  using (true);
+
+do $$
+begin
+  alter publication supabase_realtime add table public.manual_call_offs;
+exception when duplicate_object then null;
+end $$;
+
+notify pgrst, 'reload schema';

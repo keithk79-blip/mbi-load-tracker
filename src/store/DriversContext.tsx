@@ -155,23 +155,38 @@ export function DriversProvider({ children }: { children: ReactNode }) {
           setDays(merged);
         }
         const remoteManuals = await fetchRemoteManualOffs();
-        if (remoteManuals) {
+        if (remoteManuals.error) {
+          setError(remoteManuals.error);
+        }
+        if (remoteManuals.store !== null) {
           const local = readDriverDaysPayload();
           const mergedManuals = mergeManualOffStores(
             local.manualOffs,
-            remoteManuals,
+            remoteManuals.store,
             local.manualOffsDeleted,
           );
           const nextDeleted = gcDeletedManualKeys(
             local.manualOffsDeleted,
-            remoteManuals,
+            remoteManuals.store,
           );
           persistManuals(mergedManuals, nextDeleted);
-          await pushMissingManualOffs(mergedManuals, remoteManuals);
+          const pushed = await pushMissingManualOffs(
+            mergedManuals,
+            remoteManuals.store,
+          );
+          if (!pushed.ok && pushed.error) {
+            setError(pushed.error);
+          }
           for (const key of nextDeleted) {
             const split = key.indexOf("|");
             if (split <= 0) continue;
-            await deleteRemoteManualOff(key.slice(0, split), key.slice(split + 1));
+            const removed = await deleteRemoteManualOff(
+              key.slice(0, split),
+              key.slice(split + 1),
+            );
+            if (!removed.ok && removed.error) {
+              setError(removed.error);
+            }
           }
         }
       }
@@ -340,7 +355,10 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       persistManuals(next, nextDeleted);
       recomputeTodayFrom(next);
       if (configured && session) {
-        await upsertRemoteManualOff(date, added);
+        const written = await upsertRemoteManualOff(date, added);
+        if (!written.ok && written.error) {
+          setError(written.error);
+        }
       }
       return true;
     },
@@ -365,7 +383,10 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       persistManuals(next, nextDeleted);
       recomputeTodayFrom(next);
       if (configured && session) {
-        await deleteRemoteManualOff(date, removed.name);
+        const written = await deleteRemoteManualOff(date, removed.name);
+        if (!written.ok && written.error) {
+          setError(written.error);
+        }
       }
       return true;
     },
