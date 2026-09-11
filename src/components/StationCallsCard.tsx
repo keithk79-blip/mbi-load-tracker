@@ -36,11 +36,14 @@ import {
 type StationCallCol = StationHourKey | "close";
 type NotePopMode = "peek" | "edit";
 
-function finePointerHover(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(hover: hover) and (pointer: fine)").matches
-  );
+function allowHoverPeek(pointerType: string): boolean {
+  if (pointerType !== "mouse" && pointerType !== "pen") return false;
+  if (typeof window === "undefined") return false;
+  // Phones: tap opens the editor. Hover media is none / pointer is coarse.
+  if (window.matchMedia("(pointer: coarse)").matches) return false;
+  if (window.matchMedia("(hover: hover) and (pointer: fine)").matches) return true;
+  // Desktop VMs and some remote sessions omit hover media; a mouse still peeks.
+  return pointerType === "mouse" && navigator.maxTouchPoints === 0;
 }
 
 function focusStationCallCell(stationId: string, col: StationCallCol): boolean {
@@ -337,8 +340,7 @@ function StationNameCell({
         aria-expanded={open === "edit"}
         aria-label={filled ? `${label}, has note` : `${label}, add note`}
         onPointerEnter={(event) => {
-          if (event.pointerType !== "mouse") return;
-          if (!finePointerHover()) return;
+          if (!allowHoverPeek(event.pointerType)) return;
           if (!filled) return;
           if (open === "edit") return;
           cancelHide();
