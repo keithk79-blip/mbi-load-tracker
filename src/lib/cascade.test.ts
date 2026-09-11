@@ -251,6 +251,18 @@ describe("applyPickupCascade log-load dest locks", () => {
     expectClearDest("roscoe", "Recycle", "Rockford");
   });
 
+  it("GraysLake: leachate tank dests vs Recycle → Hodgkins", () => {
+    expectKeep("grayslake", "Leachate (tanker)", "FRWRD");
+    expectKeep("grayslake", "Leachate (tanker)", "CID");
+    expectKeep("grayslake", "Leachate (tanker)", "Dekalb Sanitary");
+    expectKeep("grayslake", "Leachate (tanker)", "Dekalb San");
+    expectKeep("grayslake", "Recycle", "Hodgkins");
+    expectClearDest("grayslake", "Leachate (tanker)", "Hodgkins");
+    expectClearDest("grayslake", "Recycle", "FRWRD");
+    expectClearDest("grayslake", "Recycle", "CID");
+    expectClearDest("grayslake", "Recycle", "Dekalb Sanitary");
+  });
+
   it("McCook still accepts the Christianson Farms alias", () => {
     expectKeep("mccook", "Yard Waste", "Christiansen Farms");
     expectKeep("mccook", "Yard Waste", "Christianson Farms");

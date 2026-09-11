@@ -186,8 +186,12 @@ export const STATIONS: Station[] = [
   {
     id: "grayslake",
     name: "GraysLake",
-    commodities: ["Leachate (tanker)"],
-    destinations: ["FRWRD", "CID", "Dekalb Sanitary"],
+    commodities: ["Leachate (tanker)", "Recycle"],
+    destinations: ["FRWRD", "CID", "Dekalb Sanitary", "Hodgkins"],
+    destinationsByCommodity: {
+      "Leachate (tanker)": ["FRWRD", "CID", "Dekalb Sanitary"],
+      Recycle: ["Hodgkins"],
+    },
   },
   {
     id: "laraway",

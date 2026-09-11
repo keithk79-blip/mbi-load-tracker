@@ -361,10 +361,10 @@ describe("specialty walking-floor catalog", () => {
     expect(resolveSpecialtyStationId("grayslake", "GraysLake")).toBe("grayslake");
     expect(resolveSpecialtyStationId(undefined, "Grays Lake")).toBe("grayslake");
     expect(applyPickupCascade("grayslake", "Recycle", "Hodgkins")).toEqual({
-      commodity: "",
-      destination: "",
-      commodityValid: false,
-      destinationValid: false,
+      commodity: "Recycle",
+      destination: "Hodgkins",
+      commodityValid: true,
+      destinationValid: true,
     });
     expect(applyPickupCascade("grayslake", "Leachate (tanker)", "FRWRD")).toEqual({
       commodity: "Leachate (tanker)",
@@ -1005,6 +1005,38 @@ describe("specialty consume on logged loads", () => {
     );
     expect(countSpecialtyOpens(store, date, "grayslake", "Dekalb Sanitary")).toBe(0);
     expect(countSpecialtyOpens(store, date, "liberty-tank", "CID")).toBe(1);
+  });
+
+  it("does not consume GraysLake leachate opens when Recycle → Hodgkins is logged", () => {
+    const date = "2026-09-08";
+    let store = addSpecialtySlot({}, date, "grayslake", "FRWRD");
+    store = addSpecialtySlot(store, date, "grayslake", "CID");
+    store = addSpecialtySlot(store, date, "grayslake", "Dekalb Sanitary");
+    expect(
+      resolveSpecialtyBoardMatch("grayslake", "GraysLake", "Hodgkins", "Recycle"),
+    ).toBeNull();
+    expect(
+      missingSpecialtyOpensWarn(
+        {},
+        date,
+        "grayslake",
+        "GraysLake",
+        "Hodgkins",
+        "Recycle",
+      ),
+    ).toBeNull();
+    store = logLoadConsume(
+      store,
+      date,
+      "grayslake",
+      "GraysLake",
+      "Hodgkins",
+      1,
+      "Recycle",
+    );
+    expect(countSpecialtyOpens(store, date, "grayslake", "FRWRD")).toBe(1);
+    expect(countSpecialtyOpens(store, date, "grayslake", "CID")).toBe(1);
+    expect(countSpecialtyOpens(store, date, "grayslake", "Dekalb Sanitary")).toBe(1);
   });
 
   it("consumes Liberty CID x2 then Kankakee without touching the other dest", () => {

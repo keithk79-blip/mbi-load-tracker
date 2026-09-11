@@ -49,8 +49,23 @@ describe("pickup stations", () => {
       "Dekalb",
     ]);
 
-    expect(commoditiesFor("grayslake")).toEqual(["Leachate (tanker)"]);
-    expect(destinationsFor("grayslake")).toEqual(["FRWRD", "CID", "Dekalb Sanitary"]);
+    expect(commoditiesFor("grayslake")).toEqual(["Leachate (tanker)", "Recycle"]);
+    expect(destinationsFor("grayslake")).toEqual([
+      "FRWRD",
+      "CID",
+      "Dekalb Sanitary",
+      "Hodgkins",
+    ]);
+    expect(destinationsFor("grayslake", "Leachate (tanker)")).toEqual([
+      "FRWRD",
+      "CID",
+      "Dekalb Sanitary",
+    ]);
+    expect(destinationsFor("grayslake", "Leachate (tanker)")).not.toContain("Hodgkins");
+    expect(destinationsFor("grayslake", "Recycle")).toEqual(["Hodgkins"]);
+    expect(destinationsFor("grayslake", "Recycle")).not.toContain("FRWRD");
+    expect(destinationsFor("grayslake", "Recycle")).not.toContain("CID");
+    expect(destinationsFor("grayslake", "Recycle")).not.toContain("Dekalb Sanitary");
 
     expect(commoditiesFor("laraway")).toEqual(["Leachate (tanker)"]);
     expect(destinationsFor("laraway")).toEqual(["CID", "Kankakee"]);
@@ -369,6 +384,18 @@ describe("log-load commodity dest cascades", () => {
       "WCN MRF",
       "Homewood",
     ]);
+  });
+
+  it("locks GraysLake leachate dests and Recycle → Hodgkins", () => {
+    expect(commoditiesFor("grayslake")).toEqual(["Leachate (tanker)", "Recycle"]);
+    expect(destinationsFor("grayslake", "Leachate (tanker)")).toEqual([
+      "FRWRD",
+      "CID",
+      "Dekalb Sanitary",
+    ]);
+    expect(destinationsFor("grayslake", "Recycle")).toEqual(["Hodgkins"]);
+    expect(destinationsFor("grayslake", "Leachate (tanker)")).not.toContain("Hodgkins");
+    expect(destinationsFor("grayslake", "Recycle")).not.toContain("FRWRD");
   });
 
   it("locks Roscoe trash vs recycle dests", () => {
