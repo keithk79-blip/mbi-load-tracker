@@ -113,9 +113,56 @@ export function isVanDrunenPickup(load: Load): boolean {
   );
 }
 
-/** Yard waste, recycle, residual/residue, cardboard, Groot, or Van Drunen pickups. */
+/**
+ * GraysLake / Grayslake / Grays Lake / station id `grayslake`.
+ * Catalog recycle dest is Hodgkins; tank chips stay leachate-only.
+ */
+export function isGraysLakePickup(load: Load): boolean {
+  return [load.pickup, load.stationId].some((field) =>
+    lettersKey(field).includes("grayslake"),
+  );
+}
+
+function isHodgkinsDest(load: Load): boolean {
+  return lettersKey(load.destination).includes("hodgkin");
+}
+
+function hasRecycleToken(value: string): boolean {
+  return (
+    tallyLabel(value) === "RECYCLE" || lettersKey(value).includes("recycle")
+  );
+}
+
+function isLeachateField(value: string): boolean {
+  return tallyLabel(value) === "LEACHATE";
+}
+
+/**
+ * GraysLake Recycle → Hodgkins walking-floor lane — not tank/LEACHATE.
+ *
+ * `tallyLabel(commodity)` only sees the substring "recycle". This lane is still
+ * an orphan when commodity is dest-labeled ("Hodgkins"), hyphenated
+ * ("Re-cycle"), or a custom scrap code, because PR #38 added the catalog path
+ * without teaching the Today / EOD classifier about the pickup+dest pair.
+ */
+export function isGraysLakeRecycleLane(load: Load): boolean {
+  if (!isGraysLakePickup(load)) return false;
+  if (isLeachateField(load.commodity) || isLeachateField(load.destination)) {
+    return false;
+  }
+  return (
+    hasRecycleToken(load.commodity) ||
+    hasRecycleToken(load.destination) ||
+    isHodgkinsDest(load)
+  );
+}
+
+/**
+ * Yard waste, recycle, residual/residue, cardboard, Groot, Van Drunen, or the
+ * GraysLake Recycle → Hodgkins lane.
+ */
 export function isWalkingFloorLoad(load: Load): boolean {
-  if (isVanDrunenPickup(load)) return true;
+  if (isVanDrunenPickup(load) || isGraysLakeRecycleLane(load)) return true;
   const commodityKey = tallyLabel(load.commodity);
   if (
     commodityKey === "YARD" ||
@@ -134,13 +181,16 @@ export function countWalkingFloorLoads(loads: Load[]): number {
 }
 
 /**
- * Today / EOD TRASH bubble: MSW and C&D, except Van Drunen pickups (those are
- * WALKING-FLOOR even when the commodity is Trash/MSW).
+ * Today / EOD TRASH bubble: MSW and C&D, except Van Drunen pickups and the
+ * GraysLake Recycle → Hodgkins lane (those are WALKING-FLOOR even when the
+ * commodity text looks like Trash/MSW).
  */
 export function countTrashLoads(loads: Load[]): number {
   return loads.filter(
     (load) =>
-      tallyLabel(load.commodity) === "TRASH" && !isVanDrunenPickup(load),
+      tallyLabel(load.commodity) === "TRASH" &&
+      !isVanDrunenPickup(load) &&
+      !isGraysLakeRecycleLane(load),
   ).length;
 }
 
