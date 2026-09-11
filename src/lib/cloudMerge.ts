@@ -68,8 +68,9 @@ export function collectDeviceLoads(
 }
 
 /**
- * Loads Push all / upload should enqueue. Tombstones and pending deletes win
- * over a leftover STORAGE_KEY copy of the same id.
+ * Union of cache + STORAGE_KEY minus tombstones / pending deletes.
+ * Not what Push all should enqueue — that re-upserts already-clouded rows
+ * (resurrects other-device deletes; retriggers loads.updated_at = now()).
  */
 export function deviceLoadsForPush(
   cache: Persisted,
@@ -78,6 +79,26 @@ export function deviceLoadsForPush(
 ): Load[] {
   const deleted = deletedLoadIds(pending, cache, local);
   return collectDeviceLoads(cache, local, deleted).filter((load) => !load.seeded);
+}
+
+/**
+ * STORAGE_KEY rows that are not in the cloud cache and not tombstoned.
+ * Matches the "Upload N local" button — never the already-synced cache.
+ */
+export function localOnlyLoadsForUpload(
+  cache: Persisted,
+  local: Persisted,
+  pending: QueueOp[] = [],
+): Load[] {
+  const deleted = deletedLoadIds(pending, cache, local);
+  const cloudIds = new Set(
+    allLoads(cache)
+      .filter((load) => !load.seeded)
+      .map((load) => load.id),
+  );
+  return allLoads(local).filter(
+    (load) => !load.seeded && !cloudIds.has(load.id) && !deleted.has(load.id),
+  );
 }
 
 /**

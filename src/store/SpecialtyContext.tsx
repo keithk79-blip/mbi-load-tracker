@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { fetchAllPaged, pagedErrorMessage } from "../lib/cloud";
 import { getSupabase } from "../lib/supabase";
 import {
   addSpecialtySlot,
@@ -145,11 +146,16 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
   const pullRemote = useCallback(async (): Promise<SpecialtyStore | null> => {
     const supabase = getSupabase();
     if (!supabase || !session) return null;
-    const { data, error } = await supabase
-      .from("specialty_opens")
-      .select("id, date, station_id, destination, created_at");
+    const { data, error } = await fetchAllPaged<SpecialtyRow>(async (from, to) => {
+      const page = await supabase
+        .from("specialty_opens")
+        .select("id, date, station_id, destination, created_at")
+        .order("id", { ascending: true })
+        .range(from, to);
+      return { data: page.data as SpecialtyRow[] | null, error: page.error };
+    });
     if (error || !data) {
-      console.warn("specialty_opens pull failed", error?.message);
+      console.warn("specialty_opens pull failed", pagedErrorMessage(error));
       return null;
     }
     return rowsToStore(data as SpecialtyRow[]);

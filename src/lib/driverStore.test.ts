@@ -40,6 +40,7 @@ describe("driver-days payload", () => {
         "2026-09-08": [{ name: "Mike Davy", kind: "ncns" }],
       },
       manualOffsDeleted: [],
+      manualOffsSeen: [],
     });
 
     writeDayStore({
@@ -58,8 +59,25 @@ describe("driver-days payload", () => {
     expect(payload.manualOffs["2026-09-08"]).toEqual([
       { name: "Mike Davy", kind: "ncns" },
     ]);
+    expect(payload.manualOffsSeen).toEqual([]);
     expect(JSON.parse(memory.get(DAYS_KEY) ?? "{}").manualOffs["2026-09-08"][0].kind).toBe(
       "ncns",
     );
+  });
+
+  it("round-trips seen remote call-off keys across a day rewrite", () => {
+    persistDriverDays({
+      days: {},
+      manualOffs: {
+        "2026-09-11": [{ name: "Glen Barker", kind: "late-early" }],
+      },
+      manualOffsDeleted: [],
+      manualOffsSeen: ["2026-09-11|glen barker"],
+    });
+    writeDayStore({});
+    expect(readDriverDaysPayload().manualOffsSeen).toEqual(["2026-09-11|glen barker"]);
+    expect(readDriverDaysPayload().manualOffs["2026-09-11"]).toEqual([
+      { name: "Glen Barker", kind: "late-early" },
+    ]);
   });
 });

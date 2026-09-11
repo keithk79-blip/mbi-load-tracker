@@ -5,6 +5,14 @@ export const LOAD_FETCH_PAGE_SIZE = 1000;
 
 export type PagedQueryResult<T> = { data: T[] | null; error: unknown };
 
+export function pagedErrorMessage(error: unknown): string | undefined {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    return typeof message === "string" ? message : undefined;
+  }
+  return error instanceof Error ? error.message : undefined;
+}
+
 /**
  * Walk `.range()` pages until a short page. A single `select *` can silently
  * truncate and then look like a thinner remote (the 324→306 class).

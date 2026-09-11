@@ -27,6 +27,8 @@ function thenable(result: { data?: unknown; error: unknown }) {
     upsert: ReturnType<typeof vi.fn>;
     delete: ReturnType<typeof vi.fn>;
     eq: ReturnType<typeof vi.fn>;
+    order: ReturnType<typeof vi.fn>;
+    range: ReturnType<typeof vi.fn>;
     then: (
       resolve: (value: unknown) => unknown,
       reject?: (reason: unknown) => unknown,
@@ -36,12 +38,16 @@ function thenable(result: { data?: unknown; error: unknown }) {
     upsert: vi.fn(),
     delete: vi.fn(),
     eq: vi.fn(),
+    order: vi.fn(),
+    range: vi.fn(),
     then: (resolve, reject) => Promise.resolve(result).then(resolve, reject),
   };
   builder.select.mockReturnValue(builder);
   builder.upsert.mockReturnValue(builder);
   builder.delete.mockReturnValue(builder);
   builder.eq.mockReturnValue(builder);
+  builder.order.mockReturnValue(builder);
+  builder.range.mockReturnValue(builder);
   return builder;
 }
 

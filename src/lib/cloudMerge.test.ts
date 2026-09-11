@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   collectDeviceLoads,
   deviceLoadsForPush,
+  localOnlyLoadsForUpload,
   deviceWinsDateAgainstRemote,
   isProtectedDeviceLoad,
   mergeCloudLoads,
@@ -356,6 +357,26 @@ describe("delete then backup / Push all (resurrection bug)", () => {
 
     const toPush = deviceLoadsForPush(cacheAfterDelete, staleLocal, [deleteOp("A")]);
     expect(toPush.map((row) => row.id)).toEqual(["B"]);
+  });
+
+  it("Upload local only enqueues STORAGE_KEY ids missing from the cloud cache", () => {
+    const cache = store([b], ["A"]);
+    const staleLocal = store([a, b, load("legacy-local", "2026-09-07")]);
+
+    expect(deviceLoadsForPush(cache, staleLocal, []).map((row) => row.id).sort()).toEqual([
+      "B",
+      "legacy-local",
+    ]);
+    expect(localOnlyLoadsForUpload(cache, staleLocal, []).map((row) => row.id)).toEqual([
+      "legacy-local",
+    ]);
+  });
+
+  it("Upload local does not re-enqueue a tombstoned leftover or an already-cached id", () => {
+    const cache = store([b], ["A"]);
+    const staleLocal = store([a, b]);
+    expect(localOnlyLoadsForUpload(cache, staleLocal, [])).toEqual([]);
+    expect(localOnlyLoadsForUpload(cache, staleLocal, [deleteOp("A")])).toEqual([]);
   });
 
   it("empty-remote day protection still holds when nothing was deleted", () => {

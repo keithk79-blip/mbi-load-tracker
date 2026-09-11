@@ -1,4 +1,5 @@
-﻿import { callOffNameKey, type ManualCallOff } from "./driverAvailability";
+﻿import { fetchAllPaged } from "./cloud";
+import { callOffNameKey, type ManualCallOff } from "./driverAvailability";
 import { type DayStore, type LockedDay, isDriverTallyDay } from "./driverDays";
 import { asLockedDay } from "./driverStore";
 import {
@@ -17,31 +18,38 @@ type RemoteRow = {
   oot_names?: string[] | null;
 };
 
-export async function fetchRemoteDays(): Promise<DayStore | null> {
-  const supabase = getSupabase();
-  if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("driver_availability")
-    .select("date, base, offs, available, locked, locked_at, oot_names");
-  if (error || !data) {
-    // Older DBs without oot_names: fall back so headcount sync still works.
-    const fallback = await supabase
-      .from("driver_availability")
-      .select("date, base, offs, available, locked, locked_at");
-    if (fallback.error || !fallback.data) return null;
-    const store: DayStore = {};
-    for (const row of fallback.data as RemoteRow[]) {
-      if (!isDriverTallyDay(row.date)) continue;
-      store[row.date] = asLockedDay(row);
-    }
-    return store;
-  }
+function daysFromRows(rows: RemoteRow[]): DayStore {
   const store: DayStore = {};
-  for (const row of data as RemoteRow[]) {
+  for (const row of rows) {
     if (!isDriverTallyDay(row.date)) continue;
     store[row.date] = asLockedDay(row);
   }
   return store;
+}
+
+export async function fetchRemoteDays(): Promise<DayStore | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data, error } = await fetchAllPaged<RemoteRow>(async (from, to) => {
+    const page = await supabase
+      .from("driver_availability")
+      .select("date, base, offs, available, locked, locked_at, oot_names")
+      .order("date", { ascending: true })
+      .range(from, to);
+    return { data: page.data as RemoteRow[] | null, error: page.error };
+  });
+  if (!error && data) return daysFromRows(data);
+  // Older DBs without oot_names: fall back so headcount sync still works.
+  const fallback = await fetchAllPaged<RemoteRow>(async (from, to) => {
+    const page = await supabase
+      .from("driver_availability")
+      .select("date, base, offs, available, locked, locked_at")
+      .order("date", { ascending: true })
+      .range(from, to);
+    return { data: page.data as RemoteRow[] | null, error: page.error };
+  });
+  if (fallback.error || !fallback.data) return null;
+  return daysFromRows(fallback.data);
 }
 
 function toRow(day: LockedDay) {
@@ -135,9 +143,15 @@ export function manualOffsResultFromError(
 export async function fetchRemoteManualOffs(): Promise<ManualOffsFetchResult> {
   const supabase = getSupabase();
   if (!supabase) return { store: null, error: null };
-  const { data, error } = await supabase
-    .from("manual_call_offs")
-    .select("date, name, kind");
+  const { data, error } = await fetchAllPaged<ManualRemoteRow>(async (from, to) => {
+    const page = await supabase
+      .from("manual_call_offs")
+      .select("date, name, kind")
+      .order("date", { ascending: true })
+      .order("name_key", { ascending: true })
+      .range(from, to);
+    return { data: page.data as ManualRemoteRow[] | null, error: page.error };
+  });
   if (error) {
     const failed = manualOffsResultFromError("fetch", error);
     return { store: null, error: failed.error };
