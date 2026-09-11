@@ -103,6 +103,8 @@ const SPECIALTY_DEST_OVERRIDES: Record<string, readonly string[]> = {
   ford: ["Cardboard", "Trash", "Recycle"],
   "prairie-hill": ["C&D", "Yard Waste"],
   "liberty-tank": ["CID", "Kankakee", "Reworld", "KanSpcl", "Sun Chem"],
+  // Catalog union includes Hodgkins for Recycle; specialty chips stay tank/leachate.
+  grayslake: ["FRWRD", "CID", "Dekalb Sanitary"],
 };
 
 export function specialtyChipMode(
