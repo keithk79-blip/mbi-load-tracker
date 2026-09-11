@@ -3,17 +3,23 @@ import {
   STATION_CALL_YARDS,
   adjacentStationId,
   applyStationCallTombstones,
-  boardsEquivalent,
   cleanStationDayRow,
   commitStationCell,
   commitStationNote,
   effectiveClose,
   emptyBoard,
+  extractStationNotesFromRawDays,
+  loadStationNotes,
   mergeBoardCells,
+  mergeStationNoteStores,
   normalizeStationCell,
+  noteForStation,
+  notesEquivalent,
   parseNumericCell,
   reconcileStationCallCloud,
+  reconcileStationNotesCloud,
   resetStationCallTombstones,
+  seedStationNotes,
   setStationClose,
   setStationHour,
   setStationNote,
@@ -62,7 +68,6 @@ describe("station call carry-over", () => {
     const board = emptyBoard();
     expect(board["apollo"]?.hours).toEqual({});
     expect(board["apollo"]?.close).toBeNull();
-    expect(board["apollo"]?.note).toBeNull();
   });
 });
 
@@ -146,10 +151,8 @@ function boardWith(
   patch: Partial<{
     hours: StationDayBoard[string]["hours"];
     close: StationDayBoard[string]["close"];
-    note: StationDayBoard[string]["note"];
     hoursAt: StationDayBoard[string]["hoursAt"];
     closeAt: string;
-    noteAt: string;
   }>,
 ): StationDayBoard {
   const board = emptyBoard();
@@ -246,7 +249,7 @@ describe("station call notes", () => {
     expect(commitStationNote("x".repeat(3000))?.length).toBe(2000);
   });
 
-  it("cleanRow keeps a note and drops junk / blank notes", () => {
+  it("cleanRow keeps hours/close and drops leftover per-date notes", () => {
     const kept = cleanStationDayRow({
       hours: { "6": "4" },
       close: "5",
@@ -256,104 +259,225 @@ describe("station call notes", () => {
     });
     expect(kept.hours["6"]).toBe("4");
     expect(kept.close).toBe("5");
-    expect(kept.note).toBe("Melrose late");
-    expect(kept.noteAt).toBe("2026-09-11T12:00:00.000Z");
+    expect(kept).not.toHaveProperty("note");
+    expect(kept).not.toHaveProperty("noteAt");
 
     const blank = cleanStationDayRow({ note: "   ", hours: { "8": "2" } });
-    expect(blank.note).toBeNull();
+    expect(blank).not.toHaveProperty("note");
     expect(blank.hours["8"]).toBe("2");
-
-    const missing = cleanStationDayRow({ hours: { "9": "1" } });
-    expect(missing.note).toBeNull();
-    expect(missing.noteAt).toBeUndefined();
   });
 
-  it("setStationNote stamps noteAt and does not wipe hours", () => {
-    let store: StationCallStore = {};
-    store = setStationHour(store, "2026-09-11", "melrose", "7", "6");
-    store = setStationNote(store, "2026-09-11", "melrose", "scale backup", "2026-09-11T15:00:00.000Z");
-    const row = store["2026-09-11"]!.melrose!;
-    expect(row.note).toBe("scale backup");
-    expect(row.noteAt).toBe("2026-09-11T15:00:00.000Z");
-    expect(row.hours["7"]).toBe("6");
-
-    store = setStationHour(store, "2026-09-11", "melrose", "8", "7");
-    expect(store["2026-09-11"]!.melrose!.note).toBe("scale backup");
+  it("extracts the newest non-empty per-station note from dated boards", () => {
+    const extracted = extractStationNotesFromRawDays({
+      "2026-09-10": {
+        melrose: { note: "old", noteAt: "2026-09-10T12:00:00.000Z" },
+        batavia: { note: "hold", noteAt: "2026-09-10T12:00:00.000Z" },
+      },
+      "2026-09-11": {
+        melrose: { note: "new", noteAt: "2026-09-11T15:00:00.000Z" },
+        batavia: { note: "  ", noteAt: "2026-09-11T16:00:00.000Z" },
+        calumet: { hours: { "9": "3" } },
+      },
+    });
+    expect(extracted.melrose).toEqual({
+      note: "new",
+      noteAt: "2026-09-11T15:00:00.000Z",
+    });
+    expect(extracted.batavia).toEqual({
+      note: "hold",
+      noteAt: "2026-09-10T12:00:00.000Z",
+    });
+    expect(extracted.calumet).toBeUndefined();
   });
 
-  it("clears a note to null with a timestamp", () => {
-    let store: StationCallStore = {};
-    store = setStationNote(store, "2026-09-11", "batavia", "hold", "2026-09-11T10:00:00.000Z");
-    store = setStationNote(store, "2026-09-11", "batavia", "  ", "2026-09-11T11:00:00.000Z");
-    expect(store["2026-09-11"]!.batavia!.note).toBeNull();
-    expect(store["2026-09-11"]!.batavia!.noteAt).toBe("2026-09-11T11:00:00.000Z");
+  it("setStationNote is per station and does not touch hour boards", () => {
+    let days: StationCallStore = {};
+    days = setStationHour(days, "2026-09-11", "melrose", "7", "6");
+    days = setStationHour(days, "2026-09-10", "melrose", "7", "5");
+    let notes = setStationNote({}, "melrose", "scale backup", "2026-09-11T15:00:00.000Z");
+    expect(noteForStation(notes, "melrose")).toBe("scale backup");
+    expect(notes.melrose!.noteAt).toBe("2026-09-11T15:00:00.000Z");
+    expect(days["2026-09-11"]!.melrose!.hours["7"]).toBe("6");
+    expect(days["2026-09-10"]!.melrose!.hours["7"]).toBe("5");
+    expect(days["2026-09-11"]!.melrose!).not.toHaveProperty("note");
+    expect(noteForStation(notes, "melrose")).toBe("scale backup");
+  });
+
+  it("clearing a note on any day clears it globally", () => {
+    let notes = setStationNote({}, "batavia", "hold", "2026-09-11T10:00:00.000Z");
+    notes = setStationNote(notes, "batavia", "  ", "2026-09-11T11:00:00.000Z");
+    expect(noteForStation(notes, "batavia")).toBeNull();
+    expect(notes.batavia!.noteAt).toBe("2026-09-11T11:00:00.000Z");
+  });
+
+  it("seeds global notes from legacy dated notes only when global is empty", () => {
+    const seeded = seedStationNotes(
+      { elgin: { note: null, noteAt: "2026-09-11T18:00:00.000Z" } },
+      {
+        elgin: { note: "should not return", noteAt: "2026-09-10T12:00:00.000Z" },
+        melrose: { note: "from monday", noteAt: "2026-09-10T12:00:00.000Z" },
+      },
+    );
+    expect(seeded.elgin?.note).toBeNull();
+    expect(seeded.melrose?.note).toBe("from monday");
+    expect(seeded.melrose?.noteAt).toBe("2026-09-10T12:00:00.000Z");
+  });
+
+  it("does not copy a global note onto day boards", () => {
+    const notes = setStationNote({}, "melrose", "scale backup", "2026-09-11T15:00:00.000Z");
+    let days: StationCallStore = {};
+    days = setStationHour(days, "2026-09-11", "melrose", "8", "7");
+    days = setStationHour(days, "2026-09-12", "melrose", "8", "8");
+    expect(days["2026-09-11"]!.melrose!).not.toHaveProperty("note");
+    expect(days["2026-09-12"]!.melrose!).not.toHaveProperty("note");
+    expect(noteForStation(notes, "melrose")).toBe("scale backup");
   });
 
   it("merge: never-set local note does not overwrite a remote note", () => {
-    const local = emptyBoard();
-    const remote = boardWith("melrose", { note: "WF waiting", noteAt: "2026-09-11T12:00:00.000Z" });
-    expect(mergeBoardCells(local, remote)["melrose"]!.note).toBe("WF waiting");
+    const merged = mergeStationNoteStores(
+      {},
+      { melrose: { note: "WF waiting", noteAt: "2026-09-11T12:00:00.000Z" } },
+    );
+    expect(merged.melrose?.note).toBe("WF waiting");
   });
 
   it("merge: newer note wins independently of hour cells", () => {
-    const local = boardWith("calumet", {
+    const localDays = boardWith("calumet", {
       hours: { "9": "3" },
       hoursAt: { "9": "2026-09-11T14:00:00.000Z" },
-      note: "old",
-      noteAt: "2026-09-11T10:00:00.000Z",
     });
-    const remote = boardWith("calumet", {
+    const remoteDays = boardWith("calumet", {
       hours: { "9": "1" },
       hoursAt: { "9": "2026-09-11T12:00:00.000Z" },
-      note: "newer note",
-      noteAt: "2026-09-11T13:00:00.000Z",
     });
-    const merged = mergeBoardCells(local, remote);
-    expect(merged["calumet"]!.hours["9"]).toBe("3");
-    expect(merged["calumet"]!.note).toBe("newer note");
+    expect(mergeBoardCells(localDays, remoteDays)["calumet"]!.hours["9"]).toBe("3");
+
+    const mergedNotes = mergeStationNoteStores(
+      { calumet: { note: "old", noteAt: "2026-09-11T10:00:00.000Z" } },
+      { calumet: { note: "newer note", noteAt: "2026-09-11T13:00:00.000Z" } },
+    );
+    expect(mergedNotes.calumet?.note).toBe("newer note");
   });
 
   it("merge: explicit local note clear beats a stale remote fill", () => {
-    const local = boardWith("elgin", {
-      note: null,
-      noteAt: "2026-09-11T16:00:00.000Z",
-    });
-    const remote = boardWith("elgin", {
-      note: "stale",
-      noteAt: "2026-09-11T12:00:00.000Z",
-    });
-    expect(mergeBoardCells(local, remote)["elgin"]!.note).toBeNull();
+    const merged = mergeStationNoteStores(
+      { elgin: { note: null, noteAt: "2026-09-11T16:00:00.000Z" } },
+      { elgin: { note: "stale", noteAt: "2026-09-11T12:00:00.000Z" } },
+    );
+    expect(merged.elgin?.note).toBeNull();
   });
 
-  it("boardsEquivalent treats missing and blank notes as the same", () => {
-    const a = boardWith("hooker", { note: null });
-    const b = emptyBoard();
-    expect(boardsEquivalent(a, b)).toBe(true);
-    const c = boardWith("hooker", { note: "hi", noteAt: "2026-09-11T12:00:00.000Z" });
-    expect(boardsEquivalent(a, c)).toBe(false);
+  it("notesEquivalent treats missing and blank notes as the same", () => {
+    expect(notesEquivalent({ note: null }, undefined)).toBe(true);
+    expect(
+      notesEquivalent(
+        { note: "hi", noteAt: "2026-09-11T12:00:00.000Z" },
+        { note: null },
+      ),
+    ).toBe(false);
   });
 
   it("reconcile pushes a local note so cloud picks it up", () => {
-    let local: StationCallStore = {};
-    local = setStationNote(local, "2026-09-11", "northlake", "doors stuck", "2026-09-11T14:00:00.000Z");
-    const remote: StationCallStore = { "2026-09-11": emptyBoard() };
-    const { merged, toPush } = reconcileStationCallCloud(local, remote);
-    expect(merged["2026-09-11"]!.northlake!.note).toBe("doors stuck");
+    const local = setStationNote({}, "northlake", "doors stuck", "2026-09-11T14:00:00.000Z");
+    const { merged, toPush } = reconcileStationNotesCloud(local, {});
+    expect(merged.northlake?.note).toBe("doors stuck");
     expect(toPush).toHaveLength(1);
-    expect(toPush[0]!.board["northlake"]!.note).toBe("doors stuck");
+    expect(toPush[0]!.stationId).toBe("northlake");
+    expect(toPush[0]!.row.note).toBe("doors stuck");
   });
 
-  it("hour tombstones still blank a bounced 0 when a note is present", () => {
+  it("reconcile seeds from per-date boards then pushes the global note", () => {
+    const legacy = extractStationNotesFromRawDays({
+      "2026-09-09": {
+        wheeling: { note: "gate closed", noteAt: "2026-09-09T10:00:00.000Z" },
+      },
+    });
+    const { merged, toPush } = reconcileStationNotesCloud({}, {}, legacy);
+    expect(merged.wheeling?.note).toBe("gate closed");
+    expect(toPush[0]!.row.note).toBe("gate closed");
+  });
+
+  it("hour tombstones still blank a bounced 0 without depending on notes", () => {
     let store: StationCallStore = {};
-    store = setStationNote(store, "2026-09-11", "wheeling", "gate closed");
     store = setStationHour(store, "2026-09-11", "wheeling", "13", "0");
     store = setStationHour(store, "2026-09-11", "wheeling", "13", null);
-    const bounced = boardWith("wheeling", {
-      hours: { "13": "0" },
-      note: "gate closed",
-    });
+    const bounced = boardWith("wheeling", { hours: { "13": "0" } });
     const applied = applyStationCallTombstones({ "2026-09-11": bounced });
     expect(applied["2026-09-11"]!["wheeling"]!.hours["13"]).toBeNull();
-    expect(applied["2026-09-11"]!["wheeling"]!.note).toBe("gate closed");
+    expect(noteForStation({ wheeling: { note: "gate closed" } }, "wheeling")).toBe(
+      "gate closed",
+    );
+  });
+});
+
+describe("station note localStorage", () => {
+  const memory = new Map<string, string>();
+  const DAYS_KEY = "chitrader.load-tracker.station-calls.v1";
+  const NOTES_KEY = "chitrader.load-tracker.station-call-notes.v1";
+
+  beforeEach(() => {
+    memory.clear();
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => memory.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          memory.set(key, value);
+        },
+        removeItem: (key: string) => {
+          memory.delete(key);
+        },
+        clear: () => memory.clear(),
+      },
+    });
+  });
+
+  it("seeds a global note from leftover per-date board JSON", () => {
+    memory.set(
+      DAYS_KEY,
+      JSON.stringify({
+        version: 1,
+        days: {
+          "2026-09-10": {
+            melrose: {
+              hours: { "8": "4" },
+              close: null,
+              note: "seed me",
+              noteAt: "2026-09-10T12:00:00.000Z",
+            },
+          },
+        },
+      }),
+    );
+    const notes = loadStationNotes();
+    expect(noteForStation(notes, "melrose")).toBe("seed me");
+    const persisted = JSON.parse(memory.get(NOTES_KEY) ?? "{}") as {
+      notes?: { melrose?: { note?: string } };
+    };
+    expect(persisted.notes?.melrose?.note).toBe("seed me");
+    expect(notes.melrose?.noteAt).toBe("2026-09-10T12:00:00.000Z");
+  });
+
+  it("does not resurrect a cleared global note from an old dated board", () => {
+    memory.set(
+      NOTES_KEY,
+      JSON.stringify({
+        version: 1,
+        notes: { melrose: { note: null, noteAt: "2026-09-11T18:00:00.000Z" } },
+      }),
+    );
+    memory.set(
+      DAYS_KEY,
+      JSON.stringify({
+        version: 1,
+        days: {
+          "2026-09-10": {
+            melrose: { note: "old", noteAt: "2026-09-10T12:00:00.000Z" },
+          },
+        },
+      }),
+    );
+    const notes = loadStationNotes();
+    expect(noteForStation(notes, "melrose")).toBeNull();
   });
 });

@@ -58,11 +58,6 @@ export type StationDayRow = {
   hours: StationHourMap;
   /** Blank until set; otherwise carries to next day's Start when numeric. */
   close: StationCellValue | null;
-  /**
-   * Per date + station comment on the yard name. Blank until set;
-   * `null` is an explicit clear (same tombstone shape as Close).
-   */
-  note: string | null;
   /** Last local/remote write per hour (ISO). Newer wins on merge, including clears. */
   hoursAt?: StationHourAtMap;
   /**
@@ -70,12 +65,15 @@ export type StationDayRow = {
    * from an explicit Close clear.
    */
   closeAt?: string;
-  /**
-   * Last note write (ISO). Required to tell default `note: null` (never set)
-   * from an explicit note clear.
-   */
+};
+
+/** Per-station note (all dates). `null` + `noteAt` is an explicit clear. */
+export type StationNoteRow = {
+  note: string | null;
   noteAt?: string;
 };
+
+export type StationNoteStore = Record<string, StationNoteRow>;
 
 export type StationCellInput = string | number | null;
 
@@ -83,12 +81,17 @@ export type StationDayBoard = Record<string, StationDayRow>;
 export type StationCallStore = Record<string, StationDayBoard>;
 
 const STORE_KEY = "chitrader.load-tracker.station-calls.v1";
+const NOTES_STORE_KEY = "chitrader.load-tracker.station-call-notes.v1";
 
 /** In-memory clear tombstones: `${date}|${stationId}|${hour|close}`. */
 const memoryCleared = new Set<string>();
 
 function emptyRow(): StationDayRow {
-  return { hours: {}, close: null, note: null };
+  return { hours: {}, close: null };
+}
+
+function knownStationId(id: string): boolean {
+  return STATION_CALL_YARDS.some((yard) => yard.id === id);
 }
 
 function nowIso(at?: string): string {
@@ -238,10 +241,8 @@ function cloneRow(row: StationDayRow): StationDayRow {
   return {
     hours: { ...row.hours },
     close: row.close,
-    note: row.note ?? null,
     hoursAt: row.hoursAt ? { ...row.hoursAt } : undefined,
     closeAt: row.closeAt,
-    noteAt: row.noteAt,
   };
 }
 
@@ -269,10 +270,8 @@ function cleanRow(raw: unknown): StationDayRow {
   const obj = raw as {
     hours?: Record<string, unknown>;
     close?: unknown;
-    note?: unknown;
     hoursAt?: Record<string, unknown>;
     closeAt?: unknown;
-    noteAt?: unknown;
   };
   if (obj.hours && typeof obj.hours === "object") {
     for (const hour of STATION_CALL_HOURS) {
@@ -281,7 +280,6 @@ function cleanRow(raw: unknown): StationDayRow {
     }
   }
   row.close = normalizeStationCell(obj.close) ?? null;
-  row.note = readNote(obj.note);
   if (obj.hoursAt && typeof obj.hoursAt === "object") {
     const hoursAt: StationHourAtMap = {};
     for (const hour of STATION_CALL_HOURS) {
@@ -292,14 +290,160 @@ function cleanRow(raw: unknown): StationDayRow {
   }
   const closeAt = readIsoAt(obj.closeAt);
   if (closeAt) row.closeAt = closeAt;
-  const noteAt = readIsoAt(obj.noteAt);
-  if (noteAt) row.noteAt = noteAt;
   return row;
 }
 
 /** Public parse for tests and any future import of a board row. */
 export function cleanStationDayRow(raw: unknown): StationDayRow {
   return cleanRow(raw);
+}
+
+type LegacyNotePick = StationNoteRow & { date: string };
+
+function considerLegacyNote(
+  out: Record<string, LegacyNotePick>,
+  stationId: string,
+  date: string,
+  rawRow: unknown,
+): void {
+  if (!knownStationId(stationId) || !rawRow || typeof rawRow !== "object") return;
+  const obj = rawRow as { note?: unknown; noteAt?: unknown };
+  const note = readNote(obj.note);
+  if (!stationCellFilled(note)) return;
+  const noteAt = readIsoAt(obj.noteAt);
+  const prev = out[stationId];
+  const prevAt = prev?.noteAt ?? "";
+  const nextAt = noteAt ?? "";
+  if (prev && stationCellFilled(prev.note)) {
+    if (nextAt < prevAt) return;
+    if (nextAt === prevAt && date < prev.date) return;
+  }
+  out[stationId] = { note, noteAt, date };
+}
+
+/**
+ * Newest non-empty `note` per station from PR #36 per-date boards.
+ * Used once to seed the global note store; empty/cleared date rows are skipped.
+ */
+export function extractStationNotesFromRawDays(days: unknown): StationNoteStore {
+  const picked: Record<string, LegacyNotePick> = {};
+  if (!days || typeof days !== "object") return {};
+  for (const [date, board] of Object.entries(days as Record<string, unknown>)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !board || typeof board !== "object") continue;
+    for (const [stationId, rawRow] of Object.entries(board as Record<string, unknown>)) {
+      considerLegacyNote(picked, stationId, date, rawRow);
+    }
+  }
+  const out: StationNoteStore = {};
+  for (const [stationId, row] of Object.entries(picked)) {
+    const next: StationNoteRow = { note: row.note };
+    if (row.noteAt) next.noteAt = row.noteAt;
+    out[stationId] = next;
+  }
+  return out;
+}
+
+/** True when this station already has a global note or an explicit clear. */
+export function stationNoteInitialized(row: StationNoteRow | undefined): boolean {
+  if (!row) return false;
+  if (row.noteAt) return true;
+  return stationCellFilled(row.note);
+}
+
+/**
+ * Fill empty global slots from extracted per-date notes. Explicit clears
+ * (`note: null` + `noteAt`) are left alone so a deleted note does not come back.
+ */
+export function seedStationNotes(
+  notes: StationNoteStore,
+  legacy: StationNoteStore,
+): StationNoteStore {
+  const out: StationNoteStore = { ...notes };
+  for (const [stationId, row] of Object.entries(legacy)) {
+    if (!knownStationId(stationId) || !stationCellFilled(row.note)) continue;
+    if (stationNoteInitialized(out[stationId])) continue;
+    out[stationId] = {
+      note: row.note,
+      noteAt: row.noteAt ?? nowIso(),
+    };
+  }
+  return out;
+}
+
+function cleanNoteRow(raw: unknown): StationNoteRow | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as { note?: unknown; noteAt?: unknown };
+  const noteAt = readIsoAt(obj.noteAt);
+  const note = obj.note === undefined && !noteAt ? null : readNote(obj.note);
+  if (!noteAt && !stationCellFilled(note)) return null;
+  const row: StationNoteRow = { note };
+  if (noteAt) row.noteAt = noteAt;
+  return row;
+}
+
+export function noteForStation(notes: StationNoteStore, stationId: string): string | null {
+  return notes[stationId]?.note ?? null;
+}
+
+export function readLegacyNotesFromStationCallStorage(): StationNoteStore {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as { version?: number; days?: unknown };
+    if (parsed?.version !== 1) return {};
+    return extractStationNotesFromRawDays(parsed.days);
+  } catch {
+    return {};
+  }
+}
+
+export function readStationNoteStore(): StationNoteStore {
+  try {
+    const raw = localStorage.getItem(NOTES_STORE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as { version?: number; notes?: unknown };
+    if (parsed?.version !== 1 || !parsed.notes || typeof parsed.notes !== "object") {
+      return {};
+    }
+    const out: StationNoteStore = {};
+    for (const [stationId, rawRow] of Object.entries(parsed.notes as Record<string, unknown>)) {
+      if (!knownStationId(stationId)) continue;
+      const row = cleanNoteRow(rawRow);
+      if (row) out[stationId] = row;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+type StationNoteListener = () => void;
+const stationNoteListeners = new Set<StationNoteListener>();
+
+export function subscribeStationNoteStore(listener: StationNoteListener): () => void {
+  stationNoteListeners.add(listener);
+  return () => {
+    stationNoteListeners.delete(listener);
+  };
+}
+
+export function writeStationNoteStore(notes: StationNoteStore): void {
+  const cleaned: StationNoteStore = {};
+  for (const yard of STATION_CALL_YARDS) {
+    const row = cleanNoteRow(notes[yard.id]);
+    if (row) cleaned[yard.id] = row;
+  }
+  localStorage.setItem(NOTES_STORE_KEY, JSON.stringify({ version: 1, notes: cleaned }));
+  for (const listener of stationNoteListeners) listener();
+}
+
+export function loadStationNotes(): StationNoteStore {
+  const seeded = seedStationNotes(
+    readStationNoteStore(),
+    readLegacyNotesFromStationCallStorage(),
+  );
+  writeStationNoteStore(seeded);
+  return seeded;
 }
 
 export function readStationCallStore(): StationCallStore {
@@ -415,25 +559,26 @@ export function setStationClose(
 }
 
 export function setStationNote(
-  store: StationCallStore,
-  date: string,
+  notes: StationNoteStore,
   stationId: string,
   value: string | null,
   at?: string,
-): StationCallStore {
-  const board = { ...(store[date] ?? emptyBoard()) };
-  const prev = cloneRow(board[stationId] ?? emptyRow());
+): StationNoteStore {
+  if (!knownStationId(stationId)) return notes;
   const stamp = nowIso(at);
   const note = value === null ? null : commitStationNote(value);
-  board[stationId] = {
-    ...prev,
-    note,
-    noteAt: stamp,
+  return {
+    ...notes,
+    [stationId]: { note, noteAt: stamp },
   };
-  return { ...store, [date]: board };
 }
 
-export async function fetchStationCallStoreFromCloud(): Promise<StationCallStore | null> {
+export type StationCallCloudPull = {
+  days: StationCallStore;
+  legacyNotes: StationNoteStore;
+};
+
+export async function fetchStationCallStoreFromCloud(): Promise<StationCallCloudPull | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
   const { data, error } = await supabase
@@ -443,18 +588,59 @@ export async function fetchStationCallStoreFromCloud(): Promise<StationCallStore
     console.warn("station_call_days pull failed", error?.message);
     return null;
   }
-  const out: StationCallStore = {};
-  for (const row of data as { date: string; board: StationDayBoard }[]) {
+  const days: StationCallStore = {};
+  const rawDays: Record<string, unknown> = {};
+  for (const row of data as { date: string; board: unknown }[]) {
     const day = emptyBoard();
     const board = row.board;
+    rawDays[row.date] = board;
     if (board && typeof board === "object") {
       for (const yard of STATION_CALL_YARDS) {
-        day[yard.id] = cleanRow(board[yard.id]);
+        day[yard.id] = cleanRow((board as StationDayBoard)[yard.id]);
       }
     }
-    out[row.date] = day;
+    days[row.date] = day;
+  }
+  return { days, legacyNotes: extractStationNotesFromRawDays(rawDays) };
+}
+
+export async function fetchStationNotesFromCloud(): Promise<StationNoteStore | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("station_call_notes")
+    .select("station_id, note, updated_at");
+  if (error || !data) {
+    console.warn("station_call_notes pull failed", error?.message);
+    return null;
+  }
+  const out: StationNoteStore = {};
+  for (const row of data as { station_id: string; note: unknown; updated_at: unknown }[]) {
+    if (!knownStationId(row.station_id)) continue;
+    const noteAt = readIsoAt(row.updated_at);
+    const note = readNote(row.note);
+    if (!noteAt && !stationCellFilled(note)) continue;
+    const next: StationNoteRow = { note };
+    if (noteAt) next.noteAt = noteAt;
+    out[row.station_id] = next;
   }
   return out;
+}
+
+export async function pushStationNote(
+  stationId: string,
+  row: StationNoteRow,
+  userId: string | null,
+): Promise<void> {
+  const supabase = getSupabase();
+  if (!supabase) return;
+  const { error } = await supabase.from("station_call_notes").upsert({
+    station_id: stationId,
+    note: row.note,
+    updated_at: row.noteAt ?? nowIso(),
+    updated_by: userId,
+  });
+  if (error) console.warn("station_call_notes push failed", error.message);
 }
 
 export async function pushStationCallDay(
@@ -510,7 +696,8 @@ function closeMergeInput(row: StationDayRow): CellPick {
   return { value: row.close, at: row.closeAt };
 }
 
-function noteMergeInput(row: StationDayRow): CellPick {
+function noteRowMergeInput(row: StationNoteRow | undefined): CellPick {
+  if (!row) return { value: undefined };
   if ((row.note === null || row.note === undefined) && !row.noteAt) {
     return { value: undefined };
   }
@@ -530,7 +717,6 @@ export function boardsEquivalent(a: StationDayBoard, b: StationDayBoard): boolea
     const la = a[yard.id] ?? emptyRow();
     const lb = b[yard.id] ?? emptyRow();
     if (!cellsVisuallyEqual(la.close, lb.close)) return false;
-    if (!cellsVisuallyEqual(la.note, lb.note)) return false;
     for (const hour of STATION_CALL_HOURS) {
       if (!cellsVisuallyEqual(la.hours[hour.key], lb.hours[hour.key])) return false;
     }
@@ -538,11 +724,17 @@ export function boardsEquivalent(a: StationDayBoard, b: StationDayBoard): boolea
   return true;
 }
 
+export function notesEquivalent(
+  a: StationNoteRow | undefined,
+  b: StationNoteRow | undefined,
+): boolean {
+  return cellsVisuallyEqual(a?.note, b?.note);
+}
+
 export function hasExplicitClears(board: StationDayBoard): boolean {
   for (const yard of STATION_CALL_YARDS) {
     const row = board[yard.id] ?? emptyRow();
     if (row.close === null && row.closeAt) return true;
-    if (row.note === null && row.noteAt) return true;
     for (const hour of STATION_CALL_HOURS) {
       if (row.hours[hour.key] === null) return true;
     }
@@ -584,17 +776,12 @@ export function mergeBoardCells(
     const lClose = closeMergeInput(l);
     const rClose = closeMergeInput(r);
     const closePick = pickMergedCell(lClose.value, rClose.value, lClose.at, rClose.at);
-    const lNote = noteMergeInput(l);
-    const rNote = noteMergeInput(r);
-    const notePick = pickMergedCell(lNote.value, rNote.value, lNote.at, rNote.at);
     const row: StationDayRow = {
       hours,
       close: closePick.value === undefined ? null : closePick.value,
-      note: notePick.value === undefined ? null : notePick.value,
     };
     if (Object.keys(hoursAt).length) row.hoursAt = hoursAt;
     if (closePick.at) row.closeAt = closePick.at;
-    if (notePick.at) row.noteAt = notePick.at;
     out[yard.id] = row;
   }
   return out;
@@ -609,9 +796,50 @@ export function boardFillScore(board: StationDayBoard): number {
       if (stationCellFilled(row.hours[hour.key])) score += 1;
     }
     if (stationCellFilled(row.close)) score += 1;
-    if (stationCellFilled(row.note)) score += 1;
   }
   return score;
+}
+
+export function mergeStationNoteStores(
+  local: StationNoteStore,
+  remote: StationNoteStore,
+): StationNoteStore {
+  const ids = new Set([...Object.keys(local), ...Object.keys(remote)]);
+  const out: StationNoteStore = {};
+  for (const id of ids) {
+    if (!knownStationId(id)) continue;
+    const l = noteRowMergeInput(local[id]);
+    const r = noteRowMergeInput(remote[id]);
+    const picked = pickMergedCell(l.value, r.value, l.at, r.at);
+    if (picked.value === undefined) continue;
+    const row: StationNoteRow = { note: picked.value };
+    if (picked.at) row.noteAt = picked.at;
+    out[id] = row;
+  }
+  return out;
+}
+
+export type StationNoteReconcile = {
+  merged: StationNoteStore;
+  toPush: { stationId: string; row: StationNoteRow }[];
+};
+
+export function reconcileStationNotesCloud(
+  local: StationNoteStore,
+  remote: StationNoteStore,
+  legacy: StationNoteStore = {},
+): StationNoteReconcile {
+  const merged = seedStationNotes(mergeStationNoteStores(local, remote), legacy);
+  const toPush: { stationId: string; row: StationNoteRow }[] = [];
+  for (const yard of STATION_CALL_YARDS) {
+    const row = merged[yard.id];
+    if (!row || !stationNoteInitialized(row)) continue;
+    const remoteRow = remote[yard.id];
+    if (!remoteRow || !notesEquivalent(row, remoteRow)) {
+      toPush.push({ stationId: yard.id, row });
+    }
+  }
+  return { merged, toPush };
 }
 
 export function mergeStationCallStores(

@@ -18,18 +18,28 @@ import {
   commitStationCell,
   commitStationNote,
   fetchStationCallStoreFromCloud,
+  fetchStationNotesFromCloud,
+  loadStationNotes,
+  mergeStationNoteStores,
+  noteForStation,
   parseNumericCell,
   pushStationCallDay,
+  pushStationNote,
+  readLegacyNotesFromStationCallStorage,
   readStationCallStore,
+  readStationNoteStore,
   reconcileStationCallCloud,
+  reconcileStationNotesCloud,
   setStationClose,
   setStationHour,
   setStationNote,
   startForStation,
   stationCellFilled,
   writeStationCallStore,
+  writeStationNoteStore,
   type StationCellValue,
   type StationHourKey,
+  type StationNoteStore,
 } from "../lib/stationCalls";
 
 /** Editable columns only: hour keys plus Close. Start is a read-only span. */
@@ -363,6 +373,7 @@ export function StationCallsCard({ date }: { date: string }) {
   const { configured, session, user } = useAuth();
   const cloud = configured && !!session;
   const [store, setStore] = useState(() => readStationCallStore());
+  const [notes, setNotes] = useState<StationNoteStore>(() => loadStationNotes());
   const board = useMemo(() => boardForDate(store, date), [store, date]);
   const [noteOpen, setNoteOpen] = useState<{
     date: string;
@@ -376,15 +387,41 @@ export function StationCallsCard({ date }: { date: string }) {
     let alive = true;
 
     const hydrate = async () => {
-      const remote = await fetchStationCallStoreFromCloud();
-      if (!alive || !remote) return;
-      const local = readStationCallStore();
-      const { merged, toPush } = reconcileStationCallCloud(local, remote);
-      for (const { date: d, board } of toPush) {
-        await pushStationCallDay(d, board, user?.id ?? null);
+      const localDays = readStationCallStore();
+      const localNotes = readStationNoteStore();
+      const localLegacy = readLegacyNotesFromStationCallStorage();
+      const [remoteDays, remoteNotes] = await Promise.all([
+        fetchStationCallStoreFromCloud(),
+        fetchStationNotesFromCloud(),
+      ]);
+      if (!alive) return;
+
+      if (remoteDays) {
+        const { merged, toPush } = reconcileStationCallCloud(localDays, remoteDays.days);
+        for (const { date: d, board } of toPush) {
+          await pushStationCallDay(d, board, user?.id ?? null);
+        }
+        writeStationCallStore(merged);
+        if (alive) setStore(merged);
       }
-      writeStationCallStore(merged);
-      if (alive) setStore(merged);
+
+      const legacy = mergeStationNoteStores(localLegacy, remoteDays?.legacyNotes ?? {});
+      if (remoteNotes) {
+        const { merged, toPush } = reconcileStationNotesCloud(
+          localNotes,
+          remoteNotes,
+          legacy,
+        );
+        for (const { stationId, row } of toPush) {
+          await pushStationNote(stationId, row, user?.id ?? null);
+        }
+        writeStationNoteStore(merged);
+        if (alive) setNotes(merged);
+      } else {
+        const seeded = reconcileStationNotesCloud(localNotes, {}, legacy).merged;
+        writeStationNoteStore(seeded);
+        if (alive) setNotes(seeded);
+      }
     };
 
     void hydrate();
@@ -396,10 +433,17 @@ export function StationCallsCard({ date }: { date: string }) {
       };
     }
     const channel = supabase
-      .channel("station-call-days-crew")
+      .channel("station-call-crew")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "station_call_days" },
+        () => {
+          void hydrate();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "station_call_notes" },
         () => {
           void hydrate();
         },
@@ -411,7 +455,7 @@ export function StationCallsCard({ date }: { date: string }) {
     };
   }, [cloud, user?.id]);
 
-  const persist = useCallback(
+  const persistDays = useCallback(
     (next: ReturnType<typeof readStationCallStore>) => {
       writeStationCallStore(next);
       setStore(next);
@@ -422,28 +466,40 @@ export function StationCallsCard({ date }: { date: string }) {
     [cloud, date, user?.id],
   );
 
+  const persistNotes = useCallback(
+    (next: StationNoteStore, stationId: string) => {
+      writeStationNoteStore(next);
+      setNotes(next);
+      const row = next[stationId];
+      if (cloud && row) {
+        void pushStationNote(stationId, row, user?.id ?? null);
+      }
+    },
+    [cloud, user?.id],
+  );
+
   const onHour = useCallback(
     (stationId: string, hour: StationHourKey, value: StationCellValue | null) => {
-      persist(setStationHour(store, date, stationId, hour, value));
+      persistDays(setStationHour(store, date, stationId, hour, value));
     },
-    [persist, store, date],
+    [persistDays, store, date],
   );
 
   const onClose = useCallback(
     (stationId: string, value: StationCellValue | null) => {
-      persist(setStationClose(store, date, stationId, value));
+      persistDays(setStationClose(store, date, stationId, value));
     },
-    [persist, store, date],
+    [persistDays, store, date],
   );
 
   const onNote = useCallback(
     (stationId: string, value: string | null) => {
-      const prev = board[stationId]?.note ?? null;
+      const prev = noteForStation(notes, stationId);
       if (prev === value) return;
       if (!stationCellFilled(prev) && !stationCellFilled(value)) return;
-      persist(setStationNote(store, date, stationId, value));
+      persistNotes(setStationNote(notes, stationId, value), stationId);
     },
-    [persist, store, date, board],
+    [persistNotes, notes],
   );
 
   return (
@@ -474,12 +530,13 @@ export function StationCallsCard({ date }: { date: string }) {
             {STATION_CALL_YARDS.map((yard) => {
               const row = board[yard.id];
               const start = startForStation(store, date, yard.id);
+              const note = noteForStation(notes, yard.id);
               return (
                 <tr key={yard.id}>
                   <StationNameCell
                     stationId={yard.id}
                     label={yard.label}
-                    note={row.note}
+                    note={note}
                     open={activeNote?.id === yard.id ? activeNote.mode : null}
                     onPeek={() =>
                       setNoteOpen((cur) =>
