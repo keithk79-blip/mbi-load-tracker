@@ -186,6 +186,18 @@ describe("specialty walking-floor catalog", () => {
     expect(resolveSpecialtyStationId(undefined, "Gray Tank")).toBeNull();
   });
 
+  it("does not invent a Van Drunen specialty bubble", () => {
+    expect(
+      SPECIALTY_STATIONS.some((s) =>
+        `${s.id}${s.name}`.toLowerCase().includes("drunen"),
+      ),
+    ).toBe(false);
+    expect(isSpecialtyStationId("van-drunen")).toBe(false);
+    expect(resolveSpecialtyStationId("van-drunen", "Van Drunen")).toBeNull();
+    expect(resolveSpecialtyStationId(undefined, "Van Drunen")).toBeNull();
+    expect(resolveSpecialtyStationId(undefined, "Vandrunen")).toBeNull();
+  });
+
   it("lists only Newton County on the Hearthside specialty card", () => {
     expect(SPECIALTY_STATIONS.find((s) => s.id === "herthside")).toEqual({
       id: "herthside",
