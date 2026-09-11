@@ -15,6 +15,8 @@ import {
   daySummaryCards,
   endOfDayCards,
   endOfDaySummary,
+  isGraysLakePickup,
+  isGraysLakeRecycleLane,
   isVanDrunenPickup,
   isWalkingFloorLoad,
   loadMatchesCallYard,
@@ -154,6 +156,105 @@ describe("walking-floor tallies", () => {
         `${yard.id}${yard.label}`.toLowerCase().includes("drunen"),
       ),
     ).toBe(false);
+  });
+
+  it("counts GraysLake Recycle → Hodgkins (truck 2888) as walking-floor, not trash", () => {
+    const row = load({
+      id: "2888-gl",
+      truck: "2888",
+      pickup: "GraysLake",
+      commodity: "Recycle",
+      destination: "Hodgkins",
+      stationId: "grayslake",
+    });
+    expect(isGraysLakePickup(row)).toBe(true);
+    expect(isGraysLakeRecycleLane(row)).toBe(true);
+    expect(isWalkingFloorLoad(row)).toBe(true);
+    expect(countTrashLoads([row])).toBe(0);
+    expect(countWalkingFloorLoads([row])).toBe(1);
+    expect(countByTallyLabel([row], "LEACHATE")).toBe(0);
+  });
+
+  it("matches GraysLake / Grayslake pickup and stationId aliases on the recycle lane", () => {
+    const aliases = [
+      load({
+        pickup: "GraysLake",
+        commodity: "Recycle",
+        destination: "Hodgkins",
+        stationId: "grayslake",
+      }),
+      load({
+        pickup: "Grayslake",
+        commodity: "Recycle",
+        destination: "Hodgkins",
+        stationId: "custom",
+      }),
+      load({
+        pickup: "Grays Lake",
+        commodity: "Recycle",
+        destination: "Hodgkins",
+        stationId: "custom",
+      }),
+      load({
+        pickup: "grays-lake",
+        commodity: "Recycle",
+        destination: "Hodgkins",
+        stationId: "custom",
+      }),
+      load({
+        pickup: "Custom",
+        commodity: "Recycle",
+        destination: "Hodgkins",
+        stationId: "grayslake",
+      }),
+    ];
+    for (const row of aliases) {
+      expect(isGraysLakePickup(row)).toBe(true);
+      expect(isGraysLakeRecycleLane(row)).toBe(true);
+      expect(isWalkingFloorLoad(row)).toBe(true);
+      expect(countTrashLoads([row])).toBe(0);
+    }
+  });
+
+  it("still counts the lane as WF when commodity is dest-labeled or lacks the recycle substring", () => {
+    const destLabeled = load({
+      truck: "2888",
+      pickup: "GraysLake",
+      commodity: "Hodgkins",
+      destination: "Recycle",
+      stationId: "grayslake",
+    });
+    const hyphenated = load({
+      pickup: "Grayslake",
+      commodity: "Re-cycle",
+      destination: "Hodgkins",
+      stationId: "custom",
+    });
+    const destOnly = load({
+      pickup: "GraysLake",
+      commodity: "1-7",
+      destination: "Hodgkins",
+      stationId: "grayslake",
+    });
+    for (const row of [destLabeled, hyphenated, destOnly]) {
+      expect(isWalkingFloorLoad(row)).toBe(true);
+      expect(countTrashLoads([row])).toBe(0);
+    }
+  });
+
+  it("keeps GraysLake leachate on LEACHATE, not WALKING-FLOOR", () => {
+    const tank = load({
+      pickup: "GraysLake",
+      commodity: "Leachate (tanker)",
+      destination: "CID",
+      stationId: "grayslake",
+    });
+    expect(isGraysLakePickup(tank)).toBe(true);
+    expect(isGraysLakeRecycleLane(tank)).toBe(false);
+    expect(isWalkingFloorLoad(tank)).toBe(false);
+    expect(countByTallyLabel([tank], "LEACHATE")).toBe(1);
+    expect(countWalkingFloorLoads([tank])).toBe(0);
+    expect(countTrashLoads([tank])).toBe(0);
   });
 });
 
@@ -331,6 +432,59 @@ describe("daySummaryCards", () => {
     expect(value("TRASH")).toBe(1);
     expect(value("WALKING-FLOOR")).toBe(1);
     expect(value("LOADS")).toBe(2);
+  });
+
+  it("puts GraysLake Recycle → Hodgkins on WALKING-FLOOR so the three buckets sum to LOADS", () => {
+    const loads = [
+      load({
+        id: "msw",
+        pickup: "Melrose",
+        commodity: "Trash (MSW)",
+        destination: "Covanta",
+        stationId: "melrose",
+      }),
+      load({
+        id: "cd",
+        pickup: "Citiwaste",
+        commodity: "C&D",
+        destination: "Pontiac",
+        stationId: "citiwaste",
+      }),
+      load({
+        id: "leach",
+        pickup: "GraysLake",
+        commodity: "Leachate (tanker)",
+        destination: "FRWRD",
+        stationId: "grayslake",
+      }),
+      load({
+        id: "2888",
+        truck: "2888",
+        pickup: "GraysLake",
+        commodity: "Recycle",
+        destination: "Hodgkins",
+        stationId: "grayslake",
+      }),
+      load({
+        id: "vd",
+        pickup: "Van Drunen",
+        commodity: "Trash",
+        destination: "Newton",
+        stationId: "custom",
+      }),
+    ];
+
+    const cards = daySummaryCards(loads);
+    const value = (label: string) =>
+      cards.find((card) => card.label === label)?.count ?? 0;
+
+    expect(value("TRASH")).toBe(2);
+    expect(value("LEACHATE")).toBe(1);
+    expect(value("WALKING-FLOOR")).toBe(2);
+    expect(value("LOADS")).toBe(5);
+    expect(value("TRASH") + value("LEACHATE") + value("WALKING-FLOOR")).toBe(
+      value("LOADS"),
+    );
   });
 });
 
@@ -547,6 +701,47 @@ describe("endOfDaySummary", () => {
     expect(summary.stations.some((row) => /drunen/i.test(`${row.id}${row.label}`))).toBe(
       false,
     );
+  });
+
+  it("puts GraysLake Recycle → Hodgkins on WALKING-FLOOR so EOD buckets sum to LOADS", () => {
+    const loads = [
+      load({
+        id: "msw",
+        commodity: "Trash (MSW)",
+        pickup: "Melrose",
+        stationId: "melrose",
+      }),
+      load({
+        id: "leach",
+        pickup: "GraysLake",
+        commodity: "Leachate (tanker)",
+        destination: "CID",
+        stationId: "grayslake",
+      }),
+      load({
+        id: "2888",
+        truck: "2888",
+        pickup: "Grayslake",
+        commodity: "Recycle",
+        destination: "Hodgkins",
+        stationId: "grayslake",
+      }),
+    ];
+    const summary = endOfDaySummary(loads, emptyBoard());
+    expect(summary.trash).toBe(1);
+    expect(summary.leachate).toBe(1);
+    expect(summary.walkingFloor).toBe(1);
+    expect(summary.loads).toBe(3);
+    expect(summary.trash + summary.leachate + summary.walkingFloor).toBe(
+      summary.loads,
+    );
+    expect(endOfDayCards(summary).map((card) => [card.label, card.count])).toEqual([
+      ["TRASH", 1],
+      ["LEACHATE", 1],
+      ["WALKING-FLOOR", 1],
+      ["LOADS", 3],
+      ["SUBS", 0],
+    ]);
   });
 
   it("shows decimal and letter Close values in Left", () => {
