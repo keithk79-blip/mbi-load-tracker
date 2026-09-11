@@ -10,6 +10,7 @@ import {
   endOfDaySummary,
   isWalkingFloorLoad,
   loadMatchesCallYard,
+  rankCommodities,
 } from "./totals";
 
 function load(partial: Partial<Load>): Load {
@@ -163,6 +164,56 @@ describe("daySummaryCards", () => {
       "WALKING-FLOOR",
     ]);
   });
+
+  it("counts C&D as TRASH so it is not leftover outside TRASH/LEACHATE/WALKING-FLOOR", () => {
+    const loads = [
+      load({ id: "msw", commodity: "Trash (MSW)" }),
+      load({
+        id: "cd-citiwaste",
+        truck: "2207",
+        pickup: "Citiwaste",
+        commodity: "C&D",
+        destination: "Pontiac",
+        stationId: "citiwaste",
+      }),
+      load({ id: "cd-lrs", commodity: "C&D", pickup: "LRS", stationId: "lrs" }),
+      load({ id: "leach", commodity: "Leachate (tanker)" }),
+      load({ id: "yard", commodity: "Yard Waste" }),
+    ];
+
+    expect(countByTallyLabel(loads, "TRASH")).toBe(3);
+    expect(countByTallyLabel(loads, "C&D")).toBe(0);
+    expect(countByTallyLabel(loads, "LEACHATE")).toBe(1);
+    expect(countWalkingFloorLoads(loads)).toBe(1);
+
+    const cards = daySummaryCards(loads);
+    const value = (label: string) =>
+      cards.find((card) => card.label === label)?.count ?? 0;
+
+    expect(cards.map((card) => card.label)).toEqual([
+      "TRASH",
+      "LEACHATE",
+      "LOADS",
+      "SUBS",
+      "WALKING-FLOOR",
+    ]);
+    expect(value("TRASH")).toBe(3);
+    expect(value("LOADS")).toBe(5);
+    expect(value("TRASH") + value("LEACHATE") + value("WALKING-FLOOR")).toBe(
+      value("LOADS"),
+    );
+  });
+});
+
+describe("rankCommodities", () => {
+  it("groups C&D with Trash (MSW) because they share the TRASH tally bucket", () => {
+    expect(
+      rankCommodities([
+        load({ id: "1", commodity: "C&D" }),
+        load({ id: "2", commodity: "Trash (MSW)" }),
+      ]),
+    ).toEqual([{ key: "TRASH", label: "Trash (MSW)", count: 2 }]);
+  });
 });
 
 describe("endOfDaySummary", () => {
@@ -300,6 +351,39 @@ describe("endOfDaySummary", () => {
       "WALKING-FLOOR",
       "LOADS",
       "SUBS",
+    ]);
+  });
+
+  it("counts C&D inside the TRASH bubble like Today, not as a leftover", () => {
+    const loads = [
+      load({ id: "msw", commodity: "Trash (MSW)" }),
+      load({
+        id: "cd",
+        truck: "2207",
+        pickup: "Citiwaste",
+        commodity: "C&D",
+        destination: "Pontiac",
+        stationId: "citiwaste",
+      }),
+      load({ id: "leach", commodity: "Leachate (tanker)" }),
+      load({ id: "recycle", commodity: "Recycle" }),
+    ];
+    const summary = endOfDaySummary(loads, emptyBoard());
+    expect(summary.trash).toBe(2);
+    expect(summary.leachate).toBe(1);
+    expect(summary.walkingFloor).toBe(1);
+    expect(summary.loads).toBe(4);
+    expect(summary.trash + summary.leachate + summary.walkingFloor).toBe(
+      summary.loads,
+    );
+    const cards = endOfDayCards(summary);
+    expect(cards.map((card) => card.label)).not.toContain("C&D");
+    expect(cards.map((card) => [card.label, card.count])).toEqual([
+      ["TRASH", 2],
+      ["LEACHATE", 1],
+      ["WALKING-FLOOR", 1],
+      ["LOADS", 4],
+      ["SUBS", 0],
     ]);
   });
 

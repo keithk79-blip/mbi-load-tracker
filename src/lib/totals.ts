@@ -57,7 +57,12 @@ export function rankCommodities(loads: Load[]): RankRow[] {
     else {
       map.set(key, {
         key,
-        label: commodityRankLabel(load.commodity),
+        // C&D shares the TRASH tally bucket; always label that row Trash (MSW)
+        // so a C&D-first day does not title the merged bucket "C&D".
+        label:
+          key === "TRASH"
+            ? "Trash (MSW)"
+            : commodityRankLabel(load.commodity),
         count: 1,
       });
     }
