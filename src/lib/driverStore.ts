@@ -15,12 +15,15 @@ type PersistedDays = {
   manualOffs?: ManualOffsStore;
   /** Tombstones `YYYY-MM-DD|namekey` so a cloud pull cannot restore a local remove. */
   manualOffsDeleted?: string[];
+  /** Keys observed on a successful `manual_call_offs` pull. */
+  manualOffsSeen?: string[];
 };
 
 export type DriverDaysPayload = {
   days: DayStore;
   manualOffs: ManualOffsStore;
   manualOffsDeleted: string[];
+  manualOffsSeen: string[];
 };
 
 function cleanOot(names: unknown): string[] | undefined {
@@ -41,7 +44,7 @@ function clean(store: DayStore): DayStore {
 }
 
 function emptyPayload(): DriverDaysPayload {
-  return { days: {}, manualOffs: {}, manualOffsDeleted: [] };
+  return { days: {}, manualOffs: {}, manualOffsDeleted: [], manualOffsSeen: [] };
 }
 
 export function readDriverDaysPayload(): DriverDaysPayload {
@@ -56,6 +59,7 @@ export function readDriverDaysPayload(): DriverDaysPayload {
       days: clean(parsed.days),
       manualOffs: cleanManualOffs(parsed.manualOffs),
       manualOffsDeleted: cleanDeletedKeys(parsed.manualOffsDeleted),
+      manualOffsSeen: cleanDeletedKeys(parsed.manualOffsSeen),
     };
   } catch {
     return emptyPayload();
@@ -68,6 +72,7 @@ function writePayload(payload: DriverDaysPayload): void {
     days: clean(payload.days),
     manualOffs: payload.manualOffs,
     manualOffsDeleted: payload.manualOffsDeleted,
+    manualOffsSeen: payload.manualOffsSeen,
   };
   localStorage.setItem(DAYS_KEY, JSON.stringify(next));
 }
@@ -88,6 +93,7 @@ export function readManualOffs(): ManualOffsStore {
 export function writeManualOffs(
   manualOffs: ManualOffsStore,
   manualOffsDeleted?: string[],
+  manualOffsSeen?: string[],
 ): void {
   const current = readDriverDaysPayload();
   writePayload({
@@ -97,6 +103,10 @@ export function writeManualOffs(
       manualOffsDeleted === undefined
         ? current.manualOffsDeleted
         : cleanDeletedKeys(manualOffsDeleted),
+    manualOffsSeen:
+      manualOffsSeen === undefined
+        ? current.manualOffsSeen
+        : cleanDeletedKeys(manualOffsSeen),
   });
 }
 
@@ -105,6 +115,7 @@ export function persistDriverDays(payload: DriverDaysPayload): void {
     days: payload.days,
     manualOffs: cleanManualOffs(payload.manualOffs),
     manualOffsDeleted: cleanDeletedKeys(payload.manualOffsDeleted),
+    manualOffsSeen: cleanDeletedKeys(payload.manualOffsSeen ?? []),
   });
 }
 

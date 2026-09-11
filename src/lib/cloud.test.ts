@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LOAD_FETCH_PAGE_SIZE, fetchAllPaged } from "./cloud";
+import { LOAD_FETCH_PAGE_SIZE, fetchAllPaged, pagedErrorMessage } from "./cloud";
 
 describe("fetchAllPaged", () => {
   it("walks PostgREST range pages until a short page", async () => {
@@ -37,5 +37,13 @@ describe("fetchAllPaged", () => {
     });
     expect(data).toBeNull();
     expect(error).toBeInstanceOf(Error);
+  });
+});
+
+describe("pagedErrorMessage", () => {
+  it("reads PostgREST-style message objects", () => {
+    expect(pagedErrorMessage({ message: "range failed" })).toBe("range failed");
+    expect(pagedErrorMessage(new Error("boom"))).toBe("boom");
+    expect(pagedErrorMessage(null)).toBeUndefined();
   });
 });

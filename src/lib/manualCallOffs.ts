@@ -174,3 +174,84 @@ export function gcDeletedManualKeys(
     );
   });
 }
+
+export type ManualOffsCloudReconcileInput = {
+  local: ManualOffsStore;
+  remote: ManualOffsStore;
+  deletedKeys: readonly string[];
+  /** `date|namekey` values observed on a previous successful remote pull. */
+  seenRemoteKeys?: readonly string[];
+};
+
+export type ManualOffsUpload = { date: string; off: ManualCallOff };
+export type ManualOffsRemoteDelete = { date: string; name: string };
+
+export type ManualOffsCloudReconcileResult = {
+  next: ManualOffsStore;
+  deletedKeys: string[];
+  seenRemoteKeys: string[];
+  toDeleteRemote: ManualOffsRemoteDelete[];
+  toUpload: ManualOffsUpload[];
+};
+
+function allManualKeys(store: ManualOffsStore): string[] {
+  const keys: string[] = [];
+  for (const [date, list] of Object.entries(store)) {
+    for (const row of list) {
+      const key = callOffNameKey(row.name);
+      if (key) keys.push(deletedManualKey(date, key));
+    }
+  }
+  return keys;
+}
+
+/**
+ * One successful (paged) cloud refresh for manual call-offs.
+ *
+ * Names this device previously pulled and that are missing from `remote` are
+ * treated as deleted — otherwise Device B re-uploads a row Device A removed.
+ * Never-seen local adds still upload. Tombstones still strip local + remote.
+ *
+ * Caller must pass a complete snapshot, including empty `{}`.
+ */
+export function reconcileManualOffsCloud(
+  input: ManualOffsCloudReconcileInput,
+): ManualOffsCloudReconcileResult {
+  const deleted = new Set(cleanDeletedKeys(input.deletedKeys));
+  const seen = new Set(cleanDeletedKeys(input.seenRemoteKeys ?? []));
+  const remoteKeys = new Set(allManualKeys(input.remote));
+
+  for (const key of seen) {
+    if (!remoteKeys.has(key)) deleted.add(key);
+  }
+
+  const next = mergeManualOffStores(input.local, input.remote, [...deleted]);
+
+  const toDeleteRemote: ManualOffsRemoteDelete[] = [];
+  for (const key of deleted) {
+    const parsed = parseDeletedManualKey(key);
+    if (!parsed || !remoteKeys.has(key)) continue;
+    toDeleteRemote.push({ date: parsed.date, name: parsed.nameKey });
+  }
+
+  const toUpload: ManualOffsUpload[] = [];
+  for (const [date, list] of Object.entries(next)) {
+    for (const off of list) {
+      const key = deletedManualKey(date, off.name);
+      if (remoteKeys.has(key) || deleted.has(key) || seen.has(key)) continue;
+      toUpload.push({ date, off });
+    }
+  }
+
+  const seenNext = new Set(seen);
+  for (const key of remoteKeys) seenNext.add(key);
+  for (const key of deleted) seenNext.add(key);
+
+  return {
+    next,
+    deletedKeys: gcDeletedManualKeys([...deleted], input.remote),
+    seenRemoteKeys: [...seenNext],
+    toDeleteRemote,
+    toUpload,
+  };
+}

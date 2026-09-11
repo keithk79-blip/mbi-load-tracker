@@ -12,7 +12,7 @@ import type { Load } from "../types";
 import { fetchAllPaged, loadToRow, rowToLoad, type LoadRow } from "../lib/cloud";
 import {
   deletedLoadIds,
-  deviceLoadsForPush,
+  localOnlyLoadsForUpload,
   mergeCloudLoads,
   reconcilePersistedSnapshot,
   shouldApplyRealtimeDelete,
@@ -443,7 +443,7 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
   }, [persistLocal]);
 
   const uploadLocalLoads = useCallback(async () => {
-    const local = deviceLoadsForPush(storeRef.current, readStore(), readQueue());
+    const local = localOnlyLoadsForUpload(storeRef.current, readStore(), readQueue());
     if (local.length) enqueueMissing(local);
     await flushQueue();
     return local.length;
@@ -451,11 +451,12 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
 
   const pushAllLoadsToCloud = useCallback(async () => {
     if (!cloud) return 0;
-    const deviceLoads = deviceLoadsForPush(storeRef.current, readStore(), readQueue());
-    if (deviceLoads.length) enqueueMissing(deviceLoads);
-    await flushQueue();
-    return deviceLoads.length;
-  }, [cloud, enqueueMissing, flushQueue]);
+    // Refresh-first: mergeCloudLoads decides toUpsert / toDelete. Blindly
+    // enqueueing deviceLoadsForPush re-upserts the whole cache and can
+    // resurrect rows another device already deleted.
+    await refreshFromCloud();
+    return readQueue().length;
+  }, [cloud, refreshFromCloud]);
 
   const localPendingCount = useMemo(() => {
     if (!cloud) return 0;

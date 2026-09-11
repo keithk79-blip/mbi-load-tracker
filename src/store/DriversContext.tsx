@@ -24,7 +24,6 @@ import {
   fetchRemoteDays,
   fetchRemoteManualOffs,
   pushDayStore,
-  pushMissingManualOffs,
   upsertRemoteManualOff,
 } from "../lib/driverCloud";
 import {
@@ -44,8 +43,7 @@ import {
 import {
   addManualOff as insertManualOff,
   deletedManualKey,
-  gcDeletedManualKeys,
-  mergeManualOffStores,
+  reconcileManualOffsCloud,
   removeManualOff as dropManualOff,
   type ManualOffsStore,
 } from "../lib/manualCallOffs";
@@ -97,6 +95,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
     () => initialManuals.manualOffs,
   );
   const deletedRef = useRef<string[]>(initialManuals.manualOffsDeleted);
+  const seenRef = useRef<string[]>(initialManuals.manualOffsSeen);
   const todayRef = useRef(chicagoToday());
 
   const persistDays = useCallback((next: DayStore) => {
@@ -108,9 +107,14 @@ export function DriversProvider({ children }: { children: ReactNode }) {
   }, [configured, session]);
 
   const persistManuals = useCallback(
-    (next: ManualOffsStore, deleted: string[] = deletedRef.current) => {
+    (
+      next: ManualOffsStore,
+      deleted: string[] = deletedRef.current,
+      seen: string[] = seenRef.current,
+    ) => {
       deletedRef.current = deleted;
-      writeManualOffs(next, deleted);
+      seenRef.current = seen;
+      writeManualOffs(next, deleted, seen);
       setManualOffs(next);
     },
     [],
@@ -160,30 +164,21 @@ export function DriversProvider({ children }: { children: ReactNode }) {
         }
         if (remoteManuals.store !== null) {
           const local = readDriverDaysPayload();
-          const mergedManuals = mergeManualOffStores(
-            local.manualOffs,
-            remoteManuals.store,
-            local.manualOffsDeleted,
-          );
-          const nextDeleted = gcDeletedManualKeys(
-            local.manualOffsDeleted,
-            remoteManuals.store,
-          );
-          persistManuals(mergedManuals, nextDeleted);
-          const pushed = await pushMissingManualOffs(
-            mergedManuals,
-            remoteManuals.store,
-          );
-          if (!pushed.ok && pushed.error) {
-            setError(pushed.error);
+          const result = reconcileManualOffsCloud({
+            local: local.manualOffs,
+            remote: remoteManuals.store,
+            deletedKeys: local.manualOffsDeleted,
+            seenRemoteKeys: local.manualOffsSeen,
+          });
+          persistManuals(result.next, result.deletedKeys, result.seenRemoteKeys);
+          for (const { date, off } of result.toUpload) {
+            const pushed = await upsertRemoteManualOff(date, off);
+            if (!pushed.ok && pushed.error) {
+              setError(pushed.error);
+            }
           }
-          for (const key of nextDeleted) {
-            const split = key.indexOf("|");
-            if (split <= 0) continue;
-            const removed = await deleteRemoteManualOff(
-              key.slice(0, split),
-              key.slice(split + 1),
-            );
+          for (const { date, name } of result.toDeleteRemote) {
+            const removed = await deleteRemoteManualOff(date, name);
             if (!removed.ok && removed.error) {
               setError(removed.error);
             }
@@ -349,10 +344,12 @@ export function DriversProvider({ children }: { children: ReactNode }) {
         occupied,
       );
       if (!added) return false;
-      const nextDeleted = deletedRef.current.filter(
-        (key) => key !== deletedManualKey(date, added.name),
-      );
-      persistManuals(next, nextDeleted);
+      const addKey = deletedManualKey(date, added.name);
+      const nextDeleted = deletedRef.current.filter((key) => key !== addKey);
+      // Forget seen so a refresh before the upsert lands cannot treat this
+      // re-add as "another device deleted a previously pulled name".
+      const nextSeen = seenRef.current.filter((key) => key !== addKey);
+      persistManuals(next, nextDeleted, nextSeen);
       recomputeTodayFrom(next);
       if (configured && session) {
         const written = await upsertRemoteManualOff(date, added);

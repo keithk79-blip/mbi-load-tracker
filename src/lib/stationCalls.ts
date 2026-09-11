@@ -1,4 +1,5 @@
 import { addDays } from "./chicagoDate";
+import { fetchAllPaged, pagedErrorMessage } from "./cloud";
 import { getSupabase } from "./supabase";
 
 export const STATION_CALL_YARDS = [
@@ -581,11 +582,21 @@ export type StationCallCloudPull = {
 export async function fetchStationCallStoreFromCloud(): Promise<StationCallCloudPull | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("station_call_days")
-    .select("date, board, updated_at");
+  const { data, error } = await fetchAllPaged<{ date: string; board: unknown }>(
+    async (from, to) => {
+      const page = await supabase
+        .from("station_call_days")
+        .select("date, board, updated_at")
+        .order("date", { ascending: true })
+        .range(from, to);
+      return {
+        data: page.data as { date: string; board: unknown }[] | null,
+        error: page.error,
+      };
+    },
+  );
   if (error || !data) {
-    console.warn("station_call_days pull failed", error?.message);
+    console.warn("station_call_days pull failed", pagedErrorMessage(error));
     return null;
   }
   const days: StationCallStore = {};
@@ -607,11 +618,27 @@ export async function fetchStationCallStoreFromCloud(): Promise<StationCallCloud
 export async function fetchStationNotesFromCloud(): Promise<StationNoteStore | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
-  const { data, error } = await supabase
-    .from("station_call_notes")
-    .select("station_id, note, updated_at");
+  const { data, error } = await fetchAllPaged<{
+    station_id: string;
+    note: unknown;
+    updated_at: unknown;
+  }>(async (from, to) => {
+    const page = await supabase
+      .from("station_call_notes")
+      .select("station_id, note, updated_at")
+      .order("station_id", { ascending: true })
+      .range(from, to);
+    return {
+      data: page.data as {
+        station_id: string;
+        note: unknown;
+        updated_at: unknown;
+      }[] | null,
+      error: page.error,
+    };
+  });
   if (error || !data) {
-    console.warn("station_call_notes pull failed", error?.message);
+    console.warn("station_call_notes pull failed", pagedErrorMessage(error));
     return null;
   }
   const out: StationNoteStore = {};

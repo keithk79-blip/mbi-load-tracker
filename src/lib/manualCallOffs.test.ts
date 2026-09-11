@@ -6,6 +6,7 @@ import {
   deletedManualKey,
   gcDeletedManualKeys,
   mergeManualOffStores,
+  reconcileManualOffsCloud,
   removeManualOff,
   type ManualOffsStore,
 } from "./manualCallOffs";
@@ -119,5 +120,87 @@ describe("mergeManualOffStores", () => {
         remote,
       ),
     ).toEqual([deletedManualKey("2026-09-08", "Still There")]);
+  });
+});
+
+describe("reconcileManualOffsCloud", () => {
+  const date = "2026-09-11";
+  const ada = { name: "Ada", kind: "late-early" as const };
+  const bea = { name: "Bea", kind: "call-off" as const };
+  const adaKey = deletedManualKey(date, "Ada");
+  const beaKey = deletedManualKey(date, "Bea");
+
+  it("uploads a never-seen local add when remote is missing it", () => {
+    const result = reconcileManualOffsCloud({
+      local: { [date]: [ada] },
+      remote: {},
+      deletedKeys: [],
+      seenRemoteKeys: [],
+    });
+    expect(result.next[date]).toEqual([ada]);
+    expect(result.toUpload).toEqual([{ date, off: ada }]);
+    expect(result.toDeleteRemote).toEqual([]);
+  });
+
+  it("does not re-upload a previously seen name another device deleted", () => {
+    const result = reconcileManualOffsCloud({
+      local: { [date]: [ada, bea] },
+      remote: { [date]: [bea] },
+      deletedKeys: [],
+      seenRemoteKeys: [adaKey, beaKey],
+    });
+    expect(result.next[date]).toEqual([bea]);
+    expect(result.toUpload).toEqual([]);
+    expect(result.toDeleteRemote).toEqual([]);
+    expect(result.seenRemoteKeys).toEqual(expect.arrayContaining([adaKey, beaKey]));
+  });
+
+  it("does not re-upload after the last remaining remote name is deleted", () => {
+    const result = reconcileManualOffsCloud({
+      local: { [date]: [ada] },
+      remote: {},
+      deletedKeys: [],
+      seenRemoteKeys: [adaKey],
+    });
+    expect(result.next).toEqual({});
+    expect(result.toUpload).toEqual([]);
+    expect(result.toDeleteRemote).toEqual([]);
+  });
+
+  it("keeps a local Late/Early delete and asks cloud to drop it", () => {
+    const result = reconcileManualOffsCloud({
+      local: {},
+      remote: { [date]: [ada] },
+      deletedKeys: [adaKey],
+      seenRemoteKeys: [adaKey],
+    });
+    expect(result.next).toEqual({});
+    expect(result.toUpload).toEqual([]);
+    expect(result.toDeleteRemote).toEqual([{ date, name: "ada" }]);
+    expect(result.deletedKeys).toEqual([adaKey]);
+  });
+
+  it("uploads a local re-add when seen was cleared for that name", () => {
+    const result = reconcileManualOffsCloud({
+      local: { [date]: [ada] },
+      remote: {},
+      deletedKeys: [],
+      seenRemoteKeys: [],
+    });
+    expect(result.toUpload).toEqual([{ date, off: ada }]);
+    expect(result.next[date]).toEqual([ada]);
+  });
+
+  it("adopts a remote re-add after this device had tombstoned the name", () => {
+    const result = reconcileManualOffsCloud({
+      local: {},
+      remote: { [date]: [ada] },
+      deletedKeys: [],
+      seenRemoteKeys: [adaKey],
+    });
+    expect(result.next[date]).toEqual([ada]);
+    expect(result.toUpload).toEqual([]);
+    expect(result.toDeleteRemote).toEqual([]);
+    expect(result.deletedKeys).toEqual([]);
   });
 });
