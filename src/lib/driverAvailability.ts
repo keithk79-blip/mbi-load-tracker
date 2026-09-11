@@ -56,6 +56,11 @@ export function isCallOffKind(value: unknown): value is CallOffKind {
   return typeof value === "string" && CALL_OFF_KINDS.has(value);
 }
 
+/** Late/Early is orange status only — it does not reduce available / drv tallies. */
+export function kindRemovesFromAvailable(kind: CallOffKind): boolean {
+  return kind !== "late-early";
+}
+
 export function reasonForKind(kind: CallOffKind): string {
   switch (kind) {
     case "p-day":
@@ -79,7 +84,7 @@ export function callOffKindFromReason(reason: string): CallOffKind {
   }
   if (/\bp[\s-]?days?\b/.test(n)) return "p-day";
   if (/\bok'?d (day )?off\b/.test(n)) return "okd-off";
-  if (/\blate[\s/-]*early\b/.test(n)) return "late-early";
+  if (isLateEarlyReason(n)) return "late-early";
   return "call-off";
 }
 
@@ -151,6 +156,8 @@ const WORKING_RE = [
   /\bsign papers\b/,
 ];
 
+const LATE_EARLY_RE = /\blate[\s/-]*early\b/;
+
 const FULL_DAY_OFF_RE = [
   /\bp[\s-]?days?\b/,
   /\bcall[\s-]?offs?\b/,
@@ -164,23 +171,45 @@ const FULL_DAY_OFF_RE = [
   /\bretir(?:e|ed|ing)\b/,
   /\bncns\b/,
   /\bno[\s-]?call[\s-]?no[\s-]?show\b/,
-  /\blate[\s/-]*early\b/,
 ];
 
+function isWorkingNote(normalized: string): boolean {
+  return WORKING_RE.some((re) => re.test(normalized));
+}
+
+function isLateEarlyReason(normalized: string): boolean {
+  return LATE_EARLY_RE.test(normalized);
+}
+
 /**
- * True only when the reason is a full-day / status off.
+ * True when the reason should appear on the call-off list (full-day offs
+ * plus Late/Early status chips). Operational notes stay off the list.
+ */
+export function isCallOffListReason(reason: string): boolean {
+  const n = normalizeReason(reason);
+  if (!n || isWorkingNote(n)) return false;
+  return FULL_DAY_OFF_RE.some((re) => re.test(n)) || isLateEarlyReason(n);
+}
+
+/**
+ * True only when the reason removes a driver from available / drv tallies.
+ * Late/Early is orange status only and does not subtract.
  * Operational notes (park by noon, half loads, coming in late) stay on the
  * roster. Unsure reasons do not subtract.
  */
 export function isFullDayOff(reason: string): boolean {
   const n = normalizeReason(reason);
-  if (!n) return false;
-  if (WORKING_RE.some((re) => re.test(n))) return false;
+  if (!n || isWorkingNote(n) || isLateEarlyReason(n)) return false;
   return FULL_DAY_OFF_RE.some((re) => re.test(n));
 }
 
 export function callOffAppliesToDay(row: CallOffRow, day: string): boolean {
   if (!isFullDayOff(row.reason)) return false;
+  return dateInInclusiveRange(day, row.start, row.end);
+}
+
+function callOffListedOnDay(row: CallOffRow, day: string): boolean {
+  if (!isCallOffListReason(row.reason)) return false;
   return dateInInclusiveRange(day, row.start, row.end);
 }
 
@@ -218,7 +247,7 @@ export function fullDayOffEntries(
   const seen = new Set<string>();
   const entries: CallOffEntry[] = [];
   for (const row of sheetRows) {
-    if (!callOffAppliesToDay(row, day)) continue;
+    if (!callOffListedOnDay(row, day)) continue;
     const name = row.name.trim();
     if (!name) continue;
     const key = callOffNameKey(name);

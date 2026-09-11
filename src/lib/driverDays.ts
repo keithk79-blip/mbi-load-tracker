@@ -28,7 +28,7 @@ export type LiveSheet = {
   offs: CallOffRow[];
   /** Live OOT names — only written onto today's snapshot, never past days. */
   ootNames?: string[];
-  /** Manual full-day offs for the date being computed (today or a projected future day). */
+  /** Manual call-off chips for the date being computed (today or a projected future day). Late/Early is listed but does not subtract. */
   manualOffs?: ManualCallOff[];
 };
 

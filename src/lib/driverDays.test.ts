@@ -145,7 +145,7 @@ describe("applyLiveSheet lock", () => {
     });
   });
 
-  it("subtracts Late/Early manuals from the Saturday yard sum", () => {
+  it("does not subtract Late/Early manuals from the Saturday yard sum", () => {
     const next = applyLiveSheet(
       {},
       {
@@ -159,9 +159,70 @@ describe("applyLiveSheet lock", () => {
     );
     expect(next["2026-09-05"]).toMatchObject({
       base: 33,
+      offs: 0,
+      available: 33,
+      source: "saturday",
+    });
+  });
+
+  it("subtracts Saturday Call Off manuals while Late/Early stays informational", () => {
+    const next = applyLiveSheet(
+      {},
+      {
+        base: 143,
+        saturdayBase: 33,
+        offs,
+        manualOffs: [
+          { name: "Late Guy", kind: "late-early" },
+          { name: "Off Guy", kind: "call-off" },
+        ],
+      },
+      "2026-09-05",
+      "t1",
+    );
+    expect(next["2026-09-05"]).toMatchObject({
+      base: 33,
       offs: 1,
       available: 32,
       source: "saturday",
+    });
+  });
+
+  it("subtracts Call Off manuals from weekday available, not Late/Early", () => {
+    const lateEarly = applyLiveSheet(
+      {},
+      {
+        base: 143,
+        saturdayBase: 33,
+        offs: [{ name: "A", start: "2026-09-08", end: null, reason: "Call Off" }],
+        manualOffs: [{ name: "Late Guy", kind: "late-early" }],
+      },
+      "2026-09-08",
+      "t1",
+    );
+    expect(lateEarly["2026-09-08"]).toMatchObject({
+      base: 143,
+      offs: 1,
+      available: 142,
+      source: "weekday",
+    });
+
+    const callOff = applyLiveSheet(
+      {},
+      {
+        base: 143,
+        saturdayBase: 33,
+        offs: [{ name: "A", start: "2026-09-08", end: null, reason: "Call Off" }],
+        manualOffs: [{ name: "Off Guy", kind: "call-off" }],
+      },
+      "2026-09-08",
+      "t1",
+    );
+    expect(callOff["2026-09-08"]).toMatchObject({
+      base: 143,
+      offs: 2,
+      available: 141,
+      source: "weekday",
     });
   });
 

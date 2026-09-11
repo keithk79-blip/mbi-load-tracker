@@ -9,7 +9,9 @@ import {
   fullDayOffCount,
   fullDayOffEntries,
   isCallOffKind,
+  isCallOffListReason,
   isFullDayOff,
+  kindRemovesFromAvailable,
   parseCallOffCsv,
   reasonForKind,
   withManualOffs,
@@ -40,8 +42,9 @@ const SUBTRACT = [
   "NCNS",
   "ncns",
   "No Call No Show",
-  "Late/Early",
 ];
+
+const STATUS_ONLY = ["Late/Early", "late-early", "Late / Early"];
 
 const KEEP = [
   "Needs to be parked by noon",
@@ -77,6 +80,13 @@ describe("isFullDayOff", () => {
   it("does not subtract operational notes or unsure reasons", () => {
     for (const reason of KEEP) {
       expect(isFullDayOff(reason), reason).toBe(false);
+    }
+  });
+
+  it("does not subtract Late/Early; it is orange status only", () => {
+    for (const reason of STATUS_ONLY) {
+      expect(isFullDayOff(reason), reason).toBe(false);
+      expect(isCallOffListReason(reason), reason).toBe(true);
     }
   });
 });
@@ -173,6 +183,10 @@ describe("CALL_OFF_KIND_OPTIONS + tones", () => {
       CALL_OFF_KIND_OPTIONS.find((row) => row.kind === "late-early")?.label,
     ).toBe("Late/Early");
     expect(isCallOffKind("late-early")).toBe(true);
+    expect(kindRemovesFromAvailable("late-early")).toBe(false);
+    for (const kind of ["call-off", "p-day", "okd-off", "ncns"] as const) {
+      expect(kindRemovesFromAvailable(kind)).toBe(true);
+    }
   });
 
   it("maps Late/Early to orange, distinct from existing pill tones", () => {
@@ -241,25 +255,28 @@ describe("fullDayOffEntries + manuals", () => {
     });
   });
 
-  it("subtracts all five manual kinds and does not double-count a sheet name", () => {
+  it("subtracts real off kinds and does not double-count a sheet name", () => {
     const rows = withManualOffs(sheet, [
       { name: "Call Off Driver", kind: "call-off" },
       { name: "P Day Driver", kind: "p-day" },
       { name: "Okd Driver", kind: "okd-off" },
       { name: "Ncns Driver", kind: "ncns" },
-      { name: "Late Early Driver", kind: "late-early" },
       { name: "Pablo Cruz", kind: "ncns" },
     ], "2026-09-08");
     expect(availableDrivers(143, rows, "2026-09-08")).toMatchObject({
-      offs: 7,
-      available: 136,
+      offs: 6,
+      available: 137,
     });
   });
 
-  it("shows Late/Early manuals on the call-off list and subtracts them", () => {
+  it("shows Late/Early manuals on the call-off list without subtracting them", () => {
+    expect(kindRemovesFromAvailable("late-early")).toBe(false);
     const entries = fullDayOffEntries(
       sheet,
-      [{ name: "Derek Winters", kind: "late-early" }],
+      [
+        { name: "Derek Winters", kind: "late-early" },
+        { name: "Off Guy", kind: "call-off" },
+      ],
       "2026-09-08",
     );
     expect(entries).toContainEqual({
@@ -267,11 +284,58 @@ describe("fullDayOffEntries + manuals", () => {
       kind: "late-early",
       source: "manual",
     });
-    const rows = withManualOffs(
+    expect(entries).toContainEqual({
+      name: "Off Guy",
+      kind: "call-off",
+      source: "manual",
+    });
+    const mixedRows = withManualOffs(
+      sheet,
+      [
+        { name: "Derek Winters", kind: "late-early" },
+        { name: "Off Guy", kind: "call-off" },
+      ],
+      "2026-09-08",
+    );
+    const lateEarlyOnly = withManualOffs(
       sheet,
       [{ name: "Derek Winters", kind: "late-early" }],
       "2026-09-08",
     );
-    expect(availableDrivers(143, rows, "2026-09-08").offs).toBe(3);
+    const callOffOnly = withManualOffs(
+      sheet,
+      [{ name: "Off Guy", kind: "call-off" }],
+      "2026-09-08",
+    );
+    expect(availableDrivers(143, lateEarlyOnly, "2026-09-08")).toMatchObject({
+      offs: 2,
+      available: 141,
+    });
+    expect(availableDrivers(143, callOffOnly, "2026-09-08")).toMatchObject({
+      offs: 3,
+      available: 140,
+    });
+    expect(availableDrivers(143, mixedRows, "2026-09-08")).toMatchObject({
+      offs: 3,
+      available: 140,
+    });
+  });
+
+  it("lists sheet Late/Early as orange status without changing the tally", () => {
+    const withSheetStatus: CallOffRow[] = [
+      ...sheet,
+      { name: "Glen Barker", start: "2026-09-08", end: null, reason: "Late/Early" },
+    ];
+    expect(
+      fullDayOffEntries(withSheetStatus, undefined, "2026-09-08"),
+    ).toContainEqual({
+      name: "Glen Barker",
+      kind: "late-early",
+      source: "sheet",
+    });
+    expect(availableDrivers(143, withSheetStatus, "2026-09-08")).toMatchObject({
+      offs: 2,
+      available: 141,
+    });
   });
 });
