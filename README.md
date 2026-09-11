@@ -128,9 +128,17 @@ npx supabase db push
 
 #### 4. Upload existing local rows / recover desktop-only loads
 
-After sign-in the app **merges** this device’s `chitrader.load-tracker.v1` store and the signed-in `chitrader.load-tracker.cloud-cache.v1` into Supabase (upsert missing ids), then refreshes. Seeds are skipped. That covers the usual “logged on desktop, missing on the phone web app” case.
+After sign-in the app **refreshes from a complete cloud snapshot**. Pending queue upserts and loads saved since the last successful sync stay on this device and are uploaded. **Stale local-only rows** (old `chitrader.load-tracker.v1` backups that are not in the flush queue) are **not** re-uploaded — that is how a phone with ghost ids inflated Sep 10 from **406 → 435**.
 
-The session bar always shows **Push all to cloud** while signed in (label becomes **Sync now** if the queue still has ops or the last flush failed). Tap it to force-upsert every non-seeded load currently in memory/cloud-cache — not only the older local key. If this device still has non-sample rows in `chitrader.load-tracker.v1` that are not in the cloud cache, **Upload N local** also appears.
+If this device already has a coherent last-good for a date that is almost the same as cloud except a small extra tail (desktop **406** vs cloud **435**), refresh **keeps the device set**, tombstones the extras, and **deletes those ids from Supabase**. Empty cloud still does not wipe the day.
+
+The session bar always shows **Push all to cloud** while signed in (label becomes **Sync now** if the queue still has ops or the last flush failed). Do **not** tap Push all on the inflated phone until after a refresh that has tombstoned the ghosts. If this device still has non-sample rows in `chitrader.load-tracker.v1` that are not in the cloud cache, **Upload N local** also appears.
+
+**Sep 10 2026 recovery (desktop ~406 authoritative, mobile/cloud 435):**
+
+1. Deploy this build, then **open/refresh the Windows desktop app first**. It deletes the ~29 cloud extras and stays at 406.
+2. **Hard-refresh the phone** (or clear site data for the Pages origin if ghosts remain). It should drop to 406 and must not Push all first.
+3. After that, new loads logged on either device sync normally.
 
 #### 5. Verify two devices
 

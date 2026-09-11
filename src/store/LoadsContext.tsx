@@ -18,7 +18,7 @@ import {
   shouldApplyRealtimeDelete,
   shouldApplyRealtimeUpsert,
   snapshotForDeviceBackup,
-  snapshotLosesDeviceLoads,
+  snapshotLosesProtectedDeviceLoads,
 } from "../lib/cloudMerge";
 import { loadsToCsv } from "../lib/commodity";
 import {
@@ -36,12 +36,14 @@ import {
   gcLoadDeletedIds,
   loadsForDate,
   parseDeletedIds,
+  readLastSuccessfulSyncAt,
   readStore,
   rememberDeletedIds,
   removeLoad,
   snapshotFromLoads,
   upsertLoad,
   upsertLoadIntoRef,
+  writeLastSuccessfulSyncAt,
   writeStore,
   type Persisted,
 } from "../lib/storage";
@@ -124,6 +126,8 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
   const flushQueueRef = useRef<() => Promise<void>>(async () => {});
   const storeRef = useRef(store);
   const lastGoodRef = useRef<Persisted>(store);
+  const lastSuccessfulSyncAtRef = useRef<string | null>(readLastSuccessfulSyncAt());
+  const refreshStartedAtRef = useRef<string | null>(null);
 
   useEffect(() => {
     storeRef.current = store;
@@ -144,12 +148,14 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
     writeStore(snapshot);
   }, []);
 
-  const persistCloudCache = useCallback((next: Persisted) => {
+  const persistCloudCache = useCallback((next: Persisted): boolean => {
     const pending = readQueue();
     const cache = readCloudCache();
     const local = readStore();
     const live = storeRef.current;
     const lastGood = lastGoodRef.current;
+    const lastSuccessfulSyncAt = lastSuccessfulSyncAtRef.current;
+    const refreshStartedAt = refreshStartedAtRef.current;
     const reconciled = reconcilePersistedSnapshot({
       incoming: next,
       live,
@@ -157,20 +163,24 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
       local,
       lastGood,
       pending,
+      lastSuccessfulSyncAt,
+      refreshStartedAt,
     });
-    if (!reconciled) return;
-    // Partial same-day loss (324 → 306) must not land in cache/local.
+    if (!reconciled) return false;
+    // Refuse only if pending / in-flight saves would be dropped — not stale ghosts.
     if (
-      snapshotLosesDeviceLoads(
+      snapshotLosesProtectedDeviceLoads(
         allLoads(reconciled),
         cache,
         local,
         pending,
         reconciled.deletedIds,
         [live, lastGood],
+        lastSuccessfulSyncAt,
+        refreshStartedAt,
       )
     ) {
-      return;
+      return false;
     }
     next = reconciled;
     writeCloudCache(next);
@@ -180,6 +190,7 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
       lastGoodRef.current = next;
     }
     backupLocalStore(next);
+    return true;
   }, [backupLocalStore]);
 
   const applyQueueStatus = useCallback((remaining: number, failed: boolean) => {
@@ -288,42 +299,65 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
   const refreshFromCloud = useCallback(async () => {
     const supabase = getSupabase();
     if (!supabase || !session) return;
-    const { data, error } = await fetchAllPaged<LoadRow>(async (from, to) => {
-      const page = await supabase
-        .from("loads")
-        .select("*")
-        .order("updated_at", { ascending: false })
-        .range(from, to);
-      return { data: page.data as LoadRow[] | null, error: page.error };
-    });
-    if (error || !Array.isArray(data)) {
-      applyQueueStatus(readQueue().length, true);
-      return;
+    const refreshStartedAt = new Date().toISOString();
+    refreshStartedAtRef.current = refreshStartedAt;
+    const lastSuccessfulSyncAt = lastSuccessfulSyncAtRef.current;
+    try {
+      const { data, error } = await fetchAllPaged<LoadRow>(async (from, to) => {
+        const page = await supabase
+          .from("loads")
+          .select("*")
+          .order("updated_at", { ascending: false })
+          .range(from, to);
+        return { data: page.data as LoadRow[] | null, error: page.error };
+      });
+      if (error || !Array.isArray(data)) {
+        applyQueueStatus(readQueue().length, true);
+        return;
+      }
+      const remote = (data as LoadRow[]).map(rowToLoad);
+      const cache = readCloudCache();
+      const local = readStore();
+      const pending = readQueue();
+      const deviceCache =
+        Object.keys(cache.loadsByDate).length > 0
+          ? cache
+          : lastGoodRef.current;
+      const extra = [lastGoodRef.current, storeRef.current];
+      const { merged, toUpsert, toDelete, toTombstone } = mergeCloudLoads({
+        remote,
+        cache: deviceCache,
+        local,
+        pending,
+        extra,
+        lastSuccessfulSyncAt,
+        refreshStartedAt,
+      });
+      const deleted = deletedLoadIds(
+        pending,
+        deviceCache,
+        local,
+        toTombstone,
+        toDelete.map((row) => row.id),
+        ...extra,
+      );
+      for (const row of remote) {
+        if (deleted.has(row.id)) enqueueDelete(row.id);
+      }
+      for (const row of toDelete) {
+        enqueueDelete(row.id);
+      }
+      const keptTombstones = gcLoadDeletedIds(deleted, remote, deviceCache, local);
+      const persisted = persistCloudCache(snapshotFromLoads(merged, keptTombstones));
+      if (persisted && remote.length > 0) {
+        writeLastSuccessfulSyncAt(refreshStartedAt);
+        lastSuccessfulSyncAtRef.current = refreshStartedAt;
+      }
+      if (toUpsert.length) enqueueMissing(toUpsert);
+      await flushQueue();
+    } finally {
+      refreshStartedAtRef.current = null;
     }
-    const remote = (data as LoadRow[]).map(rowToLoad);
-    const cache = readCloudCache();
-    const local = readStore();
-    const pending = readQueue();
-    const deviceCache =
-      Object.keys(cache.loadsByDate).length > 0
-        ? cache
-        : lastGoodRef.current;
-    const extra = [lastGoodRef.current, storeRef.current];
-    const { merged, toUpsert } = mergeCloudLoads({
-      remote,
-      cache: deviceCache,
-      local,
-      pending,
-      extra,
-    });
-    const deleted = deletedLoadIds(pending, deviceCache, local, ...extra);
-    for (const row of remote) {
-      if (deleted.has(row.id)) enqueueDelete(row.id);
-    }
-    const keptTombstones = gcLoadDeletedIds(deleted, remote, deviceCache, local);
-    persistCloudCache(snapshotFromLoads(merged, keptTombstones));
-    if (toUpsert.length) enqueueMissing(toUpsert);
-    await flushQueue();
   }, [applyQueueStatus, enqueueMissing, flushQueue, persistCloudCache, session]);
 
   useEffect(() => {

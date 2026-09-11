@@ -7,12 +7,15 @@ import {
   commitStoreRef,
   forgetDeletedId,
   gcLoadDeletedIds,
+  LAST_CLOUD_SYNC_KEY,
   loadsForDate,
+  readLastSuccessfulSyncAt,
   readStore,
   rememberDeletedIds,
   STORAGE_KEY,
   upsertLoad,
   upsertLoadIntoRef,
+  writeLastSuccessfulSyncAt,
   writeStore,
   type Persisted,
 } from "./storage";
@@ -159,5 +162,18 @@ describe("deletedIds tombstones", () => {
     expect(gcLoadDeletedIds(["A"], [], empty, localWithA)).toEqual(["A"]);
     expect(gcLoadDeletedIds(["A"], [a], empty, empty)).toEqual(["A"]);
     expect(gcLoadDeletedIds(["A"], [], empty, empty)).toEqual(["A"]);
+  });
+});
+
+describe("lastSuccessfulSyncAt", () => {
+  it("round-trips an ISO timestamp", () => {
+    expect(readLastSuccessfulSyncAt()).toBeNull();
+    writeLastSuccessfulSyncAt("2026-09-10T22:00:00.000Z");
+    expect(readLastSuccessfulSyncAt()).toBe("2026-09-10T22:00:00.000Z");
+  });
+
+  it("ignores invalid values", () => {
+    memory.set(LAST_CLOUD_SYNC_KEY, "not-a-date");
+    expect(readLastSuccessfulSyncAt()).toBeNull();
   });
 });
