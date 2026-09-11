@@ -1,5 +1,6 @@
 import type { Load } from "../types";
 import type { QueueOp } from "./queue";
+import { sortLoads } from "./sortLoads";
 import {
   allLoads,
   persistedDeletedIds,
@@ -526,7 +527,7 @@ export function mergeCloudLoads(input: CloudMergeInput): CloudMergeResult {
       );
     }
     const toUpsert = restored.filter((load) => !deleted.has(load.id) && !load.seeded);
-    return { merged: restored, toUpsert, toDelete: [], toTombstone: [] };
+    return { merged: sortLoads(restored), toUpsert, toDelete: [], toTombstone: [] };
   }
 
   const remoteKept = input.remote.filter((load) => !deleted.has(load.id) && !load.seeded);
@@ -581,7 +582,7 @@ export function mergeCloudLoads(input: CloudMergeInput): CloudMergeResult {
     mergedMap.delete(id);
   }
 
-  const merged = [...mergedMap.values()];
+  const merged = sortLoads([...mergedMap.values()]);
   const mergedIds = new Set(merged.map((load) => load.id));
 
   const toTombstoneSet = new Set<string>(toDeleteIds);

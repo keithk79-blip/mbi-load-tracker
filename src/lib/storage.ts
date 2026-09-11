@@ -1,5 +1,6 @@
 import type { Load } from "../types";
 import { chicagoToday } from "./chicagoDate";
+import { sortLoads } from "./sortLoads";
 
 /** Same key in the browser and the Tauri WebView — each environment keeps its own store. */
 export const STORAGE_KEY = "chitrader.load-tracker.v1";
@@ -119,7 +120,7 @@ export function snapshotFromLoads(
   deletedIds?: Iterable<string>,
 ): Persisted {
   const loadsByDate: Record<string, Load[]> = {};
-  for (const load of loads) {
+  for (const load of sortLoads(loads)) {
     const bucket = loadsByDate[load.date] ?? [];
     bucket.push(load);
     loadsByDate[load.date] = bucket;

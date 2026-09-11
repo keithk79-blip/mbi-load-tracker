@@ -12,6 +12,7 @@ import {
   readLastSuccessfulSyncAt,
   readStore,
   rememberDeletedIds,
+  snapshotFromLoads,
   STORAGE_KEY,
   upsertLoad,
   upsertLoadIntoRef,
@@ -74,6 +75,26 @@ describe("loadsByDate isolation", () => {
     ]);
     expect(loadsForDate(store, "2026-09-05")).toHaveLength(2);
     expect(loadsForDate(store, "2026-09-03")).toHaveLength(0);
+  });
+});
+
+describe("snapshotFromLoads dispatch order", () => {
+  it("stores each day in createdAt ascending even when updatedAt is newer", () => {
+    const date = "2026-09-11";
+    const later = {
+      ...load("later", date),
+      createdAt: `${date}T14:00:00.000Z`,
+      updatedAt: `${date}T20:00:00.000Z`,
+    };
+    const earlier = {
+      ...load("earlier", date),
+      createdAt: `${date}T10:00:00.000Z`,
+    };
+    const snap = snapshotFromLoads([later, earlier]);
+    expect(loadsForDate(snap, date).map((row) => row.id)).toEqual([
+      "earlier",
+      "later",
+    ]);
   });
 });
 
