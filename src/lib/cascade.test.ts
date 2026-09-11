@@ -210,14 +210,18 @@ describe("applyPickupCascade log-load dest locks", () => {
     expectKeep("wheeling", "Trash (MSW)", "Rockford");
     expectKeep("wheeling", "Trash (MSW)", "Liberty");
     expectKeep("wheeling", "Trash (MSW)", "Zion");
+    expectKeep("wheeling", "Trash (MSW)", "Prairie Hill RFD");
+    expectClearDest("wheeling", "Trash (MSW)", "Prairie Hill");
     expectKeep("wheeling", "Yard Waste", "Thelens");
     expectKeep("wheeling", "Yard Waste", "Willow Ranch");
     expectClearDest("wheeling", "Recycle", "GraysLake");
     expectClearDest("wheeling", "Trash (MSW)", "GraysLake");
     expectClearDest("wheeling", "Yard Waste", "GraysLake");
     expectClearDest("wheeling", "Recycle", "DeKalb");
+    expectClearDest("wheeling", "Recycle", "Prairie Hill RFD");
     expectClearDest("wheeling", "Trash (MSW)", "Groot");
     expectClearDest("wheeling", "Yard Waste", "Hodgkins");
+    expectClearDest("wheeling", "Yard Waste", "Prairie Hill RFD");
   });
 
   it("Tri-State: trash and tires share Liberty and Prairie View", () => {
