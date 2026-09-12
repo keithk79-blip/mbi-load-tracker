@@ -456,7 +456,7 @@ export function formatRosterLine(entry: Pick<DriverRosterEntry, "truckNumber" | 
   return truck ? `${truck} ${name}` : name;
 }
 
-/** Newline-separated `truck name` lines for email paste. */
+/** Newline-separated `emp# name` lines for email paste. */
 export function formatRosterCopyList(entries: readonly DriverRosterEntry[]): string {
   return entries.map(formatRosterLine).filter(Boolean).join("\n");
 }

@@ -110,7 +110,8 @@ function extractSheetDate(table: string[][]): string | null {
 }
 
 /**
- * Walk repeating truck | name | status? groups. Blank cells and summary
+ * Walk repeating employee # | name | status? groups. The first numeric
+ * column is the employee ID (stored as truck_number). Blank cells and summary
  * labels (`Total Burnham Drivers`, `Available Drivers`, …) are ignored.
  */
 export function parseRosterPeople(csv: string): {

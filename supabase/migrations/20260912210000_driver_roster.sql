@@ -44,7 +44,7 @@ comment on column public.driver_roster_entries.kind is
 comment on column public.driver_roster_entries.yard is
   'burnham | rockford | pontiac | arc | zion. Sheet “ARC Drivers” / Sat-Arc map to arc.';
 comment on column public.driver_roster_entries.truck_number is
-  'Unit number as text (leading zeros stripped). Nullable.';
+  'Employee number as text (leading zeros stripped). Column name stays truck_number. Nullable.';
 comment on column public.driver_roster_entries.status is
   'Full Roster unavailability abbreviation (oot, fmla, vac, wc, …). Null = working. Driver stays on the hired list. Later tally: hired − full-day status − day offs.';
 comment on column public.driver_roster_entries.for_date is
