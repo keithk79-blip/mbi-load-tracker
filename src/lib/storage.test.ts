@@ -176,12 +176,13 @@ describe("deletedIds tombstones", () => {
     expect(forgetDeletedId(afterDelete, "A").deletedIds).toBeUndefined();
   });
 
-  it("gc never drops a load tombstone after remote and local copies are gone", () => {
+  it("gc drops a stale tombstone when the id is live on remote, unless explicitly deleted", () => {
     const a = load("A", "2026-09-08");
     const empty: Persisted = { version: 1, loadsByDate: {} };
     const localWithA: Persisted = { version: 1, loadsByDate: { "2026-09-08": [a] } };
     expect(gcLoadDeletedIds(["A"], [], empty, localWithA)).toEqual(["A"]);
-    expect(gcLoadDeletedIds(["A"], [a], empty, empty)).toEqual(["A"]);
+    expect(gcLoadDeletedIds(["A"], [a], empty, empty)).toEqual([]);
+    expect(gcLoadDeletedIds(["A"], [a], empty, empty, ["A"])).toEqual(["A"]);
     expect(gcLoadDeletedIds(["A"], [], empty, empty)).toEqual(["A"]);
   });
 });
