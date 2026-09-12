@@ -56,6 +56,35 @@ export function isCallOffKind(value: unknown): value is CallOffKind {
   return typeof value === "string" && CALL_OFF_KINDS.has(value);
 }
 
+const CALL_OFF_SOURCES = new Set(["sheet", "manual"]);
+
+export function cleanCallOffEntries(raw: unknown): CallOffEntry[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const seen = new Set<string>();
+  const entries: CallOffEntry[] = [];
+  for (const row of raw) {
+    if (!row || typeof row !== "object") continue;
+    const rec = row as { name?: unknown; kind?: unknown; source?: unknown };
+    if (typeof rec.name !== "string" || !isCallOffKind(rec.kind)) continue;
+    if (typeof rec.source !== "string" || !CALL_OFF_SOURCES.has(rec.source)) {
+      continue;
+    }
+    const name = rec.name.trim();
+    if (!name) continue;
+    const key = callOffNameKey(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    entries.push({
+      name,
+      kind: rec.kind,
+      source: rec.source as CallOffEntry["source"],
+    });
+  }
+  return entries.sort((a, b) =>
+    a.name.localeCompare(b.name, "en", { sensitivity: "base" }),
+  );
+}
+
 /** Late/Early is orange status only — it does not reduce available / drv tallies. */
 export function kindRemovesFromAvailable(kind: CallOffKind): boolean {
   return kind !== "late-early";

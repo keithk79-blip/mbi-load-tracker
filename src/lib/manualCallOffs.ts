@@ -1,7 +1,10 @@
 import {
   callOffNameKey,
+  fullDayOffEntries,
   isCallOffKind,
+  type CallOffEntry,
   type CallOffKind,
+  type CallOffRow,
   type ManualCallOff,
 } from "./driverAvailability";
 import { isValidISODate } from "./chicagoDate";
@@ -75,6 +78,15 @@ export function manualsOn(
   date: string,
 ): ManualCallOff[] {
   return store[date] ?? [];
+}
+
+/** Sheet rows that apply to `date` plus that date's manuals. Other dates are ignored. */
+export function callOffsForDate(
+  sheetRows: CallOffRow[],
+  store: ManualOffsStore,
+  date: string,
+): CallOffEntry[] {
+  return fullDayOffEntries(sheetRows, manualsOn(store, date), date);
 }
 
 export function hasManualName(
