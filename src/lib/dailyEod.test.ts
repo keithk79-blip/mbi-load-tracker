@@ -27,7 +27,8 @@ function snap(partial: Partial<DailyEodTotals> = {}): DailyEodTotals {
     trash: 142,
     leachate: 18,
     walkingFloor: 24,
-    totalLoads: 184,
+    loads: 184,
+    subs: 12,
     source: "sheet-import",
     createdAt: "2026-01-05T18:00:00.000Z",
     updatedAt: "2026-01-05T18:00:00.000Z",
@@ -81,7 +82,8 @@ describe("row mapping", () => {
     trash: 142,
     leachate: 18,
     walking_floor: 24,
-    total_loads: 184,
+    loads: 184,
+    subs: 12,
     source: "sheet-import",
     created_at: "2026-01-05T18:00:00.000Z",
     updated_at: "2026-01-05T18:00:00.000Z",
@@ -102,6 +104,14 @@ describe("row mapping", () => {
     expect(rowToDailyEod({ ...row, date: "2026-01-05T00:00:00+00:00" })).toEqual(
       snap(),
     );
+  });
+
+  it("still reads a first-cut total_loads row and defaults missing subs to 0", () => {
+    const legacy = { ...row };
+    delete legacy.loads;
+    delete legacy.subs;
+    legacy.total_loads = 184;
+    expect(rowToDailyEod(legacy)).toEqual(snap({ loads: 184, subs: 0 }));
   });
 });
 
@@ -124,7 +134,7 @@ describe("store helpers", () => {
   it("stamps a sheet-import row without touching previous createdAt", () => {
     const prev = snap({ createdAt: "2026-01-05T12:00:00.000Z" });
     const stamped = stampDailyEod(
-      { date: "2026-01-05", trash: 10, leachate: 2, walkingFloor: 3, totalLoads: 15 },
+      { date: "2026-01-05", trash: 10, leachate: 2, walkingFloor: 3, loads: 15, subs: 1 },
       prev,
       "2026-01-06T12:00:00.000Z",
     );
@@ -133,7 +143,8 @@ describe("store helpers", () => {
         trash: 10,
         leachate: 2,
         walkingFloor: 3,
-        totalLoads: 15,
+        loads: 15,
+        subs: 1,
         createdAt: "2026-01-05T12:00:00.000Z",
         updatedAt: "2026-01-06T12:00:00.000Z",
       }),
@@ -143,8 +154,8 @@ describe("store helpers", () => {
 
 describe("reconcileDailyEodCloud", () => {
   it("uploads local-only dates and keeps remote-only dates", () => {
-    const localOnly = snap({ date: "2026-01-02", trash: 9, totalLoads: 9 });
-    const remoteOnly = snap({ date: "2026-01-03", trash: 4, totalLoads: 4 });
+    const localOnly = snap({ date: "2026-01-02", trash: 9, loads: 9, subs: 0 });
+    const remoteOnly = snap({ date: "2026-01-03", trash: 4, loads: 4, subs: 0 });
     const result = reconcileDailyEodCloud({
       local: { "2026-01-02": localOnly },
       remote: { "2026-01-03": remoteOnly },
@@ -191,13 +202,14 @@ describe("reconcileDailyEodCloud", () => {
       local: { "2026-01-05": snap() },
       remote: { "2026-01-06": snap({ date: "2026-01-06" }) },
     });
-    expect(JSON.stringify(result)).not.toMatch(/loads/);
     expect(result).not.toHaveProperty("toDelete");
+    expect(JSON.stringify(result)).not.toMatch(/"truck"/);
+    expect(result.toUpload.every((row) => row.date !== undefined)).toBe(true);
   });
 });
 
 describe("EOD / Today override", () => {
-  it("prefers snapshot bubbles and leaves SUBS + station pickups live-derived", () => {
+  it("prefers all five snapshot bubbles and leaves station pickups live-derived", () => {
     const loads = [
       load({ id: "1", truck: "418" }),
       load({ id: "2", truck: "VZ", commodity: "Leachate (tanker)" }),
@@ -213,20 +225,55 @@ describe("EOD / Today override", () => {
     expect(overridden.leachate).toBe(18);
     expect(overridden.walkingFloor).toBe(24);
     expect(overridden.loads).toBe(184);
-    expect(overridden.subs).toBe(1);
+    expect(overridden.subs).toBe(12);
     expect(overridden.stations).toBe(live.stations);
     expect(overridden.stations.find((row) => row.id === "melrose")?.pickedUp).toBe(2);
   });
 
-  it("overrides Today TRASH / LEACHATE / WF / LOADS and leaves SUBS on live loads", () => {
+  it("overrides Today TRASH / LEACHATE / WF / LOADS / SUBS from the snapshot", () => {
     const cards = applyDailyEodToCards(daySummaryCards([load()]), snap());
     expect(cards.map((card) => [card.key, card.count])).toEqual([
       ["trash", 142],
       ["leachate", 18],
       ["loads", 184],
-      ["subs", 0],
+      ["subs", 12],
       ["walking-floor", 24],
     ]);
+  });
+
+  it("uses the 9/8 sheet footer even when partial truck rows exist", () => {
+    const snapshot = snap({
+      date: "2026-09-08",
+      trash: 334,
+      leachate: 39,
+      walkingFloor: 31,
+      loads: 404,
+      subs: 15,
+    });
+    expect(snapshot.trash + snapshot.leachate + snapshot.walkingFloor).toBe(404);
+    const live = endOfDaySummary(
+      [
+        load({ id: "1", date: "2026-09-08", truck: "418" }),
+        load({
+          id: "2",
+          date: "2026-09-08",
+          truck: "VZ",
+          commodity: "Leachate (tanker)",
+        }),
+      ],
+      emptyBoard(),
+    );
+    expect(live.loads).toBe(2);
+    expect(live.subs).toBe(1);
+    const overridden = applyDailyEodToSummary(live, snapshot);
+    expect(overridden).toMatchObject({
+      trash: 334,
+      leachate: 39,
+      walkingFloor: 31,
+      loads: 404,
+      subs: 15,
+    });
+    expect(overridden.stations.find((row) => row.id === "melrose")?.pickedUp).toBe(2);
   });
 
   it("keeps live-derived cards when no snapshot exists", () => {

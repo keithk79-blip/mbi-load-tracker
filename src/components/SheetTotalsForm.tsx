@@ -26,7 +26,8 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
   const [walkingFloor, setWalkingFloor] = useState(
     asField(existing?.walkingFloor ?? null),
   );
-  const [totalLoads, setTotalLoads] = useState(asField(existing?.totalLoads ?? null));
+  const [loads, setLoads] = useState(asField(existing?.loads ?? null));
+  const [subs, setSubs] = useState(asField(existing?.subs ?? null));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -34,14 +35,16 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
     const nextTrash = parseField(trash);
     const nextLeachate = parseField(leachate);
     const nextWalking = parseField(walkingFloor);
-    const nextTotal = parseField(totalLoads);
+    const nextLoads = parseField(loads);
+    const nextSubs = parseField(subs);
     if (
       nextTrash === null ||
       nextLeachate === null ||
       nextWalking === null ||
-      nextTotal === null
+      nextLoads === null ||
+      nextSubs === null
     ) {
-      setError("Enter four non-negative whole numbers from the Dispatch Board.");
+      setError("Enter five non-negative whole numbers from the Dispatch Board footer.");
       return;
     }
     setSaving(true);
@@ -51,7 +54,8 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
       trash: nextTrash,
       leachate: nextLeachate,
       walkingFloor: nextWalking,
-      totalLoads: nextTotal,
+      loads: nextLoads,
+      subs: nextSubs,
       source: "sheet-import",
     });
     setSaving(false);
@@ -81,8 +85,9 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
           }}
         >
           <p className="sheet-totals-hint">
-            Dispatch Board Loads tab — Total MSW, Tank, Walking-Floor, and Total
-            Loads. Saves these four numbers only. Does not create truck rows.
+            Dispatch Board Loads footer — MSW + Tank + Walking-Floor = Total
+            Loads. Subs is separate. Saves these five numbers only. Does not
+            create truck rows.
           </p>
           <label className="sheet-totals-field">
             <span>Total MSW</span>
@@ -124,8 +129,19 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
               type="number"
               min={0}
               step={1}
-              value={totalLoads}
-              onChange={(event) => setTotalLoads(event.target.value)}
+              value={loads}
+              onChange={(event) => setLoads(event.target.value)}
+            />
+          </label>
+          <label className="sheet-totals-field">
+            <span>Sub loads</span>
+            <input
+              inputMode="numeric"
+              type="number"
+              min={0}
+              step={1}
+              value={subs}
+              onChange={(event) => setSubs(event.target.value)}
             />
           </label>
           {error ? <p className="sheet-totals-error">{error}</p> : null}

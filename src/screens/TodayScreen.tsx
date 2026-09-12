@@ -4,6 +4,7 @@ import { dailyCounts } from "../lib/analytics";
 import {
   applyDailyEodToCards,
   displayLoadCount,
+  isSheetEodCard,
   sheetTotalsLabel,
 } from "../lib/dailyEod";
 import {
@@ -95,12 +96,7 @@ export function TodayScreen({
         {sourceLabel ? <p className="sheet-totals-kicker">{sourceLabel}</p> : null}
         <div className="tally-row">
           {summaryCards.map((card) => {
-            const fromSheet =
-              Boolean(snapshot) &&
-              (card.key === "trash" ||
-                card.key === "leachate" ||
-                card.key === "walking-floor" ||
-                card.key === "loads");
+            const fromSheet = Boolean(snapshot) && isSheetEodCard(card.key);
             return (
               <article
                 key={card.key}

@@ -14,7 +14,8 @@ export type DailyEodTotals = {
   trash: number;
   leachate: number;
   walkingFloor: number;
-  totalLoads: number;
+  loads: number;
+  subs: number;
   source: DailyEodSource;
   createdAt: string;
   updatedAt: string;
@@ -33,7 +34,10 @@ export type DailyEodRow = {
   trash: number;
   leachate: number;
   walking_floor: number;
-  total_loads: number;
+  loads?: number;
+  /** Legacy first-cut column; still accepted on pull. */
+  total_loads?: number;
+  subs?: number;
   source: string | null;
   created_at: string;
   updated_at: string;
@@ -44,7 +48,8 @@ export type DailyEodInput = {
   trash: number;
   leachate: number;
   walkingFloor: number;
-  totalLoads: number;
+  loads: number;
+  subs: number;
   source?: DailyEodSource;
 };
 
@@ -88,14 +93,19 @@ function chicagoDateKey(raw: unknown): string | null {
 }
 
 export function normalizeDailyEod(
-  raw: Partial<DailyEodTotals> | null | undefined,
+  raw: Partial<DailyEodTotals> & {
+    totalLoads?: unknown;
+    total_loads?: unknown;
+    walking_floor?: unknown;
+  } | null | undefined,
 ): DailyEodTotals | null {
   if (!raw) return null;
   const date = chicagoDateKey(raw.date);
   const trash = parseCount(raw.trash);
   const leachate = parseCount(raw.leachate);
-  const walkingFloor = parseCount(raw.walkingFloor);
-  const totalLoads = parseCount(raw.totalLoads);
+  const walkingFloor = parseCount(raw.walkingFloor ?? raw.walking_floor);
+  const loads = parseCount(raw.loads ?? raw.totalLoads ?? raw.total_loads);
+  const subs = parseCount(raw.subs) ?? 0;
   const createdAt = readIsoAt(raw.createdAt);
   const updatedAt = readIsoAt(raw.updatedAt);
   if (
@@ -103,7 +113,7 @@ export function normalizeDailyEod(
     trash === null ||
     leachate === null ||
     walkingFloor === null ||
-    totalLoads === null ||
+    loads === null ||
     !createdAt ||
     !updatedAt
   ) {
@@ -114,7 +124,8 @@ export function normalizeDailyEod(
     trash,
     leachate,
     walkingFloor,
-    totalLoads,
+    loads,
+    subs,
     source: parseDailyEodSource(raw.source),
     createdAt,
     updatedAt,
@@ -127,7 +138,9 @@ export function rowToDailyEod(row: DailyEodRow): DailyEodTotals | null {
     trash: row.trash,
     leachate: row.leachate,
     walkingFloor: row.walking_floor,
-    totalLoads: row.total_loads,
+    loads: row.loads,
+    total_loads: row.total_loads,
+    subs: row.subs,
     source: parseDailyEodSource(row.source),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -143,7 +156,8 @@ export function dailyEodToRow(
     trash: row.trash,
     leachate: row.leachate,
     walking_floor: row.walkingFloor,
-    total_loads: row.totalLoads,
+    loads: row.loads,
+    subs: row.subs,
     source: row.source,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
@@ -193,7 +207,8 @@ export function stampDailyEod(
     trash: input.trash,
     leachate: input.leachate,
     walkingFloor: input.walkingFloor,
-    totalLoads: input.totalLoads,
+    loads: input.loads,
+    subs: input.subs,
     source: input.source ?? prev?.source ?? "sheet-import",
     createdAt: prev?.createdAt ?? now,
     updatedAt: now,
@@ -301,19 +316,25 @@ export function applyDailyEodToSummary(
     trash: snapshot.trash,
     leachate: snapshot.leachate,
     walkingFloor: snapshot.walkingFloor,
-    loads: snapshot.totalLoads,
+    loads: snapshot.loads,
+    subs: snapshot.subs,
   };
 }
 
-const SNAPSHOT_CARD_COUNTS: Record<string, keyof Pick<
-  DailyEodTotals,
-  "trash" | "leachate" | "walkingFloor" | "totalLoads"
->> = {
+const SNAPSHOT_CARD_COUNTS: Record<
+  string,
+  keyof Pick<DailyEodTotals, "trash" | "leachate" | "walkingFloor" | "loads" | "subs">
+> = {
   trash: "trash",
   leachate: "leachate",
   "walking-floor": "walkingFloor",
-  loads: "totalLoads",
+  loads: "loads",
+  subs: "subs",
 };
+
+export function isSheetEodCard(key: string): boolean {
+  return key in SNAPSHOT_CARD_COUNTS;
+}
 
 export function applyDailyEodToCards(
   cards: DaySummaryCard[],
@@ -330,7 +351,7 @@ export function displayLoadCount(
   liveCount: number,
   snapshot: DailyEodTotals | null | undefined,
 ): number {
-  return snapshot ? snapshot.totalLoads : liveCount;
+  return snapshot ? snapshot.loads : liveCount;
 }
 
 export function sheetTotalsLabel(
@@ -380,7 +401,7 @@ export async function fetchDailyEodFromCloud(): Promise<{
   const { data, error } = await fetchAllPaged<DailyEodRow>(async (from, to) => {
     const page = await supabase
       .from(DAILY_EOD_TABLE)
-      .select("date, trash, leachate, walking_floor, total_loads, source, created_at, updated_at")
+      .select("date, trash, leachate, walking_floor, loads, subs, source, created_at, updated_at")
       .order("date", { ascending: true })
       .range(from, to);
     return { data: page.data as DailyEodRow[] | null, error: page.error };

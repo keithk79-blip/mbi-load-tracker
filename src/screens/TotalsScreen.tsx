@@ -8,6 +8,7 @@ import { dailyCounts } from "../lib/analytics";
 import {
   applyDailyEodToSummary,
   displayLoadCount,
+  isSheetEodCard,
   sheetTotalsLabel,
 } from "../lib/dailyEod";
 import {
@@ -153,12 +154,7 @@ export function TotalsScreen({
         </div>
         <div className="eod-stat-row">
           {endOfDayCards(eod).map((card) => {
-            const fromSheet =
-              Boolean(snapshot) &&
-              (card.key === "trash" ||
-                card.key === "leachate" ||
-                card.key === "walking-floor" ||
-                card.key === "loads");
+            const fromSheet = Boolean(snapshot) && isSheetEodCard(card.key);
             return (
               <article
                 key={card.key}
@@ -208,7 +204,7 @@ export function TotalsScreen({
           <h2>No loads {dayPhrase}</h2>
           <p>
             {snapshot
-              ? "TRASH / LEACHATE / WF / LOADS come from the Dispatch Board sheet. Log a haul if you want truck rows too."
+              ? "TRASH / LEACHATE / WF / LOADS / SUBS come from the Dispatch Board sheet. Log a haul if you want truck rows too."
               : "Log a haul and these rankings fill in live."}
           </p>
           <button type="button" className="btn-primary" onClick={() => onLog(date)}>
