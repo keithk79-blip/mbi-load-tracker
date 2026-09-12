@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { VACATION_SEED_2026 } from "../data/vacationSeed";
 import { addDays } from "./chicagoDate";
@@ -33,6 +34,7 @@ import {
   updateVacationEntry,
   upsertWeek,
   vacationSeedId,
+  VACATION_STORE_KEY,
   vacationWeekKey,
   vacationYardLabel,
   weekBelongsToYear,
@@ -362,6 +364,52 @@ describe("cloud merge", () => {
     expect(result.toDeleteRemoteEntries).toContain(greg.id);
     expect(result.next.entries[greg.id]).toBeUndefined();
   });
+
+  it("empty local must not delete remote weeks", () => {
+    const remote = seeded2026();
+    const result = reconcileVacationCloud({
+      local: emptyVacationStore(),
+      remote,
+      deletedWeekOfs: [],
+      deletedEntryIds: [],
+    });
+    expect(result.toDeleteRemoteWeeks).toEqual([]);
+    expect(weeksForYear(result.next, 2026).length).toBe(53);
+  });
+
+  it("stale week tombstones hide locally but never delete remote weeks", () => {
+    const remote = seeded2026();
+    const weekKeys = Object.keys(remote.weeks);
+    const result = reconcileVacationCloud({
+      local: emptyVacationStore(),
+      remote,
+      deletedWeekOfs: weekKeys,
+      deletedEntryIds: [],
+      seenRemoteWeekOfs: weekKeys,
+      seenRemoteEntryIds: Object.keys(remote.entries),
+    });
+    expect(result.toDeleteRemoteWeeks).toEqual([]);
+    expect(weeksForYear(result.next, 2026).length).toBe(0);
+  });
+
+  it("does not tombstone weeks when remote weeks are empty but entries remain", () => {
+    const local = seeded2026();
+    const remote = {
+      weeks: {},
+      entries: { ...local.entries },
+    };
+    const result = reconcileVacationCloud({
+      local,
+      remote,
+      deletedWeekOfs: [],
+      deletedEntryIds: [],
+      seenRemoteWeekOfs: Object.keys(local.weeks),
+      seenRemoteEntryIds: Object.keys(local.entries),
+    });
+    expect(result.toDeleteRemoteWeeks).toEqual([]);
+    expect(result.deletedWeekOfs).toEqual([]);
+    expect(weeksForYear(result.next, 2026).length).toBe(53);
+  });
 });
 
 describe("empty year create", () => {
@@ -459,5 +507,18 @@ describe("yard isolation", () => {
     expect(week(stripped, "2026-01-04", "rockford")).toBeUndefined();
     expect(week(stripped, "2026-01-04", "chicago")).toBeDefined();
     expect(entriesForWeek(stripped, "2026-01-04", "rockford")).toEqual([]);
+  });
+});
+
+describe("vacation cloud delete posture", () => {
+  it("bumps the persist key so stale week tombstones are not reused", () => {
+    expect(VACATION_STORE_KEY).toBe("chitrader.load-tracker.vacation.v2");
+  });
+
+  it("removes the unscoped vacation_weeks week_of delete fallback", () => {
+    const src = readFileSync(new URL("../store/VacationContext.tsx", import.meta.url), "utf8");
+    expect(src).not.toMatch(/\.from\(["']vacation_weeks["']\)\s*\.delete\(\)\s*\.in\(["']week_of["']\)/);
+    expect(src).not.toContain("cloudDeleteWeeks");
+    expect(src).not.toContain("toDeleteRemoteWeeks");
   });
 });
