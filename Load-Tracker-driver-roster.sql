@@ -3,10 +3,11 @@
 -- Same DDL is in supabase/migrations/20260912210000_driver_roster.sql
 -- and Load-Tracker-sync-tables.sql.
 --
--- This is the Driver tab system of record. It does NOT replace Today's
--- Available-drivers L13 / Sat-sum sheet fetch.
+-- This is the Driver tab system of record. Today’s available count reads
+-- Full Roster here (hired − status − Vacation VAC − leftover manuals),
+-- not Burnham!L13 or Sat-* sheet sums.
 --
--- After Run: open a signed-in desktop/web client and use Import from sheet
+-- After Run: open a signed-in desktop/web client and use Import empty lists
 -- (or first-open seed) so empty stores upload, then hard-refresh other devices.
 
 create table if not exists public.driver_roster_entries (

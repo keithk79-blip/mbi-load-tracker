@@ -193,6 +193,7 @@ async function fetchText(url: string): Promise<string> {
   return text;
 }
 
+/** One-time seed / explicit Import. Never used for Today’s available tally. */
 export async function fetchRosterWorkbook(opts?: {
   fetchText?: (url: string) => Promise<string>;
 }): Promise<{ rows: ImportedRosterRow[]; tabs: ParsedRosterTab[] }> {

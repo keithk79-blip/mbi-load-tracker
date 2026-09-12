@@ -198,6 +198,7 @@ describe("full roster unavailability tally", () => {
     expect(rosterStatusRemovesFromAvailable(null)).toBe(false);
     expect(rosterStatusLabel("oot")).toBe("OOT");
     expect(rosterStatusLabel("vac")).toBe("Vac");
+    expect(rosterStatusLabel("wc")).toBe("WC");
   });
 
   it("counts hired minus full-day status for a later Today tally", () => {

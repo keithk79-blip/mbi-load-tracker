@@ -198,6 +198,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     [session, user?.id],
   );
 
+  /** First-open only: fill an empty local store. Never a live Today pull. */
   const seedIfEmpty = useCallback(async () => {
     if (seedingRef.current) return;
     if (importedAtRef.current) return;
@@ -301,6 +302,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     };
   }, [cloud, refresh]);
 
+  /** Explicit user import into empty kind+yard groups only. Does not refresh Today from L13. */
   const importFromSheet = useCallback(async (): Promise<DriverRosterImportResult> => {
     setImporting(true);
     try {

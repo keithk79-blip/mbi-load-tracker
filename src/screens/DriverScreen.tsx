@@ -108,7 +108,7 @@ function AddRosterForm({
           <option value="">Available (working)</option>
           {ROSTER_UNAVAILABLE_REASONS.map((row) => (
             <option key={row.token} value={row.token}>
-              {row.label} — out
+              {row.reason !== row.label ? `${row.label} — ${row.reason}` : `${row.label} — out`}
             </option>
           ))}
         </select>
@@ -244,7 +244,7 @@ export function DriverScreen() {
               disabled={importing}
               onClick={() => void importFromSheet()}
             >
-              {importing ? "Importing…" : "Import from sheet"}
+              {importing ? "Importing…" : "Import empty lists"}
             </button>
           </div>
         </div>
@@ -331,7 +331,8 @@ export function DriverScreen() {
             mean they are <strong>out</strong> — still on the roster, not available. Names
             on the Vacation tab for this week are marked <strong>Vac</strong> automatically
             (not written onto the row). × removes a hire. Today’s available count uses
-            Full Roster across all yards, minus leftover full-day offs.
+            Full Roster across all yards, minus leftover full-day manual offs.
+            Import fills empty lists once — it does not keep reading the workbook.
           </span>
         )}
       </div>
@@ -391,7 +392,7 @@ export function DriverScreen() {
             {kind === "full"
               ? "Full Roster is everyone hired at this yard. Import the workbook or add names. Marks like OOT stay on the list and count as out."
               : "Sat Roster is the Saturday planning list (a subset you edit through the week)."}{" "}
-            Today’s available-driver count uses Full Roster (all yards) minus leftover full-day offs.
+            Today’s available-driver count uses this Full Roster (all yards) minus leftover full-day manuals — not the workbook.
           </p>
           <div className="vac-add-actions">
             <button
@@ -400,7 +401,7 @@ export function DriverScreen() {
               disabled={importing}
               onClick={() => void importFromSheet()}
             >
-              Import from sheet
+              Import empty lists
             </button>
             <button type="button" className="text-btn" onClick={() => setAdding(true)}>
               + Add driver
@@ -485,7 +486,9 @@ export function DriverScreen() {
                           <option value="">{effective?.onVacation ? "No mark" : "Available"}</option>
                           {ROSTER_UNAVAILABLE_REASONS.map((row) => (
                             <option key={row.token} value={row.token}>
-                              {row.label}
+                              {row.reason !== row.label
+                                ? `${row.label} — ${row.reason}`
+                                : row.label}
                             </option>
                           ))}
                           {entry.status && !ROSTER_UNAVAILABLE_REASONS.some((row) => row.token === entry.status) ? (

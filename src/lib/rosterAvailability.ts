@@ -5,9 +5,8 @@
  *               (Late/Early listed, not subtracted)
  *
  * Chicago = Burnham + Rockford + Pontiac + Arc + Zion.
- * Regular Saturday still uses the Sat-worklist subtract rule (manuals only)
- * against this same Full Roster base. Full-mandatory Saturday uses weekday
- * call-off rules. Sync/import/VAC never delete roster rows.
+ * Saturday uses the same Full Roster formula (no Sat-* sheet sums).
+ * Sync/import/VAC never delete roster rows.
  */
 
 import {

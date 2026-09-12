@@ -136,7 +136,7 @@ export function DriversCard({
             </p>
           ) : !dayAvail && viewingToday ? (
             <p className="grand-sub">
-              Import Full Roster on the Driver tab, then refresh call-offs.
+              Import Full Roster on the Driver tab (one-time seed).
             </p>
           ) : !dayAvail ? (
             <p className="grand-sub">
@@ -309,15 +309,15 @@ export function DriversCard({
           disabled={status === "loading"}
         >
           <RefreshCw size={16} />
-          {status === "loading" ? "Refreshing…" : "Refresh call-offs"}
+          {status === "loading" ? "Refreshing…" : "Refresh"}
         </button>
         <span className="field-hint tight">
           {status === "live"
-            ? `Live · ${pulledLabel(fetchedAt)}`
+            ? `Full Roster · ${pulledLabel(fetchedAt)}`
             : status === "cached"
-              ? `Cached · ${pulledLabel(fetchedAt)}`
+              ? `Full Roster · ${pulledLabel(fetchedAt)}`
               : status === "error"
-                ? "Call-offs unreachable"
+                ? "Could not sync"
                 : "Refreshing…"}
         </span>
       </div>

@@ -38,8 +38,8 @@ export type LiveSheet = {
   base: number;
   saturdayBase: number;
   /**
-   * Sat-* banners/body include “full mandatory work day”. Today’s Saturday
-   * then uses weekday Full Roster + weekday call-off subtract rules, not the Sat-worklist-only subtract.
+   * When true, Saturday uses the weekday Full Roster leftover-manual rules.
+   * Live Today always passes true (no Sat-* sheet banner).
    */
   saturdayUsesWeekdayBase?: boolean;
   offs: CallOffRow[];

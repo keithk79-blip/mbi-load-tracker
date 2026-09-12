@@ -3,7 +3,6 @@ import {
   BURNHAM_OOT_PAIRS,
   ROCKFORD_OOT_PAIRS,
   SINGLE_COL_OOT_PAIRS,
-  parseCallOffCsv,
   type CallOffRow,
   type OotPair,
 } from "./driverAvailability";
@@ -15,9 +14,8 @@ export const ROSTER_CELL = "L13";
 export const ROSTER_GRID_RANGE = "A:I";
 
 /**
- * Weekday yard tabs on the same roster workbook.
- * Live titles (gviz): Burnham, Rockford, Pontiac, ARC Drivers, Zion.
- * Trailing "!" names fall back to Burnham and must not be used.
+ * Weekday yard tabs on the Work-Dispatch workbook (one-time import only).
+ * Live titles: Burnham, Rockford, Pontiac, ARC Drivers, Zion.
  */
 export const OOT_YARDS = [
   {
@@ -136,10 +134,6 @@ function rosterId(): string {
   return import.meta.env.VITE_ROSTER_SHEET_ID || DEFAULT_ROSTER_SHEET_ID;
 }
 
-function calloffId(): string {
-  return import.meta.env.VITE_CALLOFF_SHEET_ID || DEFAULT_CALLOFF_SHEET_ID;
-}
-
 function googleCsvUrl(sheetId: string, query: string): string {
   return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&${query}`;
 }
@@ -148,37 +142,7 @@ function useSheetProxy(): boolean {
   return !isTauriRuntime() && import.meta.env.DEV;
 }
 
-
-export function rosterFetchUrl(): string {
-  const q = `sheet=${encodeURIComponent(ROSTER_TAB)}&range=${ROSTER_CELL}`;
-  if (useSheetProxy()) return "/sheets/roster";
-  return googleCsvUrl(rosterId(), q);
-}
-
-export function rosterGridFetchUrl(): string {
-  const q = `sheet=${encodeURIComponent(ROSTER_TAB)}&range=${encodeURIComponent(ROSTER_GRID_RANGE)}`;
-  if (useSheetProxy()) return "/sheets/roster-grid";
-  return googleCsvUrl(rosterId(), q);
-}
-
-export function ootYardFetchUrl(slug: string, tab: string, range: string): string {
-  if (useSheetProxy()) return `/sheets/oot/${slug}`;
-  return googleCsvUrl(
-    rosterId(),
-    `sheet=${encodeURIComponent(tab)}&range=${encodeURIComponent(range)}`,
-  );
-}
-
-export function calloffFetchUrl(): string {
-  if (useSheetProxy()) return "/sheets/offs";
-  return googleCsvUrl(calloffId(), "gid=0");
-}
-
-export function saturdayFetchUrl(slug: string, tab: string, range: string): string {
-  if (useSheetProxy()) return `/sheets/sat/${slug}`;
-  return googleCsvUrl(rosterId(), `sheet=${encodeURIComponent(tab)}&range=${range}`);
-}
-
+/** One-time Driver-tab seed only. Not used for Today’s available count. */
 export function rosterFullFetchUrl(slug: string): string {
   const sheet = FULL_ROSTER_SHEETS.find((row) => row.slug === slug);
   const tab = sheet?.tab ?? "Burnham";
@@ -196,18 +160,6 @@ export function rosterSatGridFetchUrl(slug: string): string {
   return googleCsvUrl(
     rosterId(),
     `sheet=${encodeURIComponent(tab)}&range=${encodeURIComponent(ROSTER_SAT_GRID_RANGE)}`,
-  );
-}
-
-export function saturdayBodyFetchUrl(
-  slug: string,
-  tab: string,
-  scan: (typeof SATURDAY_BODY_SCANS)[number],
-): string {
-  if (useSheetProxy()) return `/sheets/sat-body/${scan.key}/${slug}`;
-  return googleCsvUrl(
-    rosterId(),
-    `sheet=${encodeURIComponent(tab)}&range=${encodeURIComponent(scan.range)}`,
   );
 }
 
@@ -233,54 +185,19 @@ export function readDriverCache(): DriverSnapshot | null {
   }
 }
 
-function writeDriverCache(snap: Omit<DriverSnapshot, "source">): void {
-  const payload: Cached = {
-    version: 4,
-    baseAvailable: snap.baseAvailable,
-    saturdayAvailable: snap.saturdayAvailable,
-    saturdayUsesWeekdayBase: snap.saturdayUsesWeekdayBase,
-    offs: snap.offs,
-    ootNames: snap.ootNames,
-    fetchedAt: snap.fetchedAt,
-  };
-  localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
-}
-
-async function fetchText(url: string): Promise<string> {
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Sheets HTTP ${res.status}`);
-  const text = await res.text();
-  const trimmed = text.trimStart();
-  if (trimmed.startsWith("<!") || trimmed.toLowerCase().startsWith("<html")) {
-    throw new Error("Sheets proxy returned HTML instead of CSV");
-  }
-  return text;
-}
-
 /**
- * Call-off sheet + Sat-tab “full mandatory” flag only.
- * Today’s available **base** is Full Roster (see `liveSheetFromRoster`).
- * Do not fetch Burnham!L13 or Sat-* sum cells here.
+ * @deprecated Live Today tally must not call this. Full Roster + manuals only.
+ * Kept so old caches can still be read; it never hits Google.
  */
 export async function fetchDriverSnapshot(): Promise<DriverSnapshot> {
-  const satBodyFetches = SATURDAY_CELLS.flatMap((cell) =>
-    SATURDAY_BODY_SCANS.map((scan) =>
-      fetchText(saturdayBodyFetchUrl(cell.slug, cell.tab, scan)),
-    ),
-  );
-  const [offsCsv, satBodies] = await Promise.all([
-    fetchText(calloffFetchUrl()),
-    Promise.all(satBodyFetches),
-  ]);
   const snap: DriverSnapshot = {
     baseAvailable: 0,
     saturdayAvailable: 0,
-    saturdayUsesWeekdayBase: saturdaySheetsUseWeekdayBase(satBodies),
-    offs: parseCallOffCsv(offsCsv),
+    saturdayUsesWeekdayBase: true,
+    offs: [],
     ootNames: [],
     fetchedAt: new Date().toISOString(),
     source: "live",
   };
-  writeDriverCache(snap);
   return snap;
 }

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { addRosterEntry, emptyDriverRosterStore } from "./driverRoster";
 import { computeAvailability } from "./driverDays";
@@ -100,6 +101,37 @@ describe("chicago Full Roster available base", () => {
       base: 2,
       available: 2,
     });
+  });
+
+  it("DriversContext never pulls Work-Dispatch or the call-off sheet", () => {
+    const src = readFileSync(new URL("../store/DriversContext.tsx", import.meta.url), "utf8");
+    expect(src).not.toContain("fetchDriverSnapshot");
+    expect(src).not.toContain("readDriverCache");
+    expect(src).not.toContain("calloffFetchUrl");
+    expect(src).not.toContain("rosterFetchUrl");
+    expect(src).not.toContain("saturdayBodyFetchUrl");
+  });
+
+  it("live snapshot helper does not fetch L13, Sat sums, or call-offs", () => {
+    const src = readFileSync(new URL("./sheets.ts", import.meta.url), "utf8");
+    expect(src).not.toContain("extractHeadcount");
+    expect(src).not.toContain("export function rosterFetchUrl");
+    expect(src).not.toContain("export function calloffFetchUrl");
+    expect(src).not.toContain("export function saturdayFetchUrl");
+    expect(src).not.toContain("export function saturdayBodyFetchUrl");
+    expect(src).not.toMatch(/fetchText\(rosterFetchUrl/);
+    expect(src).not.toMatch(/fetchText\(calloffFetchUrl/);
+    expect(src).not.toMatch(/fetchText\(saturday/);
+  });
+
+  it("dev proxy keeps only one-time Full/Sat roster import paths", () => {
+    const src = readFileSync(new URL("../../vite.config.ts", import.meta.url), "utf8");
+    expect(src).toContain("/sheets/roster-full/");
+    expect(src).toContain("/sheets/roster-sat/");
+    expect(src).not.toContain('"/sheets/offs"');
+    expect(src).not.toContain("/sheets/sat-body/");
+    expect(src).not.toContain('"/sheets/roster"');
+    expect(src).not.toContain("range=L13");
   });
 
   it("dropOffsAlreadyUnavailable is a no-op when names do not match", () => {

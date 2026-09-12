@@ -60,7 +60,7 @@ export const ROSTER_UNAVAILABLE_REASONS = [
   { token: "oot", label: "OOT", reason: "OOT" },
   { token: "fmla", label: "FMLA", reason: "FMLA" },
   { token: "vac", label: "Vac", reason: "Vacation" },
-  { token: "wc", label: "WC", reason: "Workers Comp" },
+  { token: "wc", label: "WC", reason: "Workmans Comp" },
   { token: "pto", label: "PTO", reason: "PTO" },
   { token: "loa", label: "LOA", reason: "LOA" },
   { token: "sick", label: "Sick", reason: "Sick" },

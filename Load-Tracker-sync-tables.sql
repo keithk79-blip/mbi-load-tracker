@@ -417,7 +417,7 @@ end $$;
 
 -- Driver tab Full + Sat rosters (per yard).
 -- Keep in sync with Load-Tracker-driver-roster.sql (paste-ready one-shot).
--- Does not replace Today's Burnham!L13 / Sat-sum sheet fetch.
+-- System of record for Today’s available count (not Burnham!L13 / Sat-* sums).
 
 create table if not exists public.driver_roster_entries (
   id uuid primary key default gen_random_uuid(),
