@@ -1,0 +1,313 @@
+[
+  {
+    "weekOf": "2024-12-29",
+    "label": "New Years",
+    "kind": "holiday"
+  },
+  {
+    "weekOf": "2025-01-05",
+    "capacity": 8,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-01-12",
+    "capacity": 8,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-01-19",
+    "capacity": 8,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-01-26",
+    "capacity": 8,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-02-02",
+    "capacity": 8,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-02-09",
+    "capacity": 8,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-02-16",
+    "capacity": 8,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-02-23",
+    "capacity": 8,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-03-02",
+    "capacity": 8,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-03-09",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-03-16",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-03-23",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-03-30",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-04-06",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-04-13",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-04-20",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-04-27",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-05-04",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-05-11",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-05-18",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-05-25",
+    "label": "Memorial Day",
+    "kind": "holiday"
+  },
+  {
+    "weekOf": "2025-06-01",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-06-08",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-06-15",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-06-22",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-06-29",
+    "label": "4th of July",
+    "kind": "holiday"
+  },
+  {
+    "weekOf": "2025-07-06",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-07-13",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-07-20",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-07-27",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-08-03",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-08-10",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-08-17",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-08-24",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-08-31",
+    "label": "Labor Day",
+    "kind": "holiday"
+  },
+  {
+    "weekOf": "2025-09-07",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-09-14",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-09-21",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-09-28",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-10-05",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-10-12",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-10-19",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-10-26",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-11-02",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-11-09",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-11-16",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-11-23",
+    "label": "Thanksgiving",
+    "kind": "holiday"
+  },
+  {
+    "weekOf": "2025-11-30",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-12-07",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-12-14",
+    "capacity": 4,
+    "kind": "open",
+    "names": []
+  },
+  {
+    "weekOf": "2025-12-21",
+    "label": "Christmas",
+    "kind": "holiday"
+  },
+  {
+    "weekOf": "2025-12-28",
+    "label": "New Years",
+    "kind": "holiday"
+  }
+]

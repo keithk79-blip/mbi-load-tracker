@@ -6,6 +6,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "trucks", label: "Trucks" },
   { id: "totals", label: "Totals" },
   { id: "analytics", label: "AnalyticsYTD" },
+  { id: "vacation", label: "Vacation" },
 ];
 
 export function TabBar({

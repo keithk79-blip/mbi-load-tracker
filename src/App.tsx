@@ -12,9 +12,11 @@ import { AnalyticsScreen } from "./screens/AnalyticsScreen";
 import { SearchScreen } from "./screens/SearchScreen";
 import { TodayScreen } from "./screens/TodayScreen";
 import { TotalsScreen } from "./screens/TotalsScreen";
+import { VacationScreen } from "./screens/VacationScreen";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 import { DriversProvider } from "./store/DriversContext";
 import { SpecialtyProvider } from "./store/SpecialtyContext";
+import { VacationProvider } from "./store/VacationContext";
 import { LoadsProvider, useLoads } from "./store/LoadsContext";
 import type { TabId } from "./types";
 
@@ -64,7 +66,7 @@ function Shell() {
     setJustEditedId(id);
     setOverlay(null);
     if (date) setFeedDate(date);
-    if (tab === "totals" || tab === "analytics") return;
+    if (tab === "totals" || tab === "analytics" || tab === "vacation") return;
     setTab("today");
   };
 
@@ -142,6 +144,8 @@ function Shell() {
           ) : null}
 
           {tab === "analytics" ? <AnalyticsScreen /> : null}
+
+          {tab === "vacation" ? <VacationScreen /> : null}
         </div>
       </div>
 
@@ -191,11 +195,13 @@ export default function App() {
       <LoadsProvider>
         <DriversProvider>
           <SpecialtyProvider>
-          <Gate>
-            <Shell />
-          </Gate>
-        </SpecialtyProvider>
-          </DriversProvider>
+            <VacationProvider>
+              <Gate>
+                <Shell />
+              </Gate>
+            </VacationProvider>
+          </SpecialtyProvider>
+        </DriversProvider>
       </LoadsProvider>
     </AuthProvider>
   );
