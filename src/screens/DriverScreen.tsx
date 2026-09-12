@@ -84,10 +84,10 @@ function AddRosterForm({
         className="text-input drv-add-truck"
         value={truck}
         onChange={(event) => setTruck(event.target.value)}
-        placeholder="Truck #"
+        placeholder="Employee #"
         inputMode="numeric"
         autoComplete="off"
-        aria-label="Truck number"
+        aria-label="Employee number"
       />
       <input
         ref={nameRef}
@@ -322,7 +322,7 @@ export function DriverScreen() {
       <div className="vac-legend" aria-label="Roster help">
         {kind === "sat" ? (
           <span className="vac-legend-note">
-            Copy list is one driver per line as <code>truck name</code> (name only if no truck).
+            Copy list is one driver per line as <code>emp# name</code> (name only if no employee number).
             Paste into email as-is.
           </span>
         ) : (
@@ -414,7 +414,7 @@ export function DriverScreen() {
             <thead>
               <tr>
                 {kind === "sat" ? <th className="drv-col-move"> </th> : null}
-                <th className="drv-col-truck">Truck</th>
+                <th className="drv-col-truck">Emp #</th>
                 <th className="drv-col-name">Name</th>
                 {kind === "full" ? <th className="drv-col-status">Unavailable</th> : null}
                 <th className="drv-col-actions"> </th>

@@ -3281,7 +3281,7 @@ body.app-ready .splash {
 }
 
 .drv-col-truck {
-  width: 96px;
+  width: 108px;
   font-variant-numeric: tabular-nums;
   font-weight: 750;
 }
@@ -3420,7 +3420,7 @@ body.app-ready .splash {
 
 .drv-add-truck {
   margin-top: 0;
-  width: 96px;
+  width: 132px;
 }
 
 .drv-add-name {
