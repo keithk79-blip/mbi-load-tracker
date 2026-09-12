@@ -307,7 +307,12 @@ export function DriverScreen() {
               : " · no Vacation names this week"}
           </p>
           {asOf !== today ? (
-            <button type="button" className="text-btn" onClick={() => setAsOf(today)}>
+            <button
+              type="button"
+              className="text-btn"
+              aria-label="Jump as-of date to today"
+              onClick={() => setAsOf(today)}
+            >
               Today
             </button>
           ) : null}
