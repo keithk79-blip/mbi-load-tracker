@@ -467,14 +467,7 @@ export function DriverScreen() {
       </div>
       )}
 
-      {onGone ? (
-        <div className="drv-sat-bar">
-          <p className="drv-sat-note">
-            Archive of drivers who left. Dates and notes stay editable. × deletes
-            the Gone row only — it does not put them back on Full Roster.
-          </p>
-        </div>
-      ) : kind === "sat" ? (
+      {onGone ? null : kind === "sat" ? (
         <div className="drv-sat-bar">
           <label className="drv-sat-date">
             Planning Saturday
@@ -485,11 +478,7 @@ export function DriverScreen() {
               onChange={(event) => void setSatDate(event.target.value || null)}
             />
           </label>
-          {satDate ? (
-            <p className="drv-sat-note">{formatMonthDayYear(satDate)}</p>
-          ) : (
-            <p className="drv-sat-note">Optional week label — does not write back to the sheet.</p>
-          )}
+          {satDate ? <p className="drv-sat-note">{formatMonthDayYear(satDate)}</p> : null}
           {resetConfirm ? (
             <div className="drv-reset-confirm" role="status">
               <p>Replace {yardLabel} Sat Roster with the current Full Roster?</p>
@@ -545,34 +534,6 @@ export function DriverScreen() {
           ) : null}
         </div>
       )}
-
-      <div className="vac-legend" aria-label="Roster help">
-        {onGone ? (
-          <span className="vac-legend-note">
-            Emp #, name, hire date, termination date, notes. No contact columns.
-            Import fills an empty archive once from the Gone 2026 sheet. Sync never
-            wipes these rows — only an explicit ×.
-          </span>
-        ) : kind === "sat" ? (
-          <span className="vac-legend-note">
-            Starts as this yard’s Full Roster (hired emp# + name). × people who are off
-            Saturday.{" "}
-            <strong>Reset to full roster</strong> copies Full again for this yard only.
-            Copy list is one driver per line as <code>emp# name</code> (name only if no
-            employee number). Paste into email as-is.
-          </span>
-        ) : (
-          <span className="vac-legend-note">
-            Everyone listed is hired at this yard. OOT / FMLA / vac / WC (and similar marks)
-            mean they are <strong>out</strong> — still on the roster, not available. Names
-            on the Vacation tab for this week are marked <strong>Vac</strong> automatically
-            (not written onto the row). × asks <strong>Termination</strong> (archive on
-            Gone) or <strong>Edit (remove only)</strong>. Today’s available count uses
-            Full Roster across all yards, minus leftover full-day manual offs.
-            Import fills empty lists once — it does not keep reading the workbook.
-          </span>
-        )}
-      </div>
 
       {adding && onGone ? (
         <AddGoneForm
@@ -652,16 +613,6 @@ export function DriverScreen() {
               ? "No terminated drivers archived yet"
               : `No ${yardLabel} ${kind === "sat" ? "Saturday planning" : "hired"} drivers yet`}
           </h2>
-          <p>
-            {onGone
-              ? "Gone is the archive of people who left. Import the Gone 2026 sheet once, or terminate someone from Full Roster."
-              : kind === "full"
-                ? "Full Roster is everyone hired at this yard. Import the workbook or add names. Marks like OOT stay on the list and count as out."
-                : fullCount
-                  ? "Sat Roster starts as this yard’s Full Roster. Reset copies everyone back, then × people who are off Saturday."
-                  : "Sat Roster is the Saturday planning list. Add this yard’s Full Roster first, or import empty lists."}{" "}
-            Today’s available-driver count uses this Full Roster (all yards) minus leftover full-day manuals — not the workbook.
-          </p>
           <div className="vac-add-actions">
             {onGone ? (
               <button

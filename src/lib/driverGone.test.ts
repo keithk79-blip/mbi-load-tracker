@@ -229,6 +229,10 @@ describe("Full Roster × dialog paths", () => {
     expect(src).toContain("Gone");
     expect(src).toContain("Hire date");
     expect(src).toContain("Termination date");
+    expect(src).not.toContain("Everyone listed is hired at this yard");
+    expect(src).not.toContain("it does not keep reading the workbook");
+    expect(src).not.toContain("Starts as this yard");
+    expect(src).not.toContain("aria-label=\"Roster help\"");
   });
 });
 
