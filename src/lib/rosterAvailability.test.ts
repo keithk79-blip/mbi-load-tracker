@@ -124,6 +124,12 @@ describe("chicago Full Roster available base", () => {
     expect(src).not.toMatch(/fetchText\(saturday/);
   });
 
+  it("Analytics copy does not imply a Sat-yard sheet sum", () => {
+    const src = readFileSync(new URL("../screens/AnalyticsScreen.tsx", import.meta.url), "utf8");
+    expect(src).not.toContain("sat-yard sum");
+    expect(src).toMatch(/today uses Full\s+Roster/);
+  });
+
   it("dev proxy keeps only one-time Full/Sat roster import paths", () => {
     const src = readFileSync(new URL("../../vite.config.ts", import.meta.url), "utf8");
     expect(src).toContain("/sheets/roster-full/");

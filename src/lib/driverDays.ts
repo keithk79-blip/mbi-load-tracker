@@ -74,7 +74,7 @@ export function lookupDay(store: DayStore, date: string): LockedDay | null {
 
 /**
  * Live projection for Chicago dates after today.
- * Uses current base / Saturday sum + call-offs. Never persisted as a lock.
+ * Uses current Full Roster base + leftover manuals. Never persisted as a lock.
  */
 export function projectFutureDay(live: LiveSheet, date: string, today: string): LockedDay | null {
   if (!isDriverTallyDay(date) || date <= today) return null;
