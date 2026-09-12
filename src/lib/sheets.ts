@@ -75,6 +75,26 @@ export const SATURDAY_CELLS = [
   { slug: "zion", tab: "Sat-Zion", range: "H3" },
 ] as const;
 
+/** Full-grid ranges for the Driver tab import (not the Today L13 / Sat-sum cells). */
+export const ROSTER_FULL_GRID_RANGE = "A:Z";
+export const ROSTER_SAT_GRID_RANGE = "A:Z";
+
+export const FULL_ROSTER_SHEETS = [
+  { slug: "burnham", tab: "Burnham" },
+  { slug: "rockford", tab: "Rockford" },
+  { slug: "pontiac", tab: "Pontiac" },
+  { slug: "arc", tab: "ARC Drivers" },
+  { slug: "zion", tab: "Zion" },
+] as const;
+
+export const SAT_ROSTER_SHEETS = [
+  { slug: "burnham", tab: "Sat-Burnham" },
+  { slug: "rockford", tab: "Sat-Rockford" },
+  { slug: "pontiac", tab: "Sat-Pontiac" },
+  { slug: "arc", tab: "Sat-Arc" },
+  { slug: "zion", tab: "Sat-Zion" },
+] as const;
+
 /**
  * Footer holiday notes sit a few rows below each Sat yard list. gviz drops
  * those isolated cells when a range starts inside the driver table (so A1:I2
@@ -161,6 +181,26 @@ export function calloffFetchUrl(): string {
 export function saturdayFetchUrl(slug: string, tab: string, range: string): string {
   if (useSheetProxy()) return `/sheets/sat/${slug}`;
   return googleCsvUrl(rosterId(), `sheet=${encodeURIComponent(tab)}&range=${range}`);
+}
+
+export function rosterFullFetchUrl(slug: string): string {
+  const sheet = FULL_ROSTER_SHEETS.find((row) => row.slug === slug);
+  const tab = sheet?.tab ?? "Burnham";
+  if (useSheetProxy()) return `/sheets/roster-full/${slug}`;
+  return googleCsvUrl(
+    rosterId(),
+    `sheet=${encodeURIComponent(tab)}&range=${encodeURIComponent(ROSTER_FULL_GRID_RANGE)}`,
+  );
+}
+
+export function rosterSatGridFetchUrl(slug: string): string {
+  const sheet = SAT_ROSTER_SHEETS.find((row) => row.slug === slug);
+  const tab = sheet?.tab ?? "Sat-Burnham";
+  if (useSheetProxy()) return `/sheets/roster-sat/${slug}`;
+  return googleCsvUrl(
+    rosterId(),
+    `sheet=${encodeURIComponent(tab)}&range=${encodeURIComponent(ROSTER_SAT_GRID_RANGE)}`,
+  );
 }
 
 export function saturdayBodyFetchUrl(

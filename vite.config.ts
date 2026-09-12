@@ -22,6 +22,22 @@ const SAT_CELLS = [
   { slug: "zion", tab: "Sat-Zion", range: "H3" },
 ] as const;
 
+const ROSTER_FULL_TABS = [
+  { slug: "burnham", tab: "Burnham" },
+  { slug: "rockford", tab: "Rockford" },
+  { slug: "pontiac", tab: "Pontiac" },
+  { slug: "arc", tab: "ARC Drivers" },
+  { slug: "zion", tab: "Zion" },
+] as const;
+
+const ROSTER_SAT_GRIDS = [
+  { slug: "burnham", tab: "Sat-Burnham" },
+  { slug: "rockford", tab: "Sat-Rockford" },
+  { slug: "pontiac", tab: "Sat-Pontiac" },
+  { slug: "arc", tab: "Sat-Arc" },
+  { slug: "zion", tab: "Sat-Zion" },
+] as const;
+
 /** Footer holiday notes — gviz drops them if the range starts in the driver list. */
 const SAT_BODY_SCANS = [
   { key: "upper", range: "A14:Z35" },
@@ -48,16 +64,35 @@ const sheetProxy: Record<string, { target: string; changeOrigin: boolean; rewrit
     changeOrigin: true,
     rewrite: () => gviz(ROSTER_ID, "sheet=Burnham&range=A:I"),
   },
-  "/sheets/roster": {
-    target: "https://docs.google.com",
-    changeOrigin: true,
-    rewrite: () => gviz(ROSTER_ID, "sheet=Burnham&range=L13"),
-  },
   "/sheets/offs": {
     target: "https://docs.google.com",
     changeOrigin: true,
     rewrite: () => gviz(CALLOFF_ID, "gid=0"),
   },
+};
+
+for (const yard of ROSTER_FULL_TABS) {
+  sheetProxy[`/sheets/roster-full/${yard.slug}`] = {
+    target: "https://docs.google.com",
+    changeOrigin: true,
+    rewrite: () =>
+      gviz(ROSTER_ID, `sheet=${encodeURIComponent(yard.tab)}&range=A%3AZ`),
+  };
+}
+
+for (const yard of ROSTER_SAT_GRIDS) {
+  sheetProxy[`/sheets/roster-sat/${yard.slug}`] = {
+    target: "https://docs.google.com",
+    changeOrigin: true,
+    rewrite: () =>
+      gviz(ROSTER_ID, `sheet=${encodeURIComponent(yard.tab)}&range=A%3AZ`),
+  };
+}
+
+sheetProxy["/sheets/roster"] = {
+  target: "https://docs.google.com",
+  changeOrigin: true,
+  rewrite: () => gviz(ROSTER_ID, "sheet=Burnham&range=L13"),
 };
 
 for (const scan of SAT_BODY_SCANS) {

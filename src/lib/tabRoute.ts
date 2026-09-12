@@ -1,5 +1,21 @@
+import type { TabId } from "../types";
+
 /** Retired dedicated Totals tab — those views now live on Today. */
 const RETIRED_TOTALS_SLUG = "totals";
+
+const TAB_SLUGS: Record<Exclude<TabId, "today">, string> = {
+  trucks: "trucks",
+  analytics: "analytics",
+  driver: "driver",
+  vacation: "vacation",
+};
+
+const SLUG_TO_TAB: Record<string, TabId> = {
+  trucks: "trucks",
+  analytics: "analytics",
+  driver: "driver",
+  vacation: "vacation",
+};
 
 type LocationBits = {
   pathname: string;
@@ -57,6 +73,40 @@ export function replaceRetiredTotalsLocation(
   const next = rewriteRetiredTotalsHref(loc);
   if (!next) return false;
   const current = `${loc.pathname}${loc.search}${loc.hash}`;
-  if (next !== current) historyApi.replaceState(null, "", next);
+  if (next !== current)   historyApi.replaceState(null, "", next);
   return true;
+}
+
+export function tabFromLocation(loc: LocationBits): TabId | null {
+  if (locationPointsAtTotals(loc)) return "today";
+  const path = lastPathSegment(loc.pathname);
+  if (path && SLUG_TO_TAB[path]) return SLUG_TO_TAB[path];
+  const hash = hashSlug(loc.hash);
+  if (hash && SLUG_TO_TAB[hash]) return SLUG_TO_TAB[hash];
+  const query = queryTab(loc.search);
+  if (query && SLUG_TO_TAB[query]) return SLUG_TO_TAB[query];
+  return null;
+}
+
+export function hrefForTab(tab: TabId): string {
+  if (tab === "today") return "/";
+  return `/${TAB_SLUGS[tab]}`;
+}
+
+/** Keep `/driver` in the URL when that tab is open; leave other tabs on `/`. */
+export function replaceTabLocation(
+  tab: TabId,
+  loc: LocationBits = typeof window !== "undefined"
+    ? { pathname: window.location.pathname, search: window.location.search, hash: window.location.hash }
+    : { pathname: "/", search: "", hash: "" },
+  historyApi: Pick<History, "replaceState"> = history,
+): void {
+  const onDriverPath = lastPathSegment(loc.pathname) === "driver";
+  if (tab === "driver" && !onDriverPath) {
+    historyApi.replaceState(null, "", "/driver");
+    return;
+  }
+  if (tab !== "driver" && onDriverPath) {
+    historyApi.replaceState(null, "", "/");
+  }
 }
