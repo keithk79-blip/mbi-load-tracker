@@ -17,10 +17,13 @@ import {
   type ManualCallOff,
 } from "./driverAvailability";
 
+export type AvailabilitySource = "weekday" | "saturday" | "saturday-weekday";
+
 export type LockedDay = DayAvailability & {
   locked: boolean;
   lockedAt: string;
-  source?: "weekday" | "saturday";
+  /** Calendar Saturday + weekday L13 when Sat tabs mark a full mandatory day. */
+  source?: AvailabilitySource;
   /**
    * Call-off pills frozen with this Chicago day (sheet + manuals at last
    * today-snapshot, then manuals re-merged on later edits). Missing on days
@@ -34,6 +37,11 @@ export type DayStore = Record<string, LockedDay>;
 export type LiveSheet = {
   base: number;
   saturdayBase: number;
+  /**
+   * Sat-* banners/body include “full mandatory work day”. Today’s Saturday
+   * then uses weekday L13 + weekday call-off subtract rules, not saturdayBase.
+   */
+  saturdayUsesWeekdayBase?: boolean;
   offs: CallOffRow[];
   /** Live OOT names — only written onto today's snapshot, never past days. */
   ootNames?: string[];
@@ -41,7 +49,20 @@ export type LiveSheet = {
   manualOffs?: ManualCallOff[];
 };
 
-/** Sundays have no driver tally. Saturdays use the sat-yard sum. */
+function usesSaturdayWorklist(live: LiveSheet, day: string): boolean {
+  return isChicagoSaturday(day) && !live.saturdayUsesWeekdayBase;
+}
+
+function availabilitySource(live: LiveSheet, day: string): AvailabilitySource {
+  if (!isChicagoSaturday(day)) return "weekday";
+  return live.saturdayUsesWeekdayBase ? "saturday-weekday" : "saturday";
+}
+
+function storedDayUsesWeekdayBase(day: LockedDay): boolean {
+  return day.source === "saturday-weekday";
+}
+
+/** Sundays have no driver tally. Saturdays use the sat-yard sum unless marked full-mandatory. */
 export function isDriverTallyDay(iso: string): boolean {
   return !isChicagoSunday(iso);
 }
@@ -62,13 +83,13 @@ export function projectFutureDay(live: LiveSheet, date: string, today: string): 
     ...computed,
     locked: false,
     lockedAt: today,
-    source: isChicagoSaturday(date) ? "saturday" : "weekday",
+    source: availabilitySource(live, date),
   };
 }
 
 
 export function computeAvailability(live: LiveSheet, day: string): DayAvailability {
-  if (isChicagoSaturday(day)) {
+  if (usesSaturdayWorklist(live, day)) {
     const base = Math.max(0, Math.floor(live.saturdayBase));
     const offs = fullDayOffCount(manualsToRows(live.manualOffs, day), day);
     return { date: day, base, offs, available: Math.max(0, base - offs) };
@@ -102,6 +123,7 @@ export function applyManualsToStoredDay(
     {
       base: existing.base,
       saturdayBase: existing.base,
+      saturdayUsesWeekdayBase: storedDayUsesWeekdayBase(existing),
       offs: sheetRows,
       manualOffs: live.manualOffs,
     },
@@ -137,6 +159,7 @@ export function availabilityWithManuals(
     {
       base: day.base,
       saturdayBase: day.base,
+      saturdayUsesWeekdayBase: storedDayUsesWeekdayBase(day),
       offs: sheetRows,
       manualOffs: live.manualOffs,
     },
@@ -185,6 +208,7 @@ export function callOffsOnDay(
       availabilityWithManuals(locked, {
         base: locked.base,
         saturdayBase: locked.base,
+        saturdayUsesWeekdayBase: storedDayUsesWeekdayBase(locked),
         offs: sheetOffs,
         manualOffs: manuals,
       }).callOffs ?? []
@@ -260,7 +284,7 @@ export function applyLiveSheet(
       callOffs,
       locked: false,
       lockedAt: nowIso,
-      source: isChicagoSaturday(today) ? "saturday" : "weekday",
+      source: availabilitySource(live, today),
     };
   } else {
     delete next[today];

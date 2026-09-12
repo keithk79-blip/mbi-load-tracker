@@ -75,11 +75,26 @@ export const SATURDAY_CELLS = [
   { slug: "zion", tab: "Sat-Zion", range: "H3" },
 ] as const;
 
+/**
+ * gviz drops Sat-tab A1 titles on larger ranges (A1:I4+). A1:I2 keeps the
+ * banner so holiday copy like “full mandatory work day” is visible.
+ */
+export const SATURDAY_BANNER_RANGE = "A1:I2";
+
+const SATURDAY_FULL_MANDATORY_RE = /full mandatory work day/i;
+
+/** True when any Sat-tab CSV body marks a full mandatory / holiday work day. */
+export function saturdaySheetsUseWeekdayBase(bodies: readonly string[]): boolean {
+  return bodies.some((text) => SATURDAY_FULL_MANDATORY_RE.test(text));
+}
+
 const CACHE_KEY = "chitrader.load-tracker.drivers.v1";
 
 export type DriverSnapshot = {
   baseAvailable: number;
   saturdayAvailable: number;
+  /** Sat tabs say full-mandatory / holiday — use weekday L13 + call-off rules. */
+  saturdayUsesWeekdayBase: boolean;
   offs: CallOffRow[];
   ootNames: string[];
   fetchedAt: string;
@@ -87,9 +102,10 @@ export type DriverSnapshot = {
 };
 
 type Cached = {
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   baseAvailable: number;
   saturdayAvailable?: number;
+  saturdayUsesWeekdayBase?: boolean;
   offs: CallOffRow[];
   ootNames?: string[];
   fetchedAt: string;
@@ -142,6 +158,14 @@ export function saturdayFetchUrl(slug: string, tab: string, range: string): stri
   return googleCsvUrl(rosterId(), `sheet=${encodeURIComponent(tab)}&range=${range}`);
 }
 
+export function saturdayBannerFetchUrl(slug: string, tab: string): string {
+  if (useSheetProxy()) return `/sheets/sat-banner/${slug}`;
+  return googleCsvUrl(
+    rosterId(),
+    `sheet=${encodeURIComponent(tab)}&range=${encodeURIComponent(SATURDAY_BANNER_RANGE)}`,
+  );
+}
+
 export function readDriverCache(): DriverSnapshot | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
@@ -153,6 +177,7 @@ export function readDriverCache(): DriverSnapshot | null {
       baseAvailable: parsed.baseAvailable,
       saturdayAvailable:
         typeof parsed.saturdayAvailable === "number" ? parsed.saturdayAvailable : 0,
+      saturdayUsesWeekdayBase: parsed.saturdayUsesWeekdayBase === true,
       offs: parsed.offs,
       ootNames: Array.isArray(parsed.ootNames) ? parsed.ootNames : [],
       fetchedAt: parsed.fetchedAt,
@@ -165,9 +190,10 @@ export function readDriverCache(): DriverSnapshot | null {
 
 function writeDriverCache(snap: Omit<DriverSnapshot, "source">): void {
   const payload: Cached = {
-    version: 3,
+    version: 4,
     baseAvailable: snap.baseAvailable,
     saturdayAvailable: snap.saturdayAvailable,
+    saturdayUsesWeekdayBase: snap.saturdayUsesWeekdayBase,
     offs: snap.offs,
     ootNames: snap.ootNames,
     fetchedAt: snap.fetchedAt,
@@ -196,25 +222,34 @@ function extractHeadcount(csv: string, label: string): number {
 
 export async function fetchDriverSnapshot(): Promise<DriverSnapshot> {
   const satFetches = SATURDAY_CELLS.map((cell) =>
-    fetchText(saturdayFetchUrl(cell.slug, cell.tab, cell.range)).then((csv) =>
-      extractHeadcount(csv, `${cell.tab}!${cell.range}`),
-    ),
+    fetchText(saturdayFetchUrl(cell.slug, cell.tab, cell.range)).then((csv) => ({
+      count: extractHeadcount(csv, `${cell.tab}!${cell.range}`),
+      csv,
+    })),
+  );
+  const satBannerFetches = SATURDAY_CELLS.map((cell) =>
+    fetchText(saturdayBannerFetchUrl(cell.slug, cell.tab)),
   );
   const ootFetches = OOT_YARDS.map((yard) =>
     fetchText(ootYardFetchUrl(yard.slug, yard.tab, yard.range)).then((csv) =>
       parseOotNames(csv, yard.pairs),
     ),
   );
-  const [rosterCsv, offsCsv, ootGroups, ...satCounts] = await Promise.all([
+  const [rosterCsv, offsCsv, ootGroups, satCells, satBanners] = await Promise.all([
     fetchText(rosterFetchUrl()),
     fetchText(calloffFetchUrl()),
     Promise.all(ootFetches),
-    ...satFetches,
+    Promise.all(satFetches),
+    Promise.all(satBannerFetches),
   ]);
-  const saturdayAvailable = satCounts.reduce((sum, n) => sum + n, 0);
+  const saturdayAvailable = satCells.reduce((sum, cell) => sum + cell.count, 0);
   const snap: DriverSnapshot = {
     baseAvailable: extractHeadcount(rosterCsv, "Burnham!L13"),
     saturdayAvailable,
+    saturdayUsesWeekdayBase: saturdaySheetsUseWeekdayBase([
+      ...satBanners,
+      ...satCells.map((cell) => cell.csv),
+    ]),
     offs: parseCallOffCsv(offsCsv),
     ootNames: combineOotNames(ootGroups),
     fetchedAt: new Date().toISOString(),

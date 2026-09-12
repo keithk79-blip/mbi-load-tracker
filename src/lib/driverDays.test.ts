@@ -252,6 +252,100 @@ describe("applyLiveSheet lock", () => {
       source: "saturday",
     });
   });
+
+  it("uses weekday L13 and call-off rules on a full-mandatory Saturday", () => {
+    expect(isChicagoSaturday("2026-09-12")).toBe(true);
+    const next = applyLiveSheet(
+      {},
+      {
+        base: 143,
+        saturdayBase: 136,
+        saturdayUsesWeekdayBase: true,
+        offs: [
+          { name: "A", start: "2026-09-12", end: null, reason: "Call Off" },
+          { name: "B", start: "2026-09-12", end: null, reason: "P-Day" },
+          { name: "C", start: "2026-09-12", end: null, reason: "Bereavement, father died" },
+        ],
+        manualOffs: [{ name: "Late Guy", kind: "late-early" }],
+      },
+      "2026-09-12",
+      "t1",
+    );
+    expect(next["2026-09-12"]).toMatchObject({
+      base: 143,
+      offs: 3,
+      available: 140,
+      locked: false,
+      source: "saturday-weekday",
+    });
+    expect(next["2026-09-12"]?.callOffs?.map((row) => row.name)).toEqual([
+      "A",
+      "B",
+      "C",
+      "Late Guy",
+    ]);
+  });
+
+  it("keeps weekday rules when remapping manuals on a locked holiday Saturday", () => {
+    const first = applyLiveSheet(
+      {},
+      {
+        base: 143,
+        saturdayBase: 136,
+        saturdayUsesWeekdayBase: true,
+        offs: [
+          { name: "A", start: "2026-09-12", end: null, reason: "Call Off" },
+          { name: "B", start: "2026-09-12", end: null, reason: "P-Day" },
+          { name: "C", start: "2026-09-12", end: null, reason: "Bereavement, father died" },
+        ],
+      },
+      "2026-09-12",
+      "sat",
+    );
+    const next = applyManualsToStoredDay(
+      first,
+      {
+        base: 200,
+        saturdayBase: 10,
+        saturdayUsesWeekdayBase: false,
+        offs: [],
+        manualOffs: [{ name: "Extra", kind: "ncns" }],
+      },
+      "2026-09-12",
+      "2026-09-14",
+      "mon",
+    );
+    expect(next["2026-09-12"]).toMatchObject({
+      base: 143,
+      offs: 4,
+      available: 139,
+      source: "saturday-weekday",
+    });
+  });
+
+  it("keeps the Saturday yard sum when the mandatory flag is off", () => {
+    const next = applyLiveSheet(
+      {},
+      {
+        base: 143,
+        saturdayBase: 136,
+        saturdayUsesWeekdayBase: false,
+        offs: [
+          { name: "A", start: "2026-09-12", end: null, reason: "Call Off" },
+          { name: "B", start: "2026-09-12", end: null, reason: "P-Day" },
+          { name: "C", start: "2026-09-12", end: null, reason: "Bereavement, father died" },
+        ],
+      },
+      "2026-09-12",
+      "t1",
+    );
+    expect(next["2026-09-12"]).toMatchObject({
+      base: 136,
+      offs: 0,
+      available: 136,
+      source: "saturday",
+    });
+  });
 });
 
 

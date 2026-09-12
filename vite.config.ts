@@ -22,6 +22,9 @@ const SAT_CELLS = [
   { slug: "zion", tab: "Sat-Zion", range: "H3" },
 ] as const;
 
+/** Keep Sat-tab A1 titles (gviz drops them on A1:I4+). */
+const SAT_BANNER_RANGE = "A1:I2";
+
 const OOT_YARDS = [
   { slug: "burnham", tab: "Burnham", range: "A:I" },
   { slug: "rockford", tab: "Rockford", range: "A:F" },
@@ -55,6 +58,15 @@ const sheetProxy: Record<string, { target: string; changeOrigin: boolean; rewrit
 };
 
 for (const cell of SAT_CELLS) {
+  sheetProxy[`/sheets/sat-banner/${cell.slug}`] = {
+    target: "https://docs.google.com",
+    changeOrigin: true,
+    rewrite: () =>
+      gviz(
+        ROSTER_ID,
+        `sheet=${encodeURIComponent(cell.tab)}&range=${encodeURIComponent(SAT_BANNER_RANGE)}`,
+      ),
+  };
   sheetProxy[`/sheets/sat/${cell.slug}`] = {
     target: "https://docs.google.com",
     changeOrigin: true,
