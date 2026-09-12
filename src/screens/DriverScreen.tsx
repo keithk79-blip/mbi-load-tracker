@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandMark } from "../components/BrandMark";
-import { addDays, chicagoToday, formatMonthDayYear, weekdayOfISO } from "../lib/chicagoDate";
+import { addDays, chicagoToday, formatMonthDayYear, isValidISODate, weekdayOfISO } from "../lib/chicagoDate";
 import {
   DRIVER_ROSTER_KINDS,
   DRIVER_ROSTER_YARDS,
@@ -15,7 +15,13 @@ import {
   satDateForYard,
   type DriverRosterKind,
 } from "../lib/driverRoster";
+import {
+  effectiveRosterStatus,
+  vacationNamesOnDate,
+} from "../lib/rosterVacation";
+import { sundayOnOrBefore } from "../lib/vacationBoard";
 import { useDriverRoster } from "../store/DriverRosterContext";
+import { useVacation } from "../store/VacationContext";
 
 function upcomingSaturday(today: string): string {
   const dow = weekdayOfISO(today);
@@ -135,19 +141,32 @@ export function DriverScreen() {
     moveDriver,
     setSatDate,
   } = useDriverRoster();
+  const vacation = useVacation();
   const [adding, setAdding] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const [asOf, setAsOf] = useState(() => chicagoToday());
+  const today = chicagoToday();
 
   const entries = useMemo(() => entriesForRoster(store, kind, yard), [store, kind, yard]);
   const count = rosterEntryCount(store, kind, yard);
+  const vacationNames = useMemo(
+    () => (kind === "full" ? vacationNamesOnDate(vacation.store, asOf, yard) : []),
+    [kind, vacation.store, asOf, yard],
+  );
   const tally = useMemo(
-    () => (kind === "full" ? fullRosterTally(entries) : null),
-    [kind, entries],
+    () =>
+      kind === "full"
+        ? fullRosterTally(entries, {
+            treatAsUnavailable: (entry) => effectiveRosterStatus(entry, vacationNames).onVacation,
+          })
+        : null,
+    [kind, entries, vacationNames],
   );
   const satDate = satDateForYard(store, yard);
   const copyTextValue = formatRosterCopyList(entries);
   const yardLabel = driverRosterYardLabel(yard);
+  const vacationWeekOf = kind === "full" ? sundayOnOrBefore(asOf) : null;
 
   async function onCopy() {
     const ok = await copyText(copyTextValue);
@@ -197,7 +216,7 @@ export function DriverScreen() {
         </div>
         <div className="drv-header-meta">
           {tally ? (
-            <p className="drv-count" title="Preview tally from this hired list. Today still uses L13 / sheet offs.">
+            <p className="drv-count" title="Hired − status − Vacation VAC for this yard/day. Today still uses L13 / sheet offs.">
               <strong>{tally.hired}</strong> hired
               {tally.unavailable ? (
                 <>
@@ -256,7 +275,7 @@ export function DriverScreen() {
             <input
               className="text-input drv-sat-input"
               type="date"
-              value={satDate ?? upcomingSaturday(chicagoToday())}
+              value={satDate ?? upcomingSaturday(today)}
               onChange={(event) => void setSatDate(event.target.value || null)}
             />
           </label>
@@ -266,7 +285,34 @@ export function DriverScreen() {
             <p className="drv-sat-note">Optional week label — does not write back to the sheet.</p>
           )}
         </div>
-      ) : null}
+      ) : (
+        <div className="drv-sat-bar">
+          <label className="drv-sat-date">
+            As of
+            <input
+              className="text-input drv-sat-input"
+              type="date"
+              value={asOf}
+              onChange={(event) => {
+                const next = event.target.value;
+                if (isValidISODate(next)) setAsOf(next);
+              }}
+            />
+          </label>
+          <p className="drv-sat-note">
+            {formatMonthDayYear(asOf)}
+            {vacationWeekOf ? ` · Vacation week of ${formatMonthDayYear(vacationWeekOf)}` : null}
+            {vacationNames.length
+              ? ` · ${vacationNames.length} on Vacation`
+              : " · no Vacation names this week"}
+          </p>
+          {asOf !== today ? (
+            <button type="button" className="text-btn" onClick={() => setAsOf(today)}>
+              Today
+            </button>
+          ) : null}
+        </div>
+      )}
 
       <div className="vac-legend" aria-label="Roster help">
         {kind === "sat" ? (
@@ -277,8 +323,10 @@ export function DriverScreen() {
         ) : (
           <span className="vac-legend-note">
             Everyone listed is hired at this yard. OOT / FMLA / vac / WC (and similar marks)
-            mean they are <strong>out</strong> — still on the roster, not available. ×
-            removes a hire. Today’s available count still reads L13 / sheet offs.
+            mean they are <strong>out</strong> — still on the roster, not available. Names
+            on the Vacation tab for this week are marked <strong>Vac</strong> automatically
+            (not written onto the row). × removes a hire. Today’s available count still
+            reads L13 / sheet offs.
           </span>
         )}
       </div>
@@ -368,7 +416,13 @@ export function DriverScreen() {
             </thead>
             <tbody>
               {entries.map((entry, index) => {
-                const out = kind === "full" && rosterStatusRemovesFromAvailable(entry.status);
+                const effective =
+                  kind === "full" ? effectiveRosterStatus(entry, vacationNames) : null;
+                const out =
+                  kind === "full" &&
+                  (rosterStatusRemovesFromAvailable(effective?.status) ||
+                    Boolean(effective?.onVacation));
+                const storedOut = rosterStatusRemovesFromAvailable(entry.status);
                 return (
                 <tr
                   key={entry.id}
@@ -402,29 +456,47 @@ export function DriverScreen() {
                   <td className="drv-col-name">
                     {entry.name}
                     {out ? <span className="drv-out-tag">Out</span> : null}
+                    {effective?.onVacation ? (
+                      <span className="drv-vac-from" title="From the Vacation tab this week">
+                        Vac
+                      </span>
+                    ) : null}
                   </td>
                   {kind === "full" ? (
                     <td className="drv-col-status">
-                      <select
-                        className={out ? "drv-status-select is-out" : "drv-status-select"}
-                        value={entry.status ?? ""}
-                        aria-label={`Unavailability for ${entry.name}`}
-                        onChange={(event) =>
-                          void setDriverStatus(entry.id, event.target.value || null)
-                        }
-                      >
-                        <option value="">Available</option>
-                        {ROSTER_UNAVAILABLE_REASONS.map((row) => (
-                          <option key={row.token} value={row.token}>
-                            {row.label}
-                          </option>
-                        ))}
-                        {entry.status && !ROSTER_UNAVAILABLE_REASONS.some((row) => row.token === entry.status) ? (
-                          <option value={entry.status}>
-                            {rosterStatusLabel(entry.status)}
-                          </option>
+                      <div className="drv-status-cell">
+                        <select
+                          className={
+                            storedOut || effective?.onVacation
+                              ? "drv-status-select is-out"
+                              : "drv-status-select"
+                          }
+                          value={entry.status ?? ""}
+                          aria-label={`Unavailability for ${entry.name}`}
+                          onChange={(event) =>
+                            void setDriverStatus(entry.id, event.target.value || null)
+                          }
+                        >
+                          <option value="">{effective?.onVacation ? "No mark" : "Available"}</option>
+                          {ROSTER_UNAVAILABLE_REASONS.map((row) => (
+                            <option key={row.token} value={row.token}>
+                              {row.label}
+                            </option>
+                          ))}
+                          {entry.status && !ROSTER_UNAVAILABLE_REASONS.some((row) => row.token === entry.status) ? (
+                            <option value={entry.status}>
+                              {rosterStatusLabel(entry.status)}
+                            </option>
+                          ) : null}
+                        </select>
+                        {effective?.onVacation &&
+                        entry.status &&
+                        entry.status.toLowerCase() !== "vac" ? (
+                          <span className="drv-also-status">
+                            Vac + {rosterStatusLabel(entry.status)}
+                          </span>
                         ) : null}
-                      </select>
+                      </div>
                     </td>
                   ) : null}
                   <td className="drv-col-actions">

@@ -31,8 +31,10 @@ export const DRIVER_ROSTER_YARD_LABELS: Record<DriverRosterYard, string> = {
 /**
  * Optional Full Roster unavailability mark. The driver stays on the hired
  * roster. `status` stores the sheet abbreviation (oot, fmla, vac, wc, …).
- * A later Today tally can do hired − full-day status − day offs without a
- * rewrite: use `fullRosterTally` / `rosterStatusRemovesFromAvailable`.
+ * A later Today tally can do hired − full-day status − Vacation VAC − day
+ * offs without a rewrite: use `fullRosterTally` + `rosterVacation`
+ * (`vacationNamesOnDate` / `rosterEntryOnVacation`). Vacation-driven VAC
+ * is derived at read time — do not persist it onto `status`.
  */
 export type DriverRosterEntry = {
   id: string;
@@ -69,6 +71,11 @@ export type FullRosterTally = {
   hired: number;
   unavailable: number;
   available: number;
+};
+
+export type FullRosterTallyOptions = {
+  /** Extra hired drivers to treat as out (Vacation-tab auto-VAC). */
+  treatAsUnavailable?: (entry: DriverRosterEntry) => boolean;
 };
 
 export type DriverRosterStore = {
@@ -198,13 +205,19 @@ export function rosterStatusRemovesFromAvailable(status: string | null | undefin
   return /^[a-z]{2,8}$/i.test(cleaned);
 }
 
-export function fullRosterTally(entries: readonly DriverRosterEntry[]): FullRosterTally {
+export function fullRosterTally(
+  entries: readonly DriverRosterEntry[],
+  options?: FullRosterTallyOptions,
+): FullRosterTally {
   let hired = 0;
   let unavailable = 0;
   for (const entry of entries) {
     if (entry.kind !== "full") continue;
     hired += 1;
-    if (rosterStatusRemovesFromAvailable(entry.status)) unavailable += 1;
+    const out =
+      rosterStatusRemovesFromAvailable(entry.status) ||
+      Boolean(options?.treatAsUnavailable?.(entry));
+    if (out) unavailable += 1;
   }
   return {
     hired,
