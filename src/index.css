@@ -2746,6 +2746,45 @@ body.app-ready .splash {
   padding: 18px 22px 32px;
 }
 
+.vac-yard-switch {
+  display: flex;
+  width: min(520px, 100%);
+  padding: 4px;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #101218;
+}
+
+.vac-yard-btn {
+  flex: 1;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.vac-yard-btn:hover,
+.vac-yard-btn:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+
+.vac-yard-btn.is-active {
+  background: #2a1618;
+  color: #fff;
+  box-shadow: inset 0 0 0 1px #6a2a2c;
+}
+
+.app-shell.is-desktop .vac-yard-switch {
+  width: min(560px, 100%);
+}
+
 .vac-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -2827,7 +2866,7 @@ body.app-ready .splash {
 }
 
 .app-shell.is-desktop .vac-table-wrap {
-  max-height: calc(100dvh - 260px);
+  max-height: calc(100dvh - 320px);
 }
 
 .vac-table {
