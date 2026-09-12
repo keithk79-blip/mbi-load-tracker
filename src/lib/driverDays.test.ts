@@ -3,10 +3,13 @@ import { isChicagoSaturday, isChicagoSunday } from "./chicagoDate";
 import type { CallOffRow } from "./driverAvailability";
 import {
   applyLiveSheet,
+  applyManualsToStoredDay,
+  callOffsOnDay,
   isDriverTallyDay,
   lockEndedDays,
   lookupDay,
   mergeDayStores,
+  refreshPastDayManuals,
   ytdWorkingAverage,
   type DayStore,
 } from "./driverDays";
@@ -143,6 +146,10 @@ describe("applyLiveSheet lock", () => {
       locked: false,
       source: "weekday",
     });
+    expect(next["2026-09-08"]?.callOffs).toEqual([
+      { name: "A", kind: "call-off", source: "sheet" },
+      { name: "B", kind: "p-day", source: "manual" },
+    ]);
   });
 
   it("does not subtract Late/Early manuals from the Saturday yard sum", () => {
@@ -301,6 +308,221 @@ describe("lookup + YTD average", () => {
   });
 });
 
+describe("past-day call-offs lock", () => {
+  const fridaySheet = [
+    { name: "Sheet Friday", start: "2026-09-11", end: null, reason: "Call Off" },
+  ];
+
+  it("keeps yesterday’s pills when today rolls and the live sheet changes", () => {
+    const friday = applyLiveSheet(
+      {},
+      {
+        base: 145,
+        saturdayBase: 33,
+        offs: fridaySheet,
+        manualOffs: [
+          { name: "Derek Winters", kind: "late-early" },
+          { name: "Pablo Cruz", kind: "call-off" },
+        ],
+      },
+      "2026-09-11",
+      "fri",
+    );
+    expect(friday["2026-09-11"]?.available).toBe(143);
+    expect(friday["2026-09-11"]?.callOffs?.map((row) => row.name)).toEqual([
+      "Derek Winters",
+      "Pablo Cruz",
+      "Sheet Friday",
+    ]);
+
+    const saturday = applyLiveSheet(
+      friday,
+      { base: 200, saturdayBase: 33, offs: [], manualOffs: [] },
+      "2026-09-12",
+      "sat",
+    );
+    expect(saturday["2026-09-11"]).toMatchObject({
+      locked: true,
+      available: 143,
+    });
+    expect(saturday["2026-09-11"]?.callOffs?.map((row) => row.name)).toEqual([
+      "Derek Winters",
+      "Pablo Cruz",
+      "Sheet Friday",
+    ]);
+    expect(callOffsOnDay(
+      "2026-09-11",
+      "2026-09-12",
+      [],
+      [
+        { name: "Derek Winters", kind: "late-early" },
+        { name: "Pablo Cruz", kind: "call-off" },
+      ],
+      saturday["2026-09-11"],
+    ).map((row) => row.name)).toEqual([
+      "Derek Winters",
+      "Pablo Cruz",
+      "Sheet Friday",
+    ]);
+    expect(
+      callOffsOnDay("2026-09-12", "2026-09-12", [], [], saturday["2026-09-12"]),
+    ).toEqual([]);
+  });
+
+  it("swaps visible offs when the selected date changes", () => {
+    const store: DayStore = {
+      "2026-09-11": {
+        date: "2026-09-11",
+        base: 145,
+        offs: 2,
+        available: 143,
+        locked: true,
+        lockedAt: "fri",
+        callOffs: [
+          { name: "Derek Winters", kind: "late-early", source: "manual" },
+          { name: "Pablo Cruz", kind: "call-off", source: "manual" },
+        ],
+      },
+      "2026-09-12": {
+        date: "2026-09-12",
+        base: 33,
+        offs: 1,
+        available: 32,
+        locked: false,
+        lockedAt: "sat",
+        source: "saturday",
+        callOffs: [{ name: "Today Only", kind: "ncns", source: "manual" }],
+      },
+    };
+    const manuals = {
+      "2026-09-11": [
+        { name: "Derek Winters" as const, kind: "late-early" as const },
+        { name: "Pablo Cruz" as const, kind: "call-off" as const },
+      ],
+      "2026-09-12": [{ name: "Today Only" as const, kind: "ncns" as const }],
+    };
+    expect(
+      callOffsOnDay(
+        "2026-09-11",
+        "2026-09-12",
+        [],
+        manuals["2026-09-11"],
+        store["2026-09-11"],
+      ).map((row) => row.name),
+    ).toEqual(["Derek Winters", "Pablo Cruz"]);
+    expect(
+      callOffsOnDay(
+        "2026-09-12",
+        "2026-09-12",
+        [],
+        manuals["2026-09-12"],
+        store["2026-09-12"],
+      ).map((row) => row.name),
+    ).toEqual(["Today Only"]);
+  });
+
+  it("updates a past day’s available when a full-day manual is added; Late/Early does not", () => {
+    const friday = applyLiveSheet(
+      {},
+      {
+        base: 145,
+        saturdayBase: 33,
+        offs: fridaySheet,
+        manualOffs: [{ name: "Pablo Cruz", kind: "call-off" }],
+      },
+      "2026-09-11",
+      "fri",
+    );
+    const afterLate = applyManualsToStoredDay(
+      friday,
+      {
+        base: 200,
+        saturdayBase: 10,
+        offs: [],
+        manualOffs: [
+          { name: "Pablo Cruz", kind: "call-off" },
+          { name: "Derek Winters", kind: "late-early" },
+        ],
+      },
+      "2026-09-11",
+      "2026-09-12",
+      "sat",
+    );
+    expect(afterLate["2026-09-11"]).toMatchObject({
+      base: 145,
+      offs: 2,
+      available: 143,
+      locked: false,
+    });
+    expect(afterLate["2026-09-11"]?.callOffs?.map((row) => row.name)).toEqual([
+      "Derek Winters",
+      "Pablo Cruz",
+      "Sheet Friday",
+    ]);
+
+    const afterOff = applyManualsToStoredDay(
+      afterLate,
+      {
+        base: 200,
+        saturdayBase: 10,
+        offs: [],
+        manualOffs: [
+          { name: "Pablo Cruz", kind: "call-off" },
+          { name: "Derek Winters", kind: "late-early" },
+          { name: "Johnnie Owens.", kind: "p-day" },
+        ],
+      },
+      "2026-09-11",
+      "2026-09-12",
+      "sat",
+    );
+    expect(afterOff["2026-09-11"]).toMatchObject({
+      offs: 3,
+      available: 142,
+    });
+  });
+
+  it("refreshPastDayManuals remaps manuals onto snapshotted past days only", () => {
+    const friday = applyLiveSheet(
+      {},
+      {
+        base: 145,
+        saturdayBase: 33,
+        offs: fridaySheet,
+        manualOffs: [{ name: "Pablo Cruz", kind: "call-off" }],
+      },
+      "2026-09-11",
+      "fri",
+    );
+    const rolled = applyLiveSheet(
+      friday,
+      { base: 200, saturdayBase: 33, offs: [], ootNames: ["New OOT"] },
+      "2026-09-12",
+      "sat",
+    );
+    const refreshed = refreshPastDayManuals(
+      rolled,
+      { base: 200, saturdayBase: 33, offs: [] },
+      {
+        "2026-09-11": [
+          { name: "Pablo Cruz", kind: "call-off" },
+          { name: "Devell Nutall", kind: "late-early" },
+        ],
+      },
+      "2026-09-12",
+      "sat2",
+    );
+    expect(refreshed["2026-09-11"]?.available).toBe(143);
+    expect(refreshed["2026-09-11"]?.callOffs?.map((row) => row.name)).toEqual([
+      "Devell Nutall",
+      "Pablo Cruz",
+      "Sheet Friday",
+    ]);
+    expect(refreshed["2026-09-11"]?.ootNames).toEqual([]);
+    expect(refreshed["2026-09-12"]?.ootNames).toEqual(["New OOT"]);
+  });
+});
+
 describe("mergeDayStores", () => {
   it("keeps the locked snapshot when the other side is live", () => {
     const locked: DayStore = {
@@ -324,6 +546,33 @@ describe("mergeDayStores", () => {
       },
     };
     expect(mergeDayStores(unlocked, locked)["2026-09-04"]?.available).toBe(141);
+  });
+
+  it("keeps a local callOffs snapshot when the remote winner predates the field", () => {
+    const local: DayStore = {
+      "2026-09-11": {
+        date: "2026-09-11",
+        base: 145,
+        offs: 2,
+        available: 143,
+        locked: true,
+        lockedAt: "t1",
+        callOffs: [{ name: "Pablo Cruz", kind: "call-off", source: "manual" }],
+      },
+    };
+    const remote: DayStore = {
+      "2026-09-11": {
+        date: "2026-09-11",
+        base: 145,
+        offs: 2,
+        available: 143,
+        locked: true,
+        lockedAt: "t0",
+      },
+    };
+    expect(mergeDayStores(local, remote)["2026-09-11"]?.callOffs).toEqual([
+      { name: "Pablo Cruz", kind: "call-off", source: "manual" },
+    ]);
   });
 });
 

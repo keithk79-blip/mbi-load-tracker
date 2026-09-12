@@ -11,7 +11,11 @@
 import { chicagoToday, isChicagoSunday } from "../lib/chicagoDate";
 import {
   applyLiveSheet,
+  applyManualsToStoredDay,
+  availabilityWithManuals,
+  callOffsOnDay,
   lockEndedDays,
+  refreshPastDayManuals,
   lookupDay,
   mergeDayStores,
   projectFutureDay,
@@ -35,7 +39,6 @@ import {
 import { fetchDriverSnapshot, readDriverCache } from "../lib/sheets";
 import {
   callOffNameKey,
-  fullDayOffEntries,
   type CallOffEntry,
   type CallOffKind,
   type CallOffRow,
@@ -192,17 +195,18 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       setOotNames(snap.ootNames);
       setFetchedAt(snap.fetchedAt);
       const manuals = readDriverDaysPayload().manualOffs;
-      const next = applySheetWithManuals(
-        readDayStore(),
-        {
-          base: snap.baseAvailable,
-          saturdayBase: snap.saturdayAvailable,
-          offs: snap.offs,
-          ootNames: snap.ootNames,
-        },
+      const live = {
+        base: snap.baseAvailable,
+        saturdayBase: snap.saturdayAvailable,
+        offs: snap.offs,
+        ootNames: snap.ootNames,
+      };
+      const next = refreshPastDayManuals(
+        applySheetWithManuals(readDayStore(), live, today, now, manuals),
+        live,
+        manuals,
         today,
         now,
-        manuals,
       );
       persistDays(next);
       setStatus("live");
@@ -215,17 +219,18 @@ export function DriversProvider({ children }: { children: ReactNode }) {
         setOffs(cachedNow.offs);
         setOotNames(cachedNow.ootNames);
         setFetchedAt(cachedNow.fetchedAt);
-        const next = applySheetWithManuals(
-          readDayStore(),
-          {
-            base: cachedNow.baseAvailable,
-            saturdayBase: cachedNow.saturdayAvailable,
-            offs: cachedNow.offs,
-            ootNames: cachedNow.ootNames,
-          },
+        const live = {
+          base: cachedNow.baseAvailable,
+          saturdayBase: cachedNow.saturdayAvailable,
+          offs: cachedNow.offs,
+          ootNames: cachedNow.ootNames,
+        };
+        const next = refreshPastDayManuals(
+          applySheetWithManuals(readDayStore(), live, today, now, manuals),
+          live,
+          manuals,
           today,
           now,
-          manuals,
         );
         persistDays(next);
         setStatus("cached");
@@ -278,45 +283,62 @@ export function DriversProvider({ children }: { children: ReactNode }) {
   const availabilityOn = useCallback(
     (date: string): LockedDay | null => {
       const today = chicagoToday();
-      if (date <= today) return lookupDay(days, date);
-      if (baseAvailable === null) return null;
-      return projectFutureDay(
-        {
-          base: baseAvailable,
-          saturdayBase: saturdayAvailable ?? 0,
-          offs,
-          manualOffs: manualOffs[date],
-        },
-        date,
-        today,
-      );
+      if (date > today) {
+        if (baseAvailable === null) return null;
+        return projectFutureDay(
+          {
+            base: baseAvailable,
+            saturdayBase: saturdayAvailable ?? 0,
+            offs,
+            manualOffs: manualOffs[date],
+          },
+          date,
+          today,
+        );
+      }
+      const stored = lookupDay(days, date);
+      if (!stored) return null;
+      if (date === today) return stored;
+      return availabilityWithManuals(stored, {
+        base: stored.base,
+        saturdayBase: stored.base,
+        offs,
+        manualOffs: manualOffs[date],
+      });
     },
     [days, baseAvailable, saturdayAvailable, offs, manualOffs],
   );
 
   const callOffsOn = useCallback(
     (date: string): CallOffEntry[] =>
-      fullDayOffEntries(offs, manualOffs[date], date),
-    [offs, manualOffs],
+      callOffsOnDay(
+        date,
+        chicagoToday(),
+        offs,
+        manualOffs[date],
+        date < chicagoToday() ? days[date] : undefined,
+      ),
+    [days, offs, manualOffs],
   );
 
-  const recomputeTodayFrom = useCallback(
-    (nextManuals: ManualOffsStore) => {
+  const recomputeDayFrom = useCallback(
+    (date: string, nextManuals: ManualOffsStore) => {
+      if (baseAvailable === null && date === chicagoToday()) return;
       const today = chicagoToday();
-      if (baseAvailable === null) return;
-      const next = applySheetWithManuals(
-        readDayStore(),
-        {
-          base: baseAvailable,
-          saturdayBase: saturdayAvailable ?? 0,
-          offs,
-          ootNames,
-        },
-        today,
-        new Date().toISOString(),
-        nextManuals,
-      );
-      persistDays(next);
+      const now = new Date().toISOString();
+      const live = {
+        base: baseAvailable ?? 0,
+        saturdayBase: saturdayAvailable ?? 0,
+        offs,
+        ootNames,
+        manualOffs: nextManuals[date],
+      };
+      if (date === today) {
+        if (baseAvailable === null) return;
+        persistDays(applySheetWithManuals(readDayStore(), live, today, now, nextManuals));
+        return;
+      }
+      persistDays(applyManualsToStoredDay(readDayStore(), live, date, today, now));
     },
     [
       applySheetWithManuals,
@@ -330,11 +352,11 @@ export function DriversProvider({ children }: { children: ReactNode }) {
 
   const addManualOff = useCallback(
     async (date: string, name: string, kind: CallOffKind): Promise<boolean> => {
-      if (isChicagoSunday(date) || date < chicagoToday()) return false;
+      if (isChicagoSunday(date)) return false;
       const occupied = new Set(
-        fullDayOffEntries(offs, undefined, date).map((row) =>
-          callOffNameKey(row.name),
-        ),
+        callOffsOn(date)
+          .filter((row) => row.source === "sheet")
+          .map((row) => callOffNameKey(row.name)),
       );
       const { store: next, added } = insertManualOff(
         manualOffs,
@@ -350,7 +372,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       // re-add as "another device deleted a previously pulled name".
       const nextSeen = seenRef.current.filter((key) => key !== addKey);
       persistManuals(next, nextDeleted, nextSeen);
-      recomputeTodayFrom(next);
+      recomputeDayFrom(date, next);
       if (configured && session) {
         const written = await upsertRemoteManualOff(date, added);
         if (!written.ok && written.error) {
@@ -360,11 +382,11 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       return true;
     },
     [
+      callOffsOn,
       configured,
       manualOffs,
-      offs,
       persistManuals,
-      recomputeTodayFrom,
+      recomputeDayFrom,
       session,
     ],
   );
@@ -378,7 +400,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
         ? deletedRef.current
         : [...deletedRef.current, tombstone];
       persistManuals(next, nextDeleted);
-      recomputeTodayFrom(next);
+      recomputeDayFrom(date, next);
       if (configured && session) {
         const written = await deleteRemoteManualOff(date, removed.name);
         if (!written.ok && written.error) {
@@ -387,7 +409,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       }
       return true;
     },
-    [configured, manualOffs, persistManuals, recomputeTodayFrom, session],
+    [configured, manualOffs, persistManuals, recomputeDayFrom, session],
   );
 
   const value = useMemo<DriversContextValue>(

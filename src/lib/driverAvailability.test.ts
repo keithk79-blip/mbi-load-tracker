@@ -6,6 +6,7 @@ import {
   CALL_OFF_KIND_TONES,
   callOffAppliesToDay,
   callOffKindFromReason,
+  cleanCallOffEntries,
   fullDayOffCount,
   fullDayOffEntries,
   isCallOffKind,
@@ -219,6 +220,24 @@ describe("callOffKindFromReason", () => {
     expect(callOffKindFromReason("FMLA Day")).toBe("call-off");
     expect(callOffKindFromReason("Jury Duty")).toBe("call-off");
     expect(reasonForKind("late-early")).toBe("Late/Early");
+  });
+});
+
+describe("cleanCallOffEntries", () => {
+  it("keeps valid sheet/manual pills and drops junk", () => {
+    expect(
+      cleanCallOffEntries([
+        { name: "Pablo Cruz", kind: "call-off", source: "manual" },
+        { name: "Skip", kind: "call-off", source: "invented" },
+        { name: "Sheet Friday", kind: "p-day", source: "sheet" },
+        { name: "pablo cruz", kind: "ncns", source: "sheet" },
+      ]),
+    ).toEqual([
+      { name: "Pablo Cruz", kind: "call-off", source: "manual" },
+      { name: "Sheet Friday", kind: "p-day", source: "sheet" },
+    ]);
+    expect(cleanCallOffEntries(undefined)).toBeUndefined();
+    expect(cleanCallOffEntries([])).toEqual([]);
   });
 });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addManualOff,
+  callOffsForDate,
   cleanManualList,
   cleanManualOffs,
   deletedManualKey,
@@ -83,6 +84,52 @@ describe("addManualOff / removeManualOff", () => {
     const next = removeManualOff(store, "2026-09-08", "mike davy");
     expect(next.removed).toEqual({ name: "Mike Davy", kind: "okd-off" });
     expect(next.store["2026-09-08"]).toEqual([{ name: "Pablo Cruz", kind: "ncns" }]);
+  });
+});
+
+describe("callOffsForDate", () => {
+  const sheet = [
+    {
+      name: "Sheet Friday",
+      start: "2026-09-11",
+      end: null,
+      reason: "Call Off",
+    },
+    {
+      name: "Sheet Saturday",
+      start: "2026-09-12",
+      end: null,
+      reason: "P-Day",
+    },
+  ];
+  const store: ManualOffsStore = {
+    "2026-09-11": [
+      { name: "Derek Winters", kind: "late-early" },
+      { name: "Johnnie Owens.", kind: "p-day" },
+      { name: "Pablo Cruz", kind: "call-off" },
+    ],
+    "2026-09-12": [{ name: "Today Only", kind: "ncns" }],
+  };
+
+  it("loads only that calendar date’s manuals and sheet rows", () => {
+    expect(callOffsForDate(sheet, store, "2026-09-11").map((row) => row.name)).toEqual([
+      "Derek Winters",
+      "Johnnie Owens.",
+      "Pablo Cruz",
+      "Sheet Friday",
+    ]);
+    expect(
+      callOffsForDate(sheet, store, "2026-09-11").find((row) => row.name === "Derek Winters"),
+    ).toMatchObject({ kind: "late-early", source: "manual" });
+  });
+
+  it("swaps the visible offs when the selected date changes", () => {
+    const friday = callOffsForDate(sheet, store, "2026-09-11").map((row) => row.name);
+    const saturday = callOffsForDate(sheet, store, "2026-09-12").map((row) => row.name);
+    expect(friday).toContain("Derek Winters");
+    expect(friday).not.toContain("Today Only");
+    expect(saturday).toEqual(["Sheet Saturday", "Today Only"]);
+    expect(saturday).not.toContain("Pablo Cruz");
   });
 });
 

@@ -80,4 +80,41 @@ describe("driver-days payload", () => {
       { name: "Glen Barker", kind: "late-early" },
     ]);
   });
+
+  it("round-trips snapshotted callOffs on a locked day across a manuals rewrite", () => {
+    persistDriverDays({
+      days: {
+        "2026-09-11": {
+          date: "2026-09-11",
+          base: 145,
+          offs: 2,
+          available: 143,
+          locked: true,
+          lockedAt: "fri",
+          callOffs: [
+            { name: "Pablo Cruz", kind: "call-off", source: "manual" },
+            { name: "Sheet Friday", kind: "call-off", source: "sheet" },
+          ],
+        },
+      },
+      manualOffs: {
+        "2026-09-11": [{ name: "Pablo Cruz", kind: "call-off" }],
+        "2026-09-12": [{ name: "Today Only", kind: "ncns" }],
+      },
+      manualOffsDeleted: [],
+      manualOffsSeen: [],
+    });
+    writeDayStore(readDriverDaysPayload().days);
+    const payload = readDriverDaysPayload();
+    expect(payload.days["2026-09-11"]?.callOffs).toEqual([
+      { name: "Pablo Cruz", kind: "call-off", source: "manual" },
+      { name: "Sheet Friday", kind: "call-off", source: "sheet" },
+    ]);
+    expect(payload.manualOffs["2026-09-11"]).toEqual([
+      { name: "Pablo Cruz", kind: "call-off" },
+    ]);
+    expect(payload.manualOffs["2026-09-12"]).toEqual([
+      { name: "Today Only", kind: "ncns" },
+    ]);
+  });
 });

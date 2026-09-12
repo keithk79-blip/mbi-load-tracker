@@ -1,5 +1,6 @@
 ﻿import type { DayStore, LockedDay } from "./driverDays";
 import { isDriverTallyDay } from "./driverDays";
+import { cleanCallOffEntries } from "./driverAvailability";
 import {
   cleanDeletedKeys,
   cleanManualOffs,
@@ -37,8 +38,11 @@ function clean(store: DayStore): DayStore {
     if (!isDriverTallyDay(date)) continue;
     if (!day || typeof day.available !== "number") continue;
     const ootNames = cleanOot(day.ootNames);
+    const callOffs = cleanCallOffEntries(day.callOffs);
     out[date] = ootNames ? { ...day, ootNames } : { ...day };
     if (!ootNames) delete out[date].ootNames;
+    if (callOffs) out[date].callOffs = callOffs;
+    else delete out[date].callOffs;
   }
   return out;
 }

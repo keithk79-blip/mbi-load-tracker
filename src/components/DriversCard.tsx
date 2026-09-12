@@ -55,7 +55,8 @@ export function DriversCard({
   const dayAvail = availabilityOn(viewed);
   const avg = ytdAverage(today);
   const callOffs = callOffsOn(viewed);
-  const canEditCallOffs = !sunday && (viewingToday || viewingFuture);
+  // Persist, don't freeze: past days keep their pills and stay editable.
+  const canEditCallOffs = !sunday;
 
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
@@ -100,11 +101,12 @@ export function DriversCard({
 
   const showCallOffs =
     !sunday &&
-    (viewingToday || viewingFuture) &&
-    (status === "live" ||
-      status === "cached" ||
-      callOffs.length > 0 ||
-      canEditCallOffs);
+    (viewingToday || viewingFuture
+      ? status === "live" ||
+        status === "cached" ||
+        callOffs.length > 0 ||
+        canEditCallOffs
+      : Boolean(dayAvail) || callOffs.length > 0 || canEditCallOffs);
 
   const whenLabel = viewingToday
     ? saturday
@@ -183,7 +185,11 @@ export function DriversCard({
           <div className="calloff-head">
             <div>
               <p className="oot-label">Call offs</p>
-              <p className="oot-yards">Full-day Off.</p>
+              <p className="oot-yards">
+                {viewingToday || viewingFuture
+                  ? "Full-day Off."
+                  : "Saved for this Chicago day"}
+              </p>
             </div>
             {canEditCallOffs ? (
               <button

@@ -7,8 +7,11 @@
 import {
   availableDrivers,
   fullDayOffCount,
+  fullDayOffEntries,
   manualsToRows,
+  reasonForKind,
   withManualOffs,
+  type CallOffEntry,
   type CallOffRow,
   type DayAvailability,
   type ManualCallOff,
@@ -18,6 +21,12 @@ export type LockedDay = DayAvailability & {
   locked: boolean;
   lockedAt: string;
   source?: "weekday" | "saturday";
+  /**
+   * Call-off pills frozen with this Chicago day (sheet + manuals at last
+   * today-snapshot, then manuals re-merged on later edits). Missing on days
+   * snapshotted before this field existed.
+   */
+  callOffs?: CallOffEntry[];
 };
 
 export type DayStore = Record<string, LockedDay>;
@@ -69,8 +78,140 @@ export function computeAvailability(live: LiveSheet, day: string): DayAvailabili
 }
 
 /**
+ * Recompute one stored day's offs / available / callOffs from its locked
+ * base + current manuals. Today is rewritten via `applyLiveSheet`. Future
+ * dates are not persisted. Missing past days are not invented (no backfill).
+ * Past days keep ootNames and the original lock timestamps.
+ */
+export function applyManualsToStoredDay(
+  store: DayStore,
+  live: LiveSheet,
+  date: string,
+  today: string,
+  nowIso: string,
+): DayStore {
+  if (!isDriverTallyDay(date)) return store;
+  if (date === today) {
+    return applyLiveSheet(store, live, today, nowIso);
+  }
+  if (date > today) return store;
+  const existing = store[date];
+  if (!existing) return store;
+  const sheetRows = sheetRowsForLockedDay(existing, live.offs);
+  const computed = computeAvailability(
+    {
+      base: existing.base,
+      saturdayBase: existing.base,
+      offs: sheetRows,
+      manualOffs: live.manualOffs,
+    },
+    date,
+  );
+  return {
+    ...store,
+    [date]: {
+      ...existing,
+      offs: computed.offs,
+      available: computed.available,
+      callOffs: fullDayOffEntries(sheetRows, live.manualOffs, date),
+    },
+  };
+}
+
+/**
+ * Frozen sheet pills (if snapshotted) plus current manuals.
+ * Days without a callOffs snapshot keep their locked available count so a
+ * later live sheet cannot rewrite history; the pill list still refreshes.
+ */
+export function availabilityWithManuals(
+  day: LockedDay,
+  live: LiveSheet,
+): LockedDay {
+  const date = day.date;
+  const sheetRows = sheetRowsForLockedDay(day, live.offs);
+  const callOffs = fullDayOffEntries(sheetRows, live.manualOffs, date);
+  if (!day.callOffs) {
+    return { ...day, callOffs };
+  }
+  const computed = computeAvailability(
+    {
+      base: day.base,
+      saturdayBase: day.base,
+      offs: sheetRows,
+      manualOffs: live.manualOffs,
+    },
+    date,
+  );
+  return {
+    ...day,
+    offs: computed.offs,
+    available: computed.available,
+    callOffs,
+  };
+}
+
+/** After a manuals pull, refresh past snapshots that already have callOffs. */
+export function refreshPastDayManuals(
+  store: DayStore,
+  live: Omit<LiveSheet, "manualOffs">,
+  manualsByDate: Record<string, ManualCallOff[] | undefined>,
+  today: string,
+  nowIso: string,
+): DayStore {
+  let next = store;
+  for (const date of Object.keys(store)) {
+    if (date >= today || !store[date]?.callOffs) continue;
+    next = applyManualsToStoredDay(
+      next,
+      { ...live, manualOffs: manualsByDate[date] },
+      date,
+      today,
+      nowIso,
+    );
+  }
+  return next;
+}
+
+/** Date-scoped pills: past days prefer a locked snapshot's sheet names. */
+export function callOffsOnDay(
+  date: string,
+  today: string,
+  sheetOffs: CallOffRow[],
+  manuals: ManualCallOff[] | undefined,
+  locked?: LockedDay | null,
+): CallOffEntry[] {
+  if (date < today && locked?.callOffs) {
+    return (
+      availabilityWithManuals(locked, {
+        base: locked.base,
+        saturdayBase: locked.base,
+        offs: sheetOffs,
+        manualOffs: manuals,
+      }).callOffs ?? []
+    );
+  }
+  return fullDayOffEntries(sheetOffs, manuals, date);
+}
+
+function sheetRowsForLockedDay(
+  day: LockedDay,
+  liveOffs: CallOffRow[],
+): CallOffRow[] {
+  if (!day.callOffs) return liveOffs;
+  return day.callOffs
+    .filter((entry) => entry.source === "sheet")
+    .map((entry) => ({
+      name: entry.name,
+      start: day.date,
+      end: null,
+      reason: reasonForKind(entry.kind),
+    }));
+}
+
+/**
  * Lock any stored day that is before Chicago `today`. Does not invent
- * missing dates and never changes a locked available count or ootNames.
+ * missing dates and never changes a locked available count, ootNames,
+ * or snapshotted callOffs.
  */
 export function lockEndedDays(
   store: DayStore,
@@ -97,8 +238,8 @@ export function lockEndedDays(
 /**
  * Apply a live sheet pull.
  * Today is snapshotted (unlocked) and may update until Chicago midnight,
- * including today's live ootNames.
- * Past days are never given ootNames from today's sheet (no backfill).
+ * including today's live ootNames and callOffs.
+ * Past days are never given ootNames or callOffs from today's sheet (no backfill).
  * Missing past days are left empty.
  */
 export function applyLiveSheet(
@@ -112,9 +253,11 @@ export function applyLiveSheet(
   if (isDriverTallyDay(today)) {
     const computed = computeAvailability(live, today);
     const ootNames = Array.isArray(live.ootNames) ? [...live.ootNames] : [];
+    const callOffs = fullDayOffEntries(live.offs, live.manualOffs, today);
     next[today] = {
       ...computed,
       ootNames,
+      callOffs,
       locked: false,
       lockedAt: nowIso,
       source: isChicagoSaturday(today) ? "saturday" : "weekday",
@@ -142,6 +285,10 @@ export function mergeDayStores(local: DayStore, remote: DayStore): DayStore {
         winner = a.lockedAt <= b.lockedAt ? a : b;
       } else {
         winner = a.lockedAt >= b.lockedAt ? a : b;
+      }
+      // Remote rows may predate callOffs; keep a local snapshot if the winner lacks one.
+      if (!winner.callOffs && (a.callOffs || b.callOffs)) {
+        winner = { ...winner, callOffs: a.callOffs ?? b.callOffs };
       }
       out[date] = winner;
     } else {
