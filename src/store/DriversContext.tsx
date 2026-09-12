@@ -84,6 +84,9 @@ export function DriversProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [baseAvailable, setBase] = useState<number | null>(cached?.baseAvailable ?? null);
   const [saturdayAvailable, setSaturday] = useState<number | null>(cached?.saturdayAvailable ?? null);
+  const [saturdayUsesWeekdayBase, setSaturdayUsesWeekdayBase] = useState(
+    cached?.saturdayUsesWeekdayBase === true,
+  );
   const [offs, setOffs] = useState<CallOffRow[]>(cached?.offs ?? []);
   const [fetchedAt, setFetchedAt] = useState<string | null>(cached?.fetchedAt ?? null);
   const [ootNames, setOotNames] = useState<string[]>(cached?.ootNames ?? []);
@@ -129,6 +132,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       live: {
         base: number;
         saturdayBase: number;
+        saturdayUsesWeekdayBase?: boolean;
         offs: CallOffRow[];
         ootNames?: string[];
       },
@@ -191,6 +195,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       const snap = await fetchDriverSnapshot();
       setBase(snap.baseAvailable);
       setSaturday(snap.saturdayAvailable);
+      setSaturdayUsesWeekdayBase(snap.saturdayUsesWeekdayBase);
       setOffs(snap.offs);
       setOotNames(snap.ootNames);
       setFetchedAt(snap.fetchedAt);
@@ -198,6 +203,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       const live = {
         base: snap.baseAvailable,
         saturdayBase: snap.saturdayAvailable,
+        saturdayUsesWeekdayBase: snap.saturdayUsesWeekdayBase,
         offs: snap.offs,
         ootNames: snap.ootNames,
       };
@@ -216,12 +222,14 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       if (cachedNow) {
         setBase(cachedNow.baseAvailable);
         setSaturday(cachedNow.saturdayAvailable);
+        setSaturdayUsesWeekdayBase(cachedNow.saturdayUsesWeekdayBase);
         setOffs(cachedNow.offs);
         setOotNames(cachedNow.ootNames);
         setFetchedAt(cachedNow.fetchedAt);
         const live = {
           base: cachedNow.baseAvailable,
           saturdayBase: cachedNow.saturdayAvailable,
+          saturdayUsesWeekdayBase: cachedNow.saturdayUsesWeekdayBase,
           offs: cachedNow.offs,
           ootNames: cachedNow.ootNames,
         };
@@ -289,6 +297,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
           {
             base: baseAvailable,
             saturdayBase: saturdayAvailable ?? 0,
+            saturdayUsesWeekdayBase,
             offs,
             manualOffs: manualOffs[date],
           },
@@ -302,11 +311,12 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       return availabilityWithManuals(stored, {
         base: stored.base,
         saturdayBase: stored.base,
+        saturdayUsesWeekdayBase: stored.source === "saturday-weekday",
         offs,
         manualOffs: manualOffs[date],
       });
     },
-    [days, baseAvailable, saturdayAvailable, offs, manualOffs],
+    [days, baseAvailable, saturdayAvailable, saturdayUsesWeekdayBase, offs, manualOffs],
   );
 
   const callOffsOn = useCallback(
@@ -329,6 +339,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       const live = {
         base: baseAvailable ?? 0,
         saturdayBase: saturdayAvailable ?? 0,
+        saturdayUsesWeekdayBase,
         offs,
         ootNames,
         manualOffs: nextManuals[date],
@@ -347,6 +358,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       ootNames,
       persistDays,
       saturdayAvailable,
+      saturdayUsesWeekdayBase,
     ],
   );
 

@@ -37,6 +37,46 @@
       "destination": "https://docs.google.com/spreadsheets/d/1FnKGIuWfKCPvcaSwchnIpQjdezHKWC5O23jECPcJzyM/gviz/tq?tqx=out:csv&gid=0"
     },
     {
+      "source": "/sheets/sat-body/upper/burnham",
+      "destination": "https://docs.google.com/spreadsheets/d/1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw/gviz/tq?tqx=out:csv&sheet=Sat-Burnham&range=A14:Z35"
+    },
+    {
+      "source": "/sheets/sat-body/upper/rockford",
+      "destination": "https://docs.google.com/spreadsheets/d/1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw/gviz/tq?tqx=out:csv&sheet=Sat-Rockford&range=A14:Z35"
+    },
+    {
+      "source": "/sheets/sat-body/upper/pontiac",
+      "destination": "https://docs.google.com/spreadsheets/d/1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw/gviz/tq?tqx=out:csv&sheet=Sat-Pontiac&range=A14:Z35"
+    },
+    {
+      "source": "/sheets/sat-body/upper/arc",
+      "destination": "https://docs.google.com/spreadsheets/d/1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw/gviz/tq?tqx=out:csv&sheet=Sat-Arc&range=A14:Z35"
+    },
+    {
+      "source": "/sheets/sat-body/upper/zion",
+      "destination": "https://docs.google.com/spreadsheets/d/1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw/gviz/tq?tqx=out:csv&sheet=Sat-Zion&range=A14:Z35"
+    },
+    {
+      "source": "/sheets/sat-body/lower/burnham",
+      "destination": "https://docs.google.com/spreadsheets/d/1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw/gviz/tq?tqx=out:csv&sheet=Sat-Burnham&range=A28:Z80"
+    },
+    {
+      "source": "/sheets/sat-body/lower/rockford",
+      "destination": "https://docs.google.com/spreadsheets/d/1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw/gviz/tq?tqx=out:csv&sheet=Sat-Rockford&range=A28:Z80"
+    },
+    {
+      "source": "/sheets/sat-body/lower/pontiac",
+      "destination": "https://docs.google.com/spreadsheets/d/1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw/gviz/tq?tqx=out:csv&sheet=Sat-Pontiac&range=A28:Z80"
+    },
+    {
+      "source": "/sheets/sat-body/lower/arc",
+      "destination": "https://docs.google.com/spreadsheets/d/1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw/gviz/tq?tqx=out:csv&sheet=Sat-Arc&range=A28:Z80"
+    },
+    {
+      "source": "/sheets/sat-body/lower/zion",
+      "destination": "https://docs.google.com/spreadsheets/d/1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw/gviz/tq?tqx=out:csv&sheet=Sat-Zion&range=A28:Z80"
+    },
+    {
       "source": "/sheets/sat/burnham",
       "destination": "https://docs.google.com/spreadsheets/d/1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw/gviz/tq?tqx=out:csv&sheet=Sat-Burnham&range=I4"
     },
