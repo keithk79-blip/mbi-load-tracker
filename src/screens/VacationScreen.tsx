@@ -276,6 +276,19 @@ export function VacationScreen() {
   const [newYear, setNewYear] = useState("");
   const [yearError, setYearError] = useState<string | null>(null);
   const tableRef = useRef<HTMLTableSectionElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  function scrollWeekIntoView(behavior: ScrollBehavior = "auto") {
+    const node = wrapRef.current?.querySelector("[data-current-week='true']");
+    const wrap = wrapRef.current;
+    if (!node || !wrap) return;
+    const top =
+      node.getBoundingClientRect().top -
+      wrap.getBoundingClientRect().top +
+      wrap.scrollTop -
+      48;
+    wrap.scrollTo({ top: Math.max(0, top), behavior });
+  }
 
   const knownYears = useMemo(
     () => yearsInStore(store, [currentYear, 2025, 2026, year]),
@@ -313,17 +326,14 @@ export function VacationScreen() {
   }, [store, year, today]);
 
   useEffect(() => {
-    if (year !== currentYear) return;
-    const node = tableRef.current?.querySelector("[data-current-week='true']");
-    node?.scrollIntoView({ block: "center" });
+    if (year !== currentYear || !yearExists) return;
+    const id = requestAnimationFrame(() => scrollWeekIntoView("auto"));
+    return () => cancelAnimationFrame(id);
   }, [year, currentYear, yearExists]);
 
   function jumpThisWeek() {
     setYear(currentYear);
-    requestAnimationFrame(() => {
-      const node = document.querySelector("[data-current-week='true']");
-      node?.scrollIntoView({ block: "center", behavior: "smooth" });
-    });
+    requestAnimationFrame(() => scrollWeekIntoView("smooth"));
   }
 
   async function onCreateYear() {
@@ -424,7 +434,7 @@ export function VacationScreen() {
           </button>
         </div>
       ) : (
-        <div className="vac-table-wrap">
+        <div className="vac-table-wrap" ref={wrapRef}>
           <table className="vac-table">
             <thead>
               <tr>

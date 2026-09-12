@@ -2703,6 +2703,11 @@ body.app-ready .splash {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: #12141a;
+  max-height: min(70dvh, 820px);
+}
+
+.app-shell.is-desktop .vac-table-wrap {
+  max-height: calc(100dvh - 260px);
 }
 
 .vac-table {
