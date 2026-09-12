@@ -76,10 +76,15 @@ export const SATURDAY_CELLS = [
 ] as const;
 
 /**
- * gviz drops Sat-tab A1 titles on larger ranges (A1:I4+). A1:I2 keeps the
- * banner so holiday copy like “full mandatory work day” is visible.
+ * Footer holiday notes sit a few rows below each Sat yard list. gviz drops
+ * those isolated cells when a range starts inside the driver table (so A1:I2
+ * and a full-tab export both miss “full mandatory work day”). Two bands that
+ * start after typical list lengths catch the existing Labor Day note.
  */
-export const SATURDAY_BANNER_RANGE = "A1:I2";
+export const SATURDAY_BODY_SCANS = [
+  { key: "upper", range: "A14:Z35" },
+  { key: "lower", range: "A28:Z80" },
+] as const;
 
 const SATURDAY_FULL_MANDATORY_RE = /full mandatory work day/i;
 
@@ -158,11 +163,15 @@ export function saturdayFetchUrl(slug: string, tab: string, range: string): stri
   return googleCsvUrl(rosterId(), `sheet=${encodeURIComponent(tab)}&range=${range}`);
 }
 
-export function saturdayBannerFetchUrl(slug: string, tab: string): string {
-  if (useSheetProxy()) return `/sheets/sat-banner/${slug}`;
+export function saturdayBodyFetchUrl(
+  slug: string,
+  tab: string,
+  scan: (typeof SATURDAY_BODY_SCANS)[number],
+): string {
+  if (useSheetProxy()) return `/sheets/sat-body/${scan.key}/${slug}`;
   return googleCsvUrl(
     rosterId(),
-    `sheet=${encodeURIComponent(tab)}&range=${encodeURIComponent(SATURDAY_BANNER_RANGE)}`,
+    `sheet=${encodeURIComponent(tab)}&range=${encodeURIComponent(scan.range)}`,
   );
 }
 
@@ -227,27 +236,29 @@ export async function fetchDriverSnapshot(): Promise<DriverSnapshot> {
       csv,
     })),
   );
-  const satBannerFetches = SATURDAY_CELLS.map((cell) =>
-    fetchText(saturdayBannerFetchUrl(cell.slug, cell.tab)),
+  const satBodyFetches = SATURDAY_CELLS.flatMap((cell) =>
+    SATURDAY_BODY_SCANS.map((scan) =>
+      fetchText(saturdayBodyFetchUrl(cell.slug, cell.tab, scan)),
+    ),
   );
   const ootFetches = OOT_YARDS.map((yard) =>
     fetchText(ootYardFetchUrl(yard.slug, yard.tab, yard.range)).then((csv) =>
       parseOotNames(csv, yard.pairs),
     ),
   );
-  const [rosterCsv, offsCsv, ootGroups, satCells, satBanners] = await Promise.all([
+  const [rosterCsv, offsCsv, ootGroups, satCells, satBodies] = await Promise.all([
     fetchText(rosterFetchUrl()),
     fetchText(calloffFetchUrl()),
     Promise.all(ootFetches),
     Promise.all(satFetches),
-    Promise.all(satBannerFetches),
+    Promise.all(satBodyFetches),
   ]);
   const saturdayAvailable = satCells.reduce((sum, cell) => sum + cell.count, 0);
   const snap: DriverSnapshot = {
     baseAvailable: extractHeadcount(rosterCsv, "Burnham!L13"),
     saturdayAvailable,
     saturdayUsesWeekdayBase: saturdaySheetsUseWeekdayBase([
-      ...satBanners,
+      ...satBodies,
       ...satCells.map((cell) => cell.csv),
     ]),
     offs: parseCallOffCsv(offsCsv),

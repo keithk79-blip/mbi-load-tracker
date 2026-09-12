@@ -22,8 +22,11 @@ const SAT_CELLS = [
   { slug: "zion", tab: "Sat-Zion", range: "H3" },
 ] as const;
 
-/** Keep Sat-tab A1 titles (gviz drops them on A1:I4+). */
-const SAT_BANNER_RANGE = "A1:I2";
+/** Footer holiday notes — gviz drops them if the range starts in the driver list. */
+const SAT_BODY_SCANS = [
+  { key: "upper", range: "A14:Z35" },
+  { key: "lower", range: "A28:Z80" },
+] as const;
 
 const OOT_YARDS = [
   { slug: "burnham", tab: "Burnham", range: "A:I" },
@@ -57,16 +60,21 @@ const sheetProxy: Record<string, { target: string; changeOrigin: boolean; rewrit
   },
 };
 
+for (const scan of SAT_BODY_SCANS) {
+  for (const cell of SAT_CELLS) {
+    sheetProxy[`/sheets/sat-body/${scan.key}/${cell.slug}`] = {
+      target: "https://docs.google.com",
+      changeOrigin: true,
+      rewrite: () =>
+        gviz(
+          ROSTER_ID,
+          `sheet=${encodeURIComponent(cell.tab)}&range=${encodeURIComponent(scan.range)}`,
+        ),
+    };
+  }
+}
+
 for (const cell of SAT_CELLS) {
-  sheetProxy[`/sheets/sat-banner/${cell.slug}`] = {
-    target: "https://docs.google.com",
-    changeOrigin: true,
-    rewrite: () =>
-      gviz(
-        ROSTER_ID,
-        `sheet=${encodeURIComponent(cell.tab)}&range=${encodeURIComponent(SAT_BANNER_RANGE)}`,
-      ),
-  };
   sheetProxy[`/sheets/sat/${cell.slug}`] = {
     target: "https://docs.google.com",
     changeOrigin: true,

@@ -15,7 +15,7 @@ describe("saturdaySheetsUseWeekdayBase", () => {
     expect(
       saturdaySheetsUseWeekdayBase([
         "Mandatory Saturday Worklist - Burnham",
-        "Labor Day Holiday extended hours — full mandatory work day",
+        "Due to the Labor day Holiday, Saturday 9/12/26 will be a full mandatory work day. Transfers and Landfills will have extended hours. ",
       ]),
     ).toBe(true);
     expect(saturdaySheetsUseWeekdayBase(["FULL MANDATORY WORK DAY"])).toBe(true);
