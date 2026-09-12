@@ -1,5 +1,9 @@
 import type { Load } from "../types";
-import type { QueueOp } from "./queue";
+import {
+  isExplicitDeleteOp,
+  warnNonExplicitRemoteDelete,
+  type QueueOp,
+} from "./queue";
 import { sortLoads } from "./sortLoads";
 import {
   allLoads,
@@ -28,13 +32,16 @@ function pendingUpsertLoads(pending: QueueOp[], deleted: Set<string>): Load[] {
   return loads;
 }
 
+/** Explicit UI deletes only. Legacy / auto-prune queue ops do not count. */
 export function pendingDeleteIds(pending: QueueOp[]): Set<string> {
   const deleted = new Set<string>();
   for (const op of pending) {
-    if (op.kind === "delete") deleted.add(op.loadId);
+    if (isExplicitDeleteOp(op)) deleted.add(op.loadId);
   }
   return deleted;
 }
+
+export const explicitPendingDeleteIds = pendingDeleteIds;
 
 /** Pending deletes plus durable tombstones from cache/local (and extras). */
 export function deletedLoadIds(
@@ -68,9 +75,9 @@ export function collectDeviceLoads(
 }
 
 /**
- * Union of cache + STORAGE_KEY minus tombstones / pending deletes.
- * Not what Push all should enqueue — that re-upserts already-clouded rows
- * (resurrects other-device deletes; retriggers loads.updated_at = now()).
+ * Reconciled cache minus tombstones / pending deletes.
+ * Does not re-union STORAGE_KEY leftovers (those are Upload-local or ghosts).
+ * Push all is refresh-first and must not re-upsert the whole cache.
  */
 export function deviceLoadsForPush(
   cache: Persisted,
@@ -78,7 +85,12 @@ export function deviceLoadsForPush(
   pending: QueueOp[] = [],
 ): Load[] {
   const deleted = deletedLoadIds(pending, cache, local);
-  return collectDeviceLoads(cache, local, deleted).filter((load) => !load.seeded);
+  // Cache is the reconciled crew snapshot. Do not re-union STORAGE_KEY
+  // leftovers — that re-clouds stale local ghosts (and used to tombstone
+  // them as if the user had deleted them).
+  return collectDeviceLoads(cache, { version: 1, loadsByDate: {} }, deleted).filter(
+    (load) => !load.seeded,
+  );
 }
 
 /**
@@ -112,8 +124,8 @@ export function snapshotForDeviceBackup(
   local: Persisted,
   pending: QueueOp[] = [],
 ): Persisted | null {
-  const deleted = deletedLoadIds(pending, cache, local);
-  const union = collectDeviceLoads(cache, local, deleted).filter((load) => !load.seeded);
+  const deleted = deletedLoadIds(pending, cache);
+  const union = allLoads(cache).filter((load) => !load.seeded && !deleted.has(load.id));
   const existingReal = allLoads(local).filter(
     (load) => !load.seeded && !deleted.has(load.id),
   );
@@ -145,12 +157,11 @@ export type CloudMergeResult = {
   /** Pending / in-flight rows remote is missing or that are newer than remote. */
   toUpsert: Load[];
   /**
-   * Remote rows this device should delete: pending deletes and durable
-   * tombstones (including a previously deleted id resurrecting). Never
-   * "cloud extras this device does not have" — missing locally ≠ deleted.
+   * Remote rows this device may DELETE: **explicit UI pending deletes only**.
+   * Durable tombstones, subset last-good, and "missing locally" never qualify.
    */
   toDelete: Load[];
-  /** Device ids to tombstone: dropped local ghosts plus `toDelete`. */
+  /** Device ids to tombstone: local ghosts not on remote, plus explicit deletes. */
   toTombstone: string[];
 };
 
@@ -424,6 +435,15 @@ export function reconcilePersistedSnapshot(
     input.local,
     input.lastGood,
   );
+  // A complete incoming snapshot (cloud refresh) that includes an id wins
+  // over a stale durable tombstone. Old device-win prune wrote those
+  // tombstones; they must not hide live cloud rows. Explicit UI deletes
+  // are not in incoming (deleteLoad already removed them).
+  const explicitDeletes = explicitPendingDeleteIds(input.pending);
+  for (const load of allLoads(input.incoming)) {
+    if (load.seeded || explicitDeletes.has(load.id)) continue;
+    tombstones.delete(load.id);
+  }
   const opts: ProtectLoadOpts = {
     pending: input.pending,
     deleted: tombstones,
@@ -514,16 +534,15 @@ function collectInflightLoads(
  * - same-day remote extras are adopted (union). A thinner last-good must
  *   never DELETE cloud-only rows — missing locally ≠ deleted
  *
- * Tombstones / pending deletes always win (including a deleted id resurrecting).
+ * Remote DELETE is opt-in: only an explicit UI pending delete may `toDelete`.
+ * Durable tombstones still block Push-all / local-only resurrection; they
+ * must not hide or delete a row that is live on a complete remote snapshot.
  */
 export function mergeCloudLoads(input: CloudMergeInput): CloudMergeResult {
   const extras = input.extra ?? [];
-  const deleted = deletedLoadIds(
-    input.pending,
-    input.cache,
-    input.local,
-    ...extras,
-  );
+  const explicitDeletes = explicitPendingDeleteIds(input.pending);
+  const durableTombstones = deletedLoadIds([], input.cache, input.local, ...extras);
+  const deleted = new Set<string>([...explicitDeletes, ...durableTombstones]);
   const pendingUpserts = pendingUpsertLoads(input.pending, deleted);
   const lastSync = input.lastSuccessfulSyncAt ?? null;
   const refreshStartedAt = input.refreshStartedAt ?? null;
@@ -555,7 +574,11 @@ export function mergeCloudLoads(input: CloudMergeInput): CloudMergeResult {
     return { merged: sortLoads(restored), toUpsert, toDelete: [], toTombstone: [] };
   }
 
-  const remoteKept = input.remote.filter((load) => !deleted.has(load.id) && !load.seeded);
+  // Adopt live cloud rows unless this device has an explicit UI delete queued.
+  // Stale prune tombstones (Sep 11 MSW restore) must not filter them out.
+  const remoteKept = input.remote.filter(
+    (load) => !load.seeded && !explicitDeletes.has(load.id),
+  );
   const remoteById = new Map(remoteKept.map((load) => [load.id, load]));
   const authority = collectAuthorityLoads(input.cache, input.local, deleted);
   const inflight = collectInflightLoads(extras, deleted);
@@ -563,10 +586,9 @@ export function mergeCloudLoads(input: CloudMergeInput): CloudMergeResult {
   const mergedMap = new Map<string, Load>();
   putUnseeded(mergedMap, remoteKept);
 
-  // Intentional remote deletes only. The old device-win loop DELETEd every
-  // remote extra on a subset last-good (desktop 406 vs 435; then Sep 11
-  // 403-of-408 wiped API-restored MSW / Rockdale rows). Missing ≠ deleted.
-  const toDelete = input.remote.filter((load) => !load.seeded && deleted.has(load.id));
+  const toDelete = input.remote.filter(
+    (load) => !load.seeded && explicitDeletes.has(load.id),
+  );
   const dates = new Set<string>();
   for (const load of authority) dates.add(load.date);
   for (const load of remoteKept) dates.add(load.date);
@@ -605,24 +627,27 @@ export function mergeCloudLoads(input: CloudMergeInput): CloudMergeResult {
 
   const toDeleteIds = new Set(toDelete.map((load) => load.id));
   const pendingIds = new Set(pendingUpserts.map((load) => load.id));
-  for (const id of deleted) mergedMap.delete(id);
+  for (const id of explicitDeletes) mergedMap.delete(id);
   for (const id of toDeleteIds) {
     if (pendingIds.has(id)) continue;
     mergedMap.delete(id);
   }
 
   const merged = sortLoads([...mergedMap.values()]);
-  const mergedIds = new Set(merged.map((load) => load.id));
 
+  // deletedIds grow only from explicit UI deletes (and leftover durable
+  // tombstones that are still absent from remote). Sync must not write
+  // "local cache lacks this id" into deletedIds — that is how the Sep 11
+  // MSW rows became poison tombstones.
   const toTombstoneSet = new Set<string>(toDeleteIds);
-  for (const load of [...authority, ...inflight]) {
-    if (mergedIds.has(load.id)) continue;
-    if (isProtectedDeviceLoad(load, protectOpts)) continue;
-    toTombstoneSet.add(load.id);
+  for (const id of durableTombstones) {
+    if (remoteById.has(id) && !explicitDeletes.has(id)) continue;
+    toTombstoneSet.add(id);
   }
 
   const toUpsert = merged.filter((load) => {
-    if (deleted.has(load.id) || toDeleteIds.has(load.id)) return false;
+    if (explicitDeletes.has(load.id) || toDeleteIds.has(load.id)) return false;
+    if (durableTombstones.has(load.id) && !remoteById.has(load.id)) return false;
     const remote = remoteById.get(load.id);
     if (!remote) {
       return pendingIds.has(load.id) || isProtectedDeviceLoad(load, protectOpts);
@@ -636,4 +661,20 @@ export function mergeCloudLoads(input: CloudMergeInput): CloudMergeResult {
     toDelete,
     toTombstone: [...toTombstoneSet],
   };
+}
+
+/**
+ * Refresh / Push-all must never enqueue Supabase DELETEs. Candidates that
+ * are not already an explicit UI pending delete are logged and dropped.
+ */
+export function enqueueRemoteDeletesFromRefresh(
+  candidates: Iterable<string>,
+  pending: QueueOp[],
+): string[] {
+  const explicit = explicitPendingDeleteIds(pending);
+  for (const id of candidates) {
+    if (!id || explicit.has(id)) continue;
+    warnNonExplicitRemoteDelete(id, "refresh/auto-prune candidate");
+  }
+  return [];
 }

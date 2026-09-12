@@ -38,11 +38,25 @@ export type Persisted = {
 
 const EMPTY: Persisted = { version: 1, loadsByDate: {} };
 
+/**
+ * Sep 11 sheet-reconciliation ids that the old device-win prune wrote into
+ * `deletedIds`. They are not user deletes. Never persist or honor them.
+ */
+export const STALE_AUTO_PRUNE_LOAD_IDS = new Set<string>([
+  "4fb99b04-5a3d-474f-a756-0181e17050fc",
+  "25a9c1e0-8547-4db8-8ce5-8874c2630c1b",
+  "170ac965-9b9e-47d7-b812-752f0b37ecbf",
+  "de981268-7d06-4daf-a685-da2381afc448",
+]);
+
 export function parseDeletedIds(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return [
     ...new Set(
-      raw.filter((id): id is string => typeof id === "string" && id.length > 0),
+      raw.filter(
+        (id): id is string =>
+          typeof id === "string" && id.length > 0 && !STALE_AUTO_PRUNE_LOAD_IDS.has(id),
+      ),
     ),
   ];
 }
@@ -150,17 +164,23 @@ export function forgetDeletedId(store: Persisted, id: string): Persisted {
 }
 
 /**
- * Load UUID tombstones are never GC'd. Dropping them after the remote row is
- * gone lets a stale backup, Push all, or realtime echo resurrect the id —
- * the same class of bounce specialty had before UUID tombstones stuck.
+ * Keep tombstones for ids that are **not** on a complete remote snapshot so
+ * Push-all cannot resurrect them. Drop tombstones for ids that are live on
+ * remote unless `explicitDeletes` says this device just deleted them — stale
+ * auto-prune tombstones must not hide or re-DELETE API-restored rows.
  */
 export function gcLoadDeletedIds(
   deletedIds: Iterable<string>,
-  _remote?: Load[],
+  remote?: Load[],
   _cache?: Persisted,
   _local?: Persisted,
+  explicitDeletes?: Iterable<string>,
 ): string[] {
-  return parseDeletedIds([...deletedIds]);
+  const keep = parseDeletedIds([...deletedIds]);
+  if (!remote?.length) return keep;
+  const explicit = new Set(explicitDeletes ?? []);
+  const remoteIds = new Set(remote.map((row) => row.id));
+  return keep.filter((id) => explicit.has(id) || !remoteIds.has(id));
 }
 
 export function loadsForDate(store: Persisted, date: string): Load[] {

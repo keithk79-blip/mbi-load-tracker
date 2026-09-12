@@ -12,6 +12,8 @@ import type { Load } from "../types";
 import { fetchAllPaged, loadToRow, rowToLoad, type LoadRow } from "../lib/cloud";
 import {
   deletedLoadIds,
+  enqueueRemoteDeletesFromRefresh,
+  explicitPendingDeleteIds,
   localOnlyLoadsForUpload,
   mergeCloudLoads,
   reconcilePersistedSnapshot,
@@ -22,10 +24,13 @@ import {
 } from "../lib/cloudMerge";
 import { loadsToCsv } from "../lib/commodity";
 import {
+  dropImplicitDeletes,
   enqueueDelete,
   enqueueUpsert,
+  isExplicitDeleteOp,
   pendingIds,
   readQueue,
+  warnNonExplicitRemoteDelete,
   writeQueue,
 } from "../lib/queue";
 import { buildSeedLoads } from "../lib/seed";
@@ -218,6 +223,8 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
       setSyncStatus("syncing");
       let failed = false;
       try {
+        dropImplicitDeletes();
+        setQueuedCount(readQueue().length);
         for (;;) {
           const ops = readQueue();
           if (!ops.length) break;
@@ -231,6 +238,13 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
                   .upsert(loadToRow(op.load, user?.id ?? null));
                 if (error) throw error;
               } else {
+                if (!isExplicitDeleteOp(op)) {
+                  warnNonExplicitRemoteDelete(
+                    op.loadId,
+                    "flushQueue refused non-explicit loads DELETE",
+                  );
+                  break;
+                }
                 const { error } = await supabase.from("loads").delete().eq("id", op.loadId);
                 if (error) throw error;
               }
@@ -311,7 +325,10 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
       const remote = (data as LoadRow[]).map(rowToLoad);
       const cache = readCloudCache();
       const local = readStore();
-      const pending = readQueue();
+      // Drop leftover auto-prune deletes before merge so they cannot hide
+      // or re-DELETE live cloud rows (Sep 11 408→404 after PR #45).
+      const pending = dropImplicitDeletes();
+      setQueuedCount(pending.length);
       const deviceCache =
         Object.keys(cache.loadsByDate).length > 0
           ? cache
@@ -326,28 +343,27 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
         lastSuccessfulSyncAt,
         refreshStartedAt,
       });
-      const deleted = deletedLoadIds(
-        pending,
-        deviceCache,
-        local,
-        toTombstone,
-        toDelete.map((row) => row.id),
-        ...extra,
-      );
-      // Tombstones / pending deletes only. A thinner local cache must never
-      // enqueue DELETEs for cloud-only rows it simply does not have.
-      for (const row of remote) {
-        if (deleted.has(row.id)) enqueueDelete(row.id);
-      }
-      for (const row of toDelete) {
-        enqueueDelete(row.id);
-      }
-      if (toDelete.length) {
-        console.info(
-          `[load-sync] enqueue ${toDelete.length} remote delete(s) (tombstone or pending delete)`,
+      const explicitDeletes = explicitPendingDeleteIds(pending);
+      const durableOnRemote = deletedLoadIds(pending, deviceCache, local, ...extra);
+      const refreshCandidates = remote
+        .map((row) => row.id)
+        .filter((id) => durableOnRemote.has(id) || toTombstone.includes(id));
+      for (const row of toDelete) refreshCandidates.push(row.id);
+      // Nuclear: refresh never enqueues remote DELETEs. Only deleteLoad does.
+      const enqueued = enqueueRemoteDeletesFromRefresh(refreshCandidates, pending);
+      if (enqueued.length) {
+        warnNonExplicitRemoteDelete(
+          enqueued.join(","),
+          "refreshFromCloud unexpectedly returned ids to enqueue",
         );
       }
-      const keptTombstones = gcLoadDeletedIds(deleted, remote, deviceCache, local);
+      const keptTombstones = gcLoadDeletedIds(
+        [...toTombstone, ...explicitDeletes],
+        remote,
+        deviceCache,
+        local,
+        explicitDeletes,
+      );
       const persisted = persistCloudCache(snapshotFromLoads(merged, keptTombstones));
       if (persisted && remote.length > 0) {
         writeLastSuccessfulSyncAt(refreshStartedAt);
@@ -435,7 +451,7 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
         const next = rememberDeletedIds(storeRef.current, [id]);
         storeRef.current = next;
         // Enqueue the delete before persist so backup/merge see it immediately.
-        setQueuedCount(enqueueDelete(id).length);
+        setQueuedCount(enqueueDelete(id, { explicit: true }).length);
         persistCloudCache(next);
         void flushQueue();
         return;
@@ -458,9 +474,10 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
 
   const pushAllLoadsToCloud = useCallback(async () => {
     if (!cloud) return 0;
-    // Refresh-first: mergeCloudLoads decides toUpsert / toDelete. Blindly
-    // enqueueing deviceLoadsForPush re-upserts the whole cache and can
-    // resurrect rows another device already deleted.
+    // Refresh-first: mergeCloudLoads decides toUpsert. Remote DELETE is
+    // never queued here — only deleteLoad may enqueue an explicit delete.
+    // Blindly enqueueing deviceLoadsForPush re-upserts the whole cache and
+    // can resurrect rows another device already deleted.
     await refreshFromCloud();
     return readQueue().length;
   }, [cloud, refreshFromCloud]);
