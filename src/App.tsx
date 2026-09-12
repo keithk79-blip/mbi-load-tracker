@@ -17,6 +17,7 @@ import { TotalsScreen } from "./screens/TotalsScreen";
 import { VacationScreen } from "./screens/VacationScreen";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 import { DailyEodProvider } from "./store/DailyEodContext";
+import { DriverGoneProvider } from "./store/DriverGoneContext";
 import { DriverRosterProvider } from "./store/DriverRosterContext";
 import { DriversProvider } from "./store/DriversContext";
 import { SpecialtyProvider } from "./store/SpecialtyContext";
@@ -218,13 +219,15 @@ export default function App() {
         <SpecialtyProvider>
           <VacationProvider>
             <DriverRosterProvider>
-              <DriversProvider>
-                <DailyEodProvider>
-                  <Gate>
-                    <Shell />
-                  </Gate>
-                </DailyEodProvider>
-              </DriversProvider>
+              <DriverGoneProvider>
+                <DriversProvider>
+                  <DailyEodProvider>
+                    <Gate>
+                      <Shell />
+                    </Gate>
+                  </DailyEodProvider>
+                </DriversProvider>
+              </DriverGoneProvider>
             </DriverRosterProvider>
           </VacationProvider>
         </SpecialtyProvider>

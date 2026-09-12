@@ -71,6 +71,10 @@
       "destination": "https://docs.google.com/spreadsheets/d/1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw/gviz/tq?tqx=out:csv&sheet=Sat-Zion&range=A:Z"
     },
     {
+      "source": "/sheets/roster-gone",
+      "destination": "https://docs.google.com/spreadsheets/d/1azaww09ttC1p571RzB_NDkeBqAFkRBhpTboODpk4z40/gviz/tq?tqx=out:csv&gid=544546254"
+    },
+    {
       "source": "/sheets/roster",
       "destination": "https://docs.google.com/spreadsheets/d/1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw/gviz/tq?tqx=out:csv&sheet=Burnham&range=L13"
     },

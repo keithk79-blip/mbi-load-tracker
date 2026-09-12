@@ -130,10 +130,11 @@ describe("chicago Full Roster available base", () => {
     expect(src).toMatch(/today uses Full\s+Roster/);
   });
 
-  it("dev proxy keeps only one-time Full/Sat roster import paths", () => {
+  it("dev proxy keeps only one-time Full/Sat/Gone roster import paths", () => {
     const src = readFileSync(new URL("../../vite.config.ts", import.meta.url), "utf8");
     expect(src).toContain("/sheets/roster-full/");
     expect(src).toContain("/sheets/roster-sat/");
+    expect(src).toContain("/sheets/roster-gone");
     expect(src).not.toContain('"/sheets/offs"');
     expect(src).not.toContain("/sheets/sat-body/");
     expect(src).not.toContain('"/sheets/roster"');

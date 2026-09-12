@@ -1,9 +1,10 @@
 -- Specialty open loads + station call hour grid + manual call-offs + vacation
--- calendar + daily EOD totals + driver rosters (shared across devices).
+-- calendar + daily EOD totals + driver rosters + Gone archive (shared across devices).
 -- Paste into Supabase SQL Editor and Run.
 -- Manual call-offs are also in Load-Tracker-manual-call-offs.sql (one-shot paste).
 -- Daily EOD totals are also in Load-Tracker-daily-eod-totals.sql (one-shot paste).
 -- Driver rosters are also in Load-Tracker-driver-roster.sql (one-shot paste).
+-- Gone archive is also in Load-Tracker-driver-gone.sql (one-shot paste).
 
 create table if not exists public.specialty_opens (
   id uuid primary key default gen_random_uuid(),
@@ -494,6 +495,76 @@ create policy "crew_delete_driver_roster_entries"
 do $$
 begin
   alter publication supabase_realtime add table public.driver_roster_entries;
+exception when duplicate_object then null;
+end $$;
+
+-- Driver tab Gone archive (terminated / left).
+-- Keep in sync with Load-Tracker-driver-gone.sql (paste-ready one-shot).
+-- Sync is upsert-only. Remote DELETE is explicit UI × only.
+
+create table if not exists public.driver_gone_entries (
+  id uuid primary key default gen_random_uuid(),
+  employee_number text,
+  name text not null,
+  hire_date date,
+  termination_date date,
+  notes text not null default '',
+  yard text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid references auth.users (id) on delete set null
+);
+
+alter table public.driver_gone_entries
+  drop constraint if exists driver_gone_entries_yard_check;
+
+alter table public.driver_gone_entries
+  add constraint driver_gone_entries_yard_check
+  check (yard is null or yard in ('burnham', 'rockford', 'pontiac', 'arc', 'zion'));
+
+create index if not exists driver_gone_entries_term_idx
+  on public.driver_gone_entries (termination_date desc nulls last, name);
+
+comment on table public.driver_gone_entries is
+  'Driver tab Gone archive. Terminated / left drivers. Sync is upsert-only. Remote DELETE is explicit UI × only — never import or a thin/empty pull. No contact fields.';
+
+alter table public.driver_gone_entries enable row level security;
+
+drop policy if exists "crew_select_driver_gone_entries" on public.driver_gone_entries;
+create policy "crew_select_driver_gone_entries"
+  on public.driver_gone_entries for select to authenticated using (true);
+
+drop policy if exists "crew_insert_driver_gone_entries" on public.driver_gone_entries;
+create policy "crew_insert_driver_gone_entries"
+  on public.driver_gone_entries for insert to authenticated with check (true);
+
+drop policy if exists "crew_update_driver_gone_entries" on public.driver_gone_entries;
+create policy "crew_update_driver_gone_entries"
+  on public.driver_gone_entries for update to authenticated using (true) with check (true);
+
+create or replace function public.driver_gone_deletes_allowed()
+returns boolean
+language sql
+stable
+as $$
+  select true
+$$;
+
+comment on function public.driver_gone_deletes_allowed() is
+  'Kill-switch for driver_gone_entries DELETE. Default true so UI × works. Set the body to select false to freeze all Gone deletes.';
+
+grant execute on function public.driver_gone_deletes_allowed() to authenticated;
+
+drop policy if exists "crew_delete_driver_gone_entries" on public.driver_gone_entries;
+create policy "crew_delete_driver_gone_entries"
+  on public.driver_gone_entries
+  for delete
+  to authenticated
+  using (public.driver_gone_deletes_allowed());
+
+do $$
+begin
+  alter publication supabase_realtime add table public.driver_gone_entries;
 exception when duplicate_object then null;
 end $$;
 

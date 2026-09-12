@@ -9,6 +9,10 @@ import {
 
 export const DEFAULT_ROSTER_SHEET_ID = "1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw";
 export const DEFAULT_CALLOFF_SHEET_ID = "1FnKGIuWfKCPvcaSwchnIpQjdezHKWC5O23jECPcJzyM";
+/** Gone 2026 archive tab — one-time seed only. Contact columns are not fetched for storage. */
+export const DEFAULT_GONE_SHEET_ID = "1azaww09ttC1p571RzB_NDkeBqAFkRBhpTboODpk4z40";
+export const GONE_SHEET_TAB = "Gone 2026";
+export const GONE_SHEET_GID = "544546254";
 export const ROSTER_TAB = "Burnham";
 export const ROSTER_CELL = "L13";
 export const ROSTER_GRID_RANGE = "A:I";
@@ -161,6 +165,12 @@ export function rosterSatGridFetchUrl(slug: string): string {
     rosterId(),
     `sheet=${encodeURIComponent(tab)}&range=${encodeURIComponent(ROSTER_SAT_GRID_RANGE)}`,
   );
+}
+
+/** One-time Gone archive seed. Parser keeps emp # / name / hire / term / notes only. */
+export function rosterGoneFetchUrl(): string {
+  if (useSheetProxy()) return "/sheets/roster-gone";
+  return googleCsvUrl(DEFAULT_GONE_SHEET_ID, `gid=${GONE_SHEET_GID}`);
 }
 
 export function readDriverCache(): DriverSnapshot | null {

@@ -15,11 +15,13 @@ import {
   cleanDriverRosterKind,
   cleanDriverRosterYard,
   DRIVER_ROSTER_YARDS,
+  cleanDriverTabGroup,
   mergeImportedRows,
   moveRosterEntry,
   readDriverRosterPersisted,
   readDriverRosterUi,
   reconcileDriverRosterCloud,
+  removeHiredAndMatchingSat,
   removeRosterEntry,
   resetSatRosterFromFull,
   rosterEntryCount,
@@ -35,6 +37,7 @@ import {
   type DriverRosterPersisted,
   type DriverRosterStore,
   type DriverRosterYard,
+  type DriverTabGroup,
 } from "../lib/driverRoster";
 import { describeImportGroup, fetchRosterWorkbook } from "../lib/driverRosterSheet";
 import { getSupabase } from "../lib/supabase";
@@ -62,8 +65,10 @@ export type DriverRosterImportResult = {
 type DriverRosterContextValue = {
   store: DriverRosterStore;
   kind: DriverRosterKind;
+  group: DriverTabGroup;
   yard: DriverRosterYard;
   setKind: (kind: DriverRosterKind) => void;
+  setGroup: (group: DriverTabGroup) => void;
   setYard: (yard: DriverRosterYard) => void;
   cloud: boolean;
   importing: boolean;
@@ -73,6 +78,8 @@ type DriverRosterContextValue = {
   addDriver: (input: Omit<DriverRosterInput, "kind" | "yard">) => Promise<DriverRosterEntry | null>;
   setDriverStatus: (id: string, status: string | null) => Promise<void>;
   removeDriver: (id: string) => Promise<void>;
+  /** Explicit Full Roster × — hired row plus matching Sat. */
+  removeHiredAndSat: (id: string) => Promise<void>;
   moveDriver: (id: string, delta: -1 | 1) => Promise<void>;
   setSatDate: (forDate: string | null) => Promise<void>;
   /** User-initiated: replace this yard's Sat list with a copy of Full Roster. */
@@ -443,6 +450,21 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     [cloud, cloudDeleteEntries, persistLocal],
   );
 
+  const removeHiredAndSat = useCallback(
+    async (id: string) => {
+      epochRef.current += 1;
+      const result = removeHiredAndMatchingSat(storeRef.current, id);
+      if (!result.removed.length) return;
+      for (const entry of result.removed) {
+        deletedRef.current.add(entry.id);
+        if (entry.kind === "sat") satInitializedRef.current.add(entry.yard);
+      }
+      persistLocal(result.store);
+      if (cloud) await cloudDeleteEntries(result.removed.map((entry) => entry.id));
+    },
+    [cloud, cloudDeleteEntries, persistLocal],
+  );
+
   const moveDriver = useCallback(
     async (id: string, delta: -1 | 1) => {
       epochRef.current += 1;
@@ -493,17 +515,28 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     if (satRows.length) await cloudUpsert(satRows);
   }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, ui.yard]);
 
-  const setKind = useCallback(
-    (kind: DriverRosterKind) => {
-      const nextKind = cleanDriverRosterKind(kind);
+  const setGroup = useCallback(
+    (group: DriverTabGroup) => {
+      const nextGroup = cleanDriverTabGroup(group);
       setUi((prev) => {
-        const next = { ...prev, kind: nextKind };
+        const next = {
+          ...prev,
+          group: nextGroup,
+          kind: nextGroup === "gone" ? prev.kind : nextGroup,
+        };
         writeDriverRosterUi(next);
         return next;
       });
-      if (nextKind === "sat") void seedEmptySatFromFull();
+      if (nextGroup === "sat") void seedEmptySatFromFull();
     },
     [seedEmptySatFromFull],
+  );
+
+  const setKind = useCallback(
+    (kind: DriverRosterKind) => {
+      setGroup(cleanDriverRosterKind(kind));
+    },
+    [setGroup],
   );
 
   const setYard = useCallback(
@@ -513,17 +546,19 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
         writeDriverRosterUi(next);
         return next;
       });
-      if (ui.kind === "sat") void seedEmptySatFromFull();
+      if (ui.group === "sat") void seedEmptySatFromFull();
     },
-    [seedEmptySatFromFull, ui.kind],
+    [seedEmptySatFromFull, ui.group],
   );
 
   const value = useMemo<DriverRosterContextValue>(
     () => ({
       store,
       kind: ui.kind,
+      group: ui.group,
       yard: ui.yard,
       setKind,
+      setGroup,
       setYard,
       cloud,
       importing,
@@ -533,6 +568,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       addDriver,
       setDriverStatus,
       removeDriver,
+      removeHiredAndSat,
       moveDriver,
       setSatDate,
       resetSatToFullRoster,
@@ -540,8 +576,10 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     [
       store,
       ui.kind,
+      ui.group,
       ui.yard,
       setKind,
+      setGroup,
       setYard,
       cloud,
       importing,
@@ -551,6 +589,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       addDriver,
       setDriverStatus,
       removeDriver,
+      removeHiredAndSat,
       moveDriver,
       setSatDate,
       resetSatToFullRoster,
