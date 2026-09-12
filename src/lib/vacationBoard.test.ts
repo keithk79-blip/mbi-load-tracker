@@ -27,6 +27,7 @@ import {
   rosterNamesFromStore,
   statusTone,
   sundayOnOrBefore,
+  vacationStatusLabel,
   sundaysForVacationYear,
   thanksgivingISO,
   updateVacationEntry,
@@ -158,6 +159,12 @@ describe("status + cell parsers", () => {
     expect(statusTone("pending")).toBe("blue");
     expect(statusTone("paid")).toBe("green");
     expect(statusTone("approved")).toBe("neutral");
+  });
+
+  it("maps status keys to display labels without renaming stored values", () => {
+    expect(vacationStatusLabel("pending")).toBe("Approved");
+    expect(vacationStatusLabel("approved")).toBe("Requested");
+    expect(vacationStatusLabel("paid")).toBe("Paid");
   });
 });
 

@@ -10,6 +10,7 @@ import {
   monthLabelForKey,
   rosterNamesFromStore,
   sundaysForVacationYear,
+  vacationStatusLabel,
   vacationWeekKey,
   vacationYardLabel,
   weekBelongsToYear,
@@ -27,9 +28,9 @@ import { useDrivers } from "../store/DriversContext";
 import { useVacation } from "../store/VacationContext";
 
 const STATUS_OPTIONS: { id: VacationStatus; label: string }[] = [
-  { id: "pending", label: "Pending" },
-  { id: "approved", label: "Approved" },
-  { id: "paid", label: "Paid" },
+  { id: "pending", label: vacationStatusLabel("pending") },
+  { id: "approved", label: vacationStatusLabel("approved") },
+  { id: "paid", label: vacationStatusLabel("paid") },
 ];
 
 const HOLIDAY_PRESETS = [
@@ -61,7 +62,8 @@ function DriverPill({
         type="button"
         className="vac-pill-main"
         onClick={onCycle}
-        title={`${entry.name}${entry.note ? ` · ${entry.note}` : ""} · ${entry.status}. Tap to cycle status.`}
+        title={`${entry.name}${entry.note ? ` · ${entry.note}` : ""} · ${vacationStatusLabel(entry.status)}. Tap to cycle status.`}
+        aria-label={`${entry.name}${entry.note ? `, ${entry.note}` : ""}, ${vacationStatusLabel(entry.status)}. Tap to cycle status.`}
       >
         <span className="vac-pill-name">{entry.name}</span>
         {entry.note ? <span className="vac-pill-note">{entry.note}</span> : null}
@@ -430,15 +432,11 @@ export function VacationScreen() {
       {yearError ? <p className="form-error">{yearError}</p> : null}
 
       <div className="vac-legend" aria-label="Status colors">
-        <span className="vac-legend-item">
-          <i className="vac-dot vac-dot-pending" /> Pending
-        </span>
-        <span className="vac-legend-item">
-          <i className="vac-dot vac-dot-approved" /> Approved
-        </span>
-        <span className="vac-legend-item">
-          <i className="vac-dot vac-dot-paid" /> Paid
-        </span>
+        {STATUS_OPTIONS.map((opt) => (
+          <span key={opt.id} className="vac-legend-item">
+            <i className={`vac-dot vac-dot-${opt.id}`} /> {opt.label}
+          </span>
+        ))}
         <span className="vac-legend-note">Tap a name to cycle color. × removes.</span>
       </div>
 

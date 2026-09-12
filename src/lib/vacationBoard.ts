@@ -612,6 +612,17 @@ export function weekIsOverCapacity(week: VacationWeek, filled: number): boolean 
   return week.kind === "open" && week.capacity != null && filled > week.capacity;
 }
 
+/** User-visible labels. Keys stay pending | approved | paid. */
+export const VACATION_STATUS_LABELS: Record<VacationStatus, string> = {
+  pending: "Approved",
+  approved: "Requested",
+  paid: "Paid",
+};
+
+export function vacationStatusLabel(status: VacationStatus): string {
+  return VACATION_STATUS_LABELS[status];
+}
+
 export function statusTone(status: VacationStatus): "blue" | "neutral" | "green" {
   if (status === "pending") return "blue";
   if (status === "paid") return "green";
