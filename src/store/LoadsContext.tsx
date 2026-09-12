@@ -334,11 +334,18 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
         toDelete.map((row) => row.id),
         ...extra,
       );
+      // Tombstones / pending deletes only. A thinner local cache must never
+      // enqueue DELETEs for cloud-only rows it simply does not have.
       for (const row of remote) {
         if (deleted.has(row.id)) enqueueDelete(row.id);
       }
       for (const row of toDelete) {
         enqueueDelete(row.id);
+      }
+      if (toDelete.length) {
+        console.info(
+          `[load-sync] enqueue ${toDelete.length} remote delete(s) (tombstone or pending delete)`,
+        );
       }
       const keptTombstones = gcLoadDeletedIds(deleted, remote, deviceCache, local);
       const persisted = persistCloudCache(snapshotFromLoads(merged, keptTombstones));
