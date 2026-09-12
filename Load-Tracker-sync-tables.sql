@@ -1,8 +1,9 @@
 -- Specialty open loads + station call hour grid + manual call-offs + vacation
--- calendar + daily EOD totals (shared across devices).
+-- calendar + daily EOD totals + driver rosters (shared across devices).
 -- Paste into Supabase SQL Editor and Run.
 -- Manual call-offs are also in Load-Tracker-manual-call-offs.sql (one-shot paste).
 -- Daily EOD totals are also in Load-Tracker-daily-eod-totals.sql (one-shot paste).
+-- Driver rosters are also in Load-Tracker-driver-roster.sql (one-shot paste).
 
 create table if not exists public.specialty_opens (
   id uuid primary key default gen_random_uuid(),
@@ -411,6 +412,88 @@ create policy "crew_delete_daily_eod_totals"
 do $$
 begin
   alter publication supabase_realtime add table public.daily_eod_totals;
+exception when duplicate_object then null;
+end $$;
+
+-- Driver tab Full + Sat rosters (per yard).
+-- Keep in sync with Load-Tracker-driver-roster.sql (paste-ready one-shot).
+-- System of record for Today’s available count (not Burnham!L13 / Sat-* sums).
+
+create table if not exists public.driver_roster_entries (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null,
+  yard text not null,
+  truck_number text,
+  name text not null,
+  status text,
+  sort_order int not null default 0,
+  for_date date,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid references auth.users (id) on delete set null
+);
+
+alter table public.driver_roster_entries
+  drop constraint if exists driver_roster_entries_kind_check;
+
+alter table public.driver_roster_entries
+  add constraint driver_roster_entries_kind_check
+  check (kind in ('full', 'sat'));
+
+alter table public.driver_roster_entries
+  drop constraint if exists driver_roster_entries_yard_check;
+
+alter table public.driver_roster_entries
+  add constraint driver_roster_entries_yard_check
+  check (yard in ('burnham', 'rockford', 'pontiac', 'arc', 'zion'));
+
+create index if not exists driver_roster_entries_kind_yard_idx
+  on public.driver_roster_entries (kind, yard, sort_order);
+
+create index if not exists driver_roster_entries_sat_date_idx
+  on public.driver_roster_entries (for_date)
+  where kind = 'sat' and for_date is not null;
+
+comment on table public.driver_roster_entries is
+  'Driver tab Full (hired) + Sat (planning) rosters per Chicago-area yard. Sync is upsert-only. Remote DELETE is explicit UI × only — never import, Vacation VAC, or a thin/empty pull. status = optional Full Roster unavailability (oot/fmla/vac/wc); later tally hired − full-day status − day offs.';
+
+alter table public.driver_roster_entries enable row level security;
+
+drop policy if exists "crew_select_driver_roster_entries" on public.driver_roster_entries;
+create policy "crew_select_driver_roster_entries"
+  on public.driver_roster_entries for select to authenticated using (true);
+
+drop policy if exists "crew_insert_driver_roster_entries" on public.driver_roster_entries;
+create policy "crew_insert_driver_roster_entries"
+  on public.driver_roster_entries for insert to authenticated with check (true);
+
+drop policy if exists "crew_update_driver_roster_entries" on public.driver_roster_entries;
+create policy "crew_update_driver_roster_entries"
+  on public.driver_roster_entries for update to authenticated using (true) with check (true);
+
+create or replace function public.driver_roster_deletes_allowed()
+returns boolean
+language sql
+stable
+as $$
+  select true
+$$;
+
+comment on function public.driver_roster_deletes_allowed() is
+  'Kill-switch for driver_roster_entries DELETE. Default true so UI × works. Set the body to select false to freeze all roster deletes.';
+
+grant execute on function public.driver_roster_deletes_allowed() to authenticated;
+
+drop policy if exists "crew_delete_driver_roster_entries" on public.driver_roster_entries;
+create policy "crew_delete_driver_roster_entries"
+  on public.driver_roster_entries
+  for delete
+  to authenticated
+  using (public.driver_roster_deletes_allowed());
+
+do $$
+begin
+  alter publication supabase_realtime add table public.driver_roster_entries;
 exception when duplicate_object then null;
 end $$;
 

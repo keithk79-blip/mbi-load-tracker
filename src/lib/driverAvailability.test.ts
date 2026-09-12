@@ -122,7 +122,7 @@ describe("through-date ranges", () => {
 });
 
 describe("availableDrivers", () => {
-  it("is L13 minus unique full-day offs, floored at 0", () => {
+  it("is the weekday base minus unique full-day offs, floored at 0", () => {
     const rows: CallOffRow[] = [
       { name: "A", start: "2026-09-05", end: null, reason: "P-Day" },
       { name: "B", start: "2026-09-05", end: null, reason: "Needs to be parked by noon" },

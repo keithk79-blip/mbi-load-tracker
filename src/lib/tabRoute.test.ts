@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  hrefForTab,
   locationPointsAtTotals,
   replaceRetiredTotalsLocation,
+  replaceTabLocation,
   rewriteRetiredTotalsHref,
+  tabFromLocation,
 } from "./tabRoute";
 
 describe("locationPointsAtTotals", () => {
@@ -57,5 +60,38 @@ describe("replaceRetiredTotalsLocation", () => {
       ),
     ).toBe(false);
     expect(calls).toEqual(["/"]);
+  });
+});
+
+describe("tabFromLocation", () => {
+  it("opens Driver from path, hash, or tab query", () => {
+    expect(tabFromLocation({ pathname: "/driver", search: "", hash: "" })).toBe("driver");
+    expect(tabFromLocation({ pathname: "/driver/", search: "", hash: "" })).toBe("driver");
+    expect(tabFromLocation({ pathname: "/", search: "", hash: "#driver" })).toBe("driver");
+    expect(tabFromLocation({ pathname: "/", search: "?tab=driver", hash: "" })).toBe("driver");
+    expect(tabFromLocation({ pathname: "/", search: "", hash: "" })).toBeNull();
+    expect(tabFromLocation({ pathname: "/totals", search: "", hash: "" })).toBe("today");
+  });
+});
+
+describe("hrefForTab / replaceTabLocation", () => {
+  it("maps Driver to /driver", () => {
+    expect(hrefForTab("driver")).toBe("/driver");
+    expect(hrefForTab("today")).toBe("/");
+  });
+
+  it("writes /driver only for the Driver tab", () => {
+    const calls: string[] = [];
+    const historyApi = {
+      replaceState(_s: unknown, _t: string, url: string) {
+        calls.push(url);
+      },
+    };
+    replaceTabLocation("driver", { pathname: "/", search: "", hash: "" }, historyApi);
+    expect(calls).toEqual(["/driver"]);
+    replaceTabLocation("today", { pathname: "/driver", search: "", hash: "" }, historyApi);
+    expect(calls).toEqual(["/driver", "/"]);
+    replaceTabLocation("vacation", { pathname: "/", search: "", hash: "" }, historyApi);
+    expect(calls).toEqual(["/driver", "/"]);
   });
 });

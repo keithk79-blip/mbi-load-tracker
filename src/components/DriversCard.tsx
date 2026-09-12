@@ -136,11 +136,11 @@ export function DriversCard({
             </p>
           ) : !dayAvail && viewingToday ? (
             <p className="grand-sub">
-              Share both sheets as Anyone with the link (Viewer), then refresh.
+              Import Full Roster on the Driver tab (one-time seed).
             </p>
           ) : !dayAvail ? (
             <p className="grand-sub">
-              This Chicago day was never snapshotted. Today’s live sheet is not
+              This Chicago day was never snapshotted. Today’s live roster tally is not
               written back onto past dates.
             </p>
           ) : null}
@@ -153,7 +153,7 @@ export function DriversCard({
           <p className="oot-label">Out of town</p>
           <p className="oot-yards">
             {viewingToday
-              ? "Live from Burnham · Rockford · Pontiac · ARC · Zion"
+              ? "From Full Roster · Burnham · Rockford · Pontiac · Arc · Zion"
               : viewingFuture
                 ? "Current roster OOT"
                 : dayAvail?.locked
@@ -309,16 +309,16 @@ export function DriversCard({
           disabled={status === "loading"}
         >
           <RefreshCw size={16} />
-          {status === "loading" ? "Pulling sheets…" : "Refresh sheets"}
+          {status === "loading" ? "Refreshing…" : "Refresh"}
         </button>
         <span className="field-hint tight">
           {status === "live"
-            ? `Live · ${pulledLabel(fetchedAt)}`
+            ? `Full Roster · ${pulledLabel(fetchedAt)}`
             : status === "cached"
-              ? `Cached · ${pulledLabel(fetchedAt)}`
+              ? `Full Roster · ${pulledLabel(fetchedAt)}`
               : status === "error"
-                ? "Sheets unreachable"
-                : "Pulling…"}
+                ? "Could not sync"
+                : "Refreshing…"}
         </span>
       </div>
       {error ? <p className="field-hint">{error}</p> : null}

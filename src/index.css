@@ -3184,3 +3184,265 @@ body.app-ready .splash {
     margin-left: 0;
   }
 }
+
+/* ——— Driver roster (desktop-first table, Vacation grouping/chips) ——— */
+.drv-header-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.drv-count {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.drv-count strong {
+  color: var(--text);
+}
+
+.drv-count-out {
+  color: #f0c4c6;
+}
+
+.drv-sat-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+}
+
+.drv-sat-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.drv-sat-input {
+  margin-top: 0;
+  width: 160px;
+  min-height: 40px;
+}
+
+.drv-sat-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.drv-copy-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  padding: 10px 12px 12px;
+}
+
+.drv-copy-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.drv-copy-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.drv-copy-block {
+  width: 100%;
+  min-height: 140px;
+  max-height: 220px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #101218;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.drv-table {
+  min-width: 520px;
+}
+
+.drv-col-truck {
+  width: 96px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+}
+
+.drv-col-status {
+  width: 168px;
+}
+
+.drv-status-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+}
+
+.drv-col-move {
+  width: 56px;
+}
+
+.drv-col-actions {
+  width: 44px;
+  text-align: right;
+}
+
+.drv-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #2a1618;
+  color: #f0c4c6;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.drv-row.is-out td {
+  color: #c4bfb4;
+}
+
+.drv-row.is-out .drv-col-name {
+  color: var(--text);
+}
+
+.drv-out-tag {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #2a1618;
+  color: #f0c4c6;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.drv-vac-from {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #1d2a18;
+  color: #c8e6b8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.drv-also-status {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.drv-status-select {
+  margin-top: 0;
+  min-height: 34px;
+  width: 118px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #101218;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.drv-status-select.is-out {
+  background: #2a1618;
+  color: #f0c4c6;
+  border-color: #6a2a2c;
+}
+
+.drv-move {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.drv-move-btn {
+  min-height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.drv-move-btn:hover:not(:disabled),
+.drv-move-btn:focus-visible {
+  color: var(--text);
+  background: #1a1d24;
+  outline: none;
+}
+
+.drv-move-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.drv-remove {
+  min-width: 32px;
+  min-height: 32px;
+}
+
+.drv-add-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.drv-add-truck {
+  margin-top: 0;
+  width: 96px;
+}
+
+.drv-add-name {
+  margin-top: 0;
+  min-width: 180px;
+  flex: 1;
+}
+
+.drv-add-status {
+  margin-top: 0;
+  width: 140px;
+}
+
+.drv-row td {
+  vertical-align: middle;
+}
+
+@media (max-width: 959px) {
+  .drv-header-meta {
+    align-items: flex-start;
+  }
+  .drv-table {
+    min-width: 0;
+  }
+}

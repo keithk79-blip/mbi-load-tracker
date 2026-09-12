@@ -36,13 +36,15 @@ import {
   writeDayStore,
   writeManualOffs,
 } from "../lib/driverStore";
-import { fetchDriverSnapshot, readDriverCache } from "../lib/sheets";
 import {
   callOffNameKey,
   type CallOffEntry,
   type CallOffKind,
   type CallOffRow,
 } from "../lib/driverAvailability";
+import { liveSheetFromRoster } from "../lib/rosterAvailability";
+import { useDriverRoster } from "./DriverRosterContext";
+import { useVacation } from "./VacationContext";
 import {
   addManualOff as insertManualOff,
   deletedManualKey,
@@ -77,19 +79,18 @@ type DriversContextValue = {
 
 const DriversContext = createContext<DriversContextValue | null>(null);
 
+/** Today available = Full Roster − status/VAC − manual offs. No live Google pull. */
 export function DriversProvider({ children }: { children: ReactNode }) {
   const { configured, session } = useAuth();
-  const cached = readDriverCache();
-  const [status, setStatus] = useState<DriversStatus>(cached ? "cached" : "loading");
+  const { store: rosterStore } = useDriverRoster();
+  const { store: vacationStore } = useVacation();
+  const [status, setStatus] = useState<DriversStatus>("loading");
   const [error, setError] = useState<string | null>(null);
-  const [baseAvailable, setBase] = useState<number | null>(cached?.baseAvailable ?? null);
-  const [saturdayAvailable, setSaturday] = useState<number | null>(cached?.saturdayAvailable ?? null);
-  const [saturdayUsesWeekdayBase, setSaturdayUsesWeekdayBase] = useState(
-    cached?.saturdayUsesWeekdayBase === true,
-  );
-  const [offs, setOffs] = useState<CallOffRow[]>(cached?.offs ?? []);
-  const [fetchedAt, setFetchedAt] = useState<string | null>(cached?.fetchedAt ?? null);
-  const [ootNames, setOotNames] = useState<string[]>(cached?.ootNames ?? []);
+  const [baseAvailable, setBase] = useState<number | null>(null);
+  const [saturdayAvailable, setSaturday] = useState<number | null>(null);
+  const [offs] = useState<CallOffRow[]>([]);
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
+  const [ootNames, setOotNames] = useState<string[]>([]);
   const [days, setDays] = useState<DayStore>(() => {
     const current = readDayStore();
     const locked = lockEndedDays(current, chicagoToday(), new Date().toISOString());
@@ -103,6 +104,10 @@ export function DriversProvider({ children }: { children: ReactNode }) {
   const deletedRef = useRef<string[]>(initialManuals.manualOffsDeleted);
   const seenRef = useRef<string[]>(initialManuals.manualOffsSeen);
   const todayRef = useRef(chicagoToday());
+  const rosterRef = useRef(rosterStore);
+  rosterRef.current = rosterStore;
+  const vacationRef = useRef(vacationStore);
+  vacationRef.current = vacationStore;
 
   const persistDays = useCallback((next: DayStore) => {
     writeDayStore(next);
@@ -135,6 +140,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
         saturdayUsesWeekdayBase?: boolean;
         offs: CallOffRow[];
         ootNames?: string[];
+        manualOffs?: import("../lib/driverAvailability").ManualCallOff[];
       },
       today: string,
       now: string,
@@ -144,7 +150,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
         store,
         {
           ...live,
-          manualOffs: manuals[today],
+          manualOffs: live.manualOffs ?? manuals[today],
         },
         today,
         now,
@@ -192,21 +198,19 @@ export function DriversProvider({ children }: { children: ReactNode }) {
           }
         }
       }
-      const snap = await fetchDriverSnapshot();
-      setBase(snap.baseAvailable);
-      setSaturday(snap.saturdayAvailable);
-      setSaturdayUsesWeekdayBase(snap.saturdayUsesWeekdayBase);
-      setOffs(snap.offs);
-      setOotNames(snap.ootNames);
-      setFetchedAt(snap.fetchedAt);
       const manuals = readDriverDaysPayload().manualOffs;
-      const live = {
-        base: snap.baseAvailable,
-        saturdayBase: snap.saturdayAvailable,
-        saturdayUsesWeekdayBase: snap.saturdayUsesWeekdayBase,
-        offs: snap.offs,
-        ootNames: snap.ootNames,
-      };
+      const live = liveSheetFromRoster({
+        roster: rosterRef.current,
+        vacation: vacationRef.current,
+        date: today,
+        offs: [],
+        manuals: manuals[today],
+        saturdayUsesWeekdayBase: true,
+      });
+      setBase(live.base);
+      setSaturday(live.saturdayBase);
+      setOotNames(live.ootNames ?? []);
+      setFetchedAt(now);
       const next = refreshPastDayManuals(
         applySheetWithManuals(readDayStore(), live, today, now, manuals),
         live,
@@ -217,45 +221,65 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       persistDays(next);
       setStatus("live");
     } catch (err) {
-      const cachedNow = readDriverCache();
       const manuals = readDriverDaysPayload().manualOffs;
-      if (cachedNow) {
-        setBase(cachedNow.baseAvailable);
-        setSaturday(cachedNow.saturdayAvailable);
-        setSaturdayUsesWeekdayBase(cachedNow.saturdayUsesWeekdayBase);
-        setOffs(cachedNow.offs);
-        setOotNames(cachedNow.ootNames);
-        setFetchedAt(cachedNow.fetchedAt);
-        const live = {
-          base: cachedNow.baseAvailable,
-          saturdayBase: cachedNow.saturdayAvailable,
-          saturdayUsesWeekdayBase: cachedNow.saturdayUsesWeekdayBase,
-          offs: cachedNow.offs,
-          ootNames: cachedNow.ootNames,
-        };
-        const next = refreshPastDayManuals(
-          applySheetWithManuals(readDayStore(), live, today, now, manuals),
-          live,
-          manuals,
-          today,
-          now,
-        );
-        persistDays(next);
-        setStatus("cached");
-        setError("Could not refresh sheets — showing last pull / locked days.");
-      } else if (Object.keys(readDayStore()).length) {
-        setStatus("cached");
-        setError("Could not refresh sheets — showing locked days.");
-      } else {
-        setStatus("error");
-        setError(err instanceof Error ? err.message : "Could not reach Google Sheets.");
-      }
+      const live = liveSheetFromRoster({
+        roster: rosterRef.current,
+        vacation: vacationRef.current,
+        date: today,
+        offs: [],
+        manuals: manuals[today],
+        saturdayUsesWeekdayBase: true,
+      });
+      setBase(live.base);
+      setSaturday(live.saturdayBase);
+      setOotNames(live.ootNames ?? []);
+      const next = refreshPastDayManuals(
+        applySheetWithManuals(readDayStore(), live, today, now, manuals),
+        live,
+        manuals,
+        today,
+        now,
+      );
+      persistDays(next);
+      setStatus("live");
+      setError(err instanceof Error ? err.message : "Could not sync availability.");
     }
   }, [applySheetWithManuals, configured, persistDays, persistManuals, session]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    const today = chicagoToday();
+    const now = new Date().toISOString();
+    const manuals = readDriverDaysPayload().manualOffs;
+    const live = liveSheetFromRoster({
+      roster: rosterStore,
+      vacation: vacationStore,
+      date: today,
+      offs: [],
+      manuals: manuals[today],
+      saturdayUsesWeekdayBase: true,
+    });
+    setBase(live.base);
+    setSaturday(live.saturdayBase);
+    setOotNames(live.ootNames ?? []);
+    persistDays(
+      refreshPastDayManuals(
+        applySheetWithManuals(readDayStore(), live, today, now, manuals),
+        live,
+        manuals,
+        today,
+        now,
+      ),
+    );
+  }, [
+    applySheetWithManuals,
+    persistDays,
+    rosterStore,
+    vacationStore,
+  ]);
 
   useEffect(() => {
     const freezePastDays = () => {
@@ -292,15 +316,15 @@ export function DriversProvider({ children }: { children: ReactNode }) {
     (date: string): LockedDay | null => {
       const today = chicagoToday();
       if (date > today) {
-        if (baseAvailable === null) return null;
         return projectFutureDay(
-          {
-            base: baseAvailable,
-            saturdayBase: saturdayAvailable ?? 0,
-            saturdayUsesWeekdayBase,
-            offs,
-            manualOffs: manualOffs[date],
-          },
+          liveSheetFromRoster({
+            roster: rosterStore,
+            vacation: vacationStore,
+            date,
+            offs: [],
+            manuals: manualOffs[date],
+            saturdayUsesWeekdayBase: true,
+          }),
           date,
           today,
         );
@@ -316,7 +340,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
         manualOffs: manualOffs[date],
       });
     },
-    [days, baseAvailable, saturdayAvailable, saturdayUsesWeekdayBase, offs, manualOffs],
+    [days, offs, manualOffs, rosterStore, vacationStore],
   );
 
   const callOffsOn = useCallback(
@@ -333,33 +357,26 @@ export function DriversProvider({ children }: { children: ReactNode }) {
 
   const recomputeDayFrom = useCallback(
     (date: string, nextManuals: ManualOffsStore) => {
-      if (baseAvailable === null && date === chicagoToday()) return;
       const today = chicagoToday();
       const now = new Date().toISOString();
-      const live = {
-        base: baseAvailable ?? 0,
-        saturdayBase: saturdayAvailable ?? 0,
-        saturdayUsesWeekdayBase,
-        offs,
-        ootNames,
-        manualOffs: nextManuals[date],
-      };
+      const live = liveSheetFromRoster({
+        roster: rosterStore,
+        vacation: vacationStore,
+        date: date === today ? today : date,
+        offs: [],
+        manuals: nextManuals[date],
+        saturdayUsesWeekdayBase: true,
+      });
+      setBase(live.base);
+      setSaturday(live.saturdayBase);
+      setOotNames(live.ootNames ?? []);
       if (date === today) {
-        if (baseAvailable === null) return;
         persistDays(applySheetWithManuals(readDayStore(), live, today, now, nextManuals));
         return;
       }
       persistDays(applyManualsToStoredDay(readDayStore(), live, date, today, now));
     },
-    [
-      applySheetWithManuals,
-      baseAvailable,
-      offs,
-      ootNames,
-      persistDays,
-      saturdayAvailable,
-      saturdayUsesWeekdayBase,
-    ],
+    [applySheetWithManuals, persistDays, rosterStore, vacationStore],
   );
 
   const addManualOff = useCallback(

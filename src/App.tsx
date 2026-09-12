@@ -5,7 +5,8 @@ import { SessionBar } from "./components/SessionBar";
 import { TabBar } from "./components/TabBar";
 import { chicagoToday } from "./lib/chicagoDate";
 import { useDesktopLayout } from "./lib/layout";
-import { replaceRetiredTotalsLocation } from "./lib/tabRoute";
+import { replaceRetiredTotalsLocation, replaceTabLocation, tabFromLocation } from "./lib/tabRoute";
+import { DriverScreen } from "./screens/DriverScreen";
 import { EditLoadScreen } from "./screens/EditLoadScreen";
 import { LogLoadScreen } from "./screens/LogLoadScreen";
 import { LoginScreen } from "./screens/LoginScreen";
@@ -16,6 +17,7 @@ import { TotalsScreen } from "./screens/TotalsScreen";
 import { VacationScreen } from "./screens/VacationScreen";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 import { DailyEodProvider } from "./store/DailyEodContext";
+import { DriverRosterProvider } from "./store/DriverRosterContext";
 import { DriversProvider } from "./store/DriversContext";
 import { SpecialtyProvider } from "./store/SpecialtyContext";
 import { VacationProvider } from "./store/VacationContext";
@@ -54,7 +56,9 @@ function Gate({ children }: { children: ReactNode }) {
 function Shell() {
   const desktop = useDesktopLayout();
   const { findById } = useLoads();
-  const [tab, setTab] = useState<TabId>("today");
+  const [tab, setTab] = useState<TabId>(
+    () => tabFromLocation(window.location) ?? "today",
+  );
   const [feedDate, setFeedDate] = useState(chicagoToday);
   const [overlay, setOverlay] = useState<Overlay>(null);
   const [justEditedId, setJustEditedId] = useState<string | null>(null);
@@ -68,13 +72,18 @@ function Shell() {
     setJustEditedId(id);
     setOverlay(null);
     if (date) setFeedDate(date);
-    if (tab === "analytics" || tab === "vacation") return;
+    if (tab === "analytics" || tab === "vacation" || tab === "driver") return;
     setTab("today");
   };
 
   useEffect(() => {
     const apply = () => {
-      if (replaceRetiredTotalsLocation(window.location)) setTab("today");
+      if (replaceRetiredTotalsLocation(window.location)) {
+        setTab("today");
+        return;
+      }
+      const fromUrl = tabFromLocation(window.location);
+      if (fromUrl) setTab(fromUrl);
     };
     apply();
     window.addEventListener("popstate", apply);
@@ -84,6 +93,11 @@ function Shell() {
       window.removeEventListener("hashchange", apply);
     };
   }, []);
+
+  function onTabChange(next: TabId) {
+    setTab(next);
+    replaceTabLocation(next);
+  }
 
   const main = (
     <>
@@ -104,7 +118,7 @@ function Shell() {
 
       <div className={desktop ? "desk-main" : "phone-stack"}>
         {desktop ? (
-          <TabBar vertical tab={tab} onChange={setTab} />
+          <TabBar vertical tab={tab} onChange={onTabChange} />
         ) : null}
 
         <div className="phone-body">
@@ -151,11 +165,13 @@ function Shell() {
 
           {tab === "analytics" ? <AnalyticsScreen /> : null}
 
+          {tab === "driver" ? <DriverScreen /> : null}
+
           {tab === "vacation" ? <VacationScreen /> : null}
         </div>
       </div>
 
-      {!desktop ? <TabBar tab={tab} onChange={setTab} /> : null}
+      {!desktop ? <TabBar tab={tab} onChange={onTabChange} /> : null}
     </>
   );
 
@@ -199,17 +215,19 @@ export default function App() {
   return (
     <AuthProvider>
       <LoadsProvider>
-        <DriversProvider>
-          <SpecialtyProvider>
-            <VacationProvider>
-              <DailyEodProvider>
-                <Gate>
-                  <Shell />
-                </Gate>
-              </DailyEodProvider>
-            </VacationProvider>
-          </SpecialtyProvider>
-        </DriversProvider>
+        <SpecialtyProvider>
+          <VacationProvider>
+            <DriverRosterProvider>
+              <DriversProvider>
+                <DailyEodProvider>
+                  <Gate>
+                    <Shell />
+                  </Gate>
+                </DailyEodProvider>
+              </DriversProvider>
+            </DriverRosterProvider>
+          </VacationProvider>
+        </SpecialtyProvider>
       </LoadsProvider>
     </AuthProvider>
   );

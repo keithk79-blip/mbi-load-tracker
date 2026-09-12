@@ -22,7 +22,7 @@ export type AvailabilitySource = "weekday" | "saturday" | "saturday-weekday";
 export type LockedDay = DayAvailability & {
   locked: boolean;
   lockedAt: string;
-  /** Calendar Saturday + weekday L13 when Sat tabs mark a full mandatory day. */
+  /** Calendar Saturday + weekday Full Roster when Sat tabs mark a full mandatory day. */
   source?: AvailabilitySource;
   /**
    * Call-off pills frozen with this Chicago day (sheet + manuals at last
@@ -38,8 +38,8 @@ export type LiveSheet = {
   base: number;
   saturdayBase: number;
   /**
-   * Sat-* banners/body include “full mandatory work day”. Today’s Saturday
-   * then uses weekday L13 + weekday call-off subtract rules, not saturdayBase.
+   * When true, Saturday uses the weekday Full Roster leftover-manual rules.
+   * Live Today always passes true (no Sat-* sheet banner).
    */
   saturdayUsesWeekdayBase?: boolean;
   offs: CallOffRow[];
@@ -62,7 +62,7 @@ function storedDayUsesWeekdayBase(day: LockedDay): boolean {
   return day.source === "saturday-weekday";
 }
 
-/** Sundays have no driver tally. Saturdays use the sat-yard sum unless marked full-mandatory. */
+/** Sundays have no driver tally. Saturdays use the Sat-worklist subtract unless marked full-mandatory. */
 export function isDriverTallyDay(iso: string): boolean {
   return !isChicagoSunday(iso);
 }
@@ -74,7 +74,7 @@ export function lookupDay(store: DayStore, date: string): LockedDay | null {
 
 /**
  * Live projection for Chicago dates after today.
- * Uses current base / Saturday sum + call-offs. Never persisted as a lock.
+ * Uses current Full Roster base + leftover manuals. Never persisted as a lock.
  */
 export function projectFutureDay(live: LiveSheet, date: string, today: string): LockedDay | null {
   if (!isDriverTallyDay(date) || date <= today) return null;
