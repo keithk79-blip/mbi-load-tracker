@@ -404,7 +404,7 @@ button.log-load-top {
 
 .tab-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 4px;
 }
 
@@ -415,9 +415,10 @@ button.log-load-top {
   background: transparent;
   color: var(--muted);
   font-weight: 700;
-  font-size: 12px;
+  font-size: 11px;
   padding: 0 2px;
   letter-spacing: -0.01em;
+  line-height: 1.15;
 }
 
 .tab-active {
@@ -2613,4 +2614,409 @@ body.app-ready .splash {
   font-size: 10px;
   color: var(--muted);
   opacity: 0.85;
+}
+
+/* ——— Vacation calendar (desktop-first week table) ——— */
+.vac-screen {
+  gap: 12px;
+}
+
+.app-shell.is-desktop .vac-screen {
+  max-width: none;
+  padding: 18px 22px 32px;
+}
+
+.vac-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vac-year-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vac-year-create {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vac-year-input {
+  margin-top: 0;
+  width: 88px;
+  min-height: 40px;
+  padding: 6px 10px;
+}
+
+.vac-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.vac-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+
+.vac-legend-note {
+  margin-left: auto;
+  font-weight: 600;
+}
+
+.vac-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.vac-dot-pending {
+  background: #7eb6ff;
+}
+
+.vac-dot-approved {
+  background: #c4c0b6;
+}
+
+.vac-dot-paid {
+  background: #6ee7a0;
+}
+
+.vac-table-wrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #12141a;
+}
+
+.vac-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 640px;
+}
+
+.vac-table th,
+.vac-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.vac-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #101218;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
+
+.vac-col-week {
+  width: 132px;
+  white-space: nowrap;
+}
+
+.vac-col-cap {
+  width: 168px;
+}
+
+.vac-month-row th {
+  background: #1a1d24;
+  color: #f0c4c6;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 800;
+  padding: 8px 12px;
+}
+
+.vac-week-row.is-current {
+  background: #221416;
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
+.vac-week-row.is-closed {
+  background: #16181e;
+}
+
+.vac-week-date {
+  font-weight: 750;
+  font-size: 14px;
+}
+
+.vac-now {
+  margin-top: 2px;
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vac-cap-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #6a2a2c;
+  background: #2a1618;
+  color: #f0c4c6;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.vac-cap-chip.is-holiday {
+  border-color: #b99020;
+  background: #3d320e;
+  color: #fff1c4;
+}
+
+.vac-cap-chip.is-over {
+  border-color: var(--brand);
+  background: #4a1818;
+  color: #ffd6d6;
+}
+
+.vac-driver-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.vac-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 2px 4px 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.vac-pill-approved {
+  border-color: #5a564c;
+  background: #2a2c32;
+  color: #f4f1ea;
+}
+
+.vac-pill-pending {
+  border-color: #3b6ea8;
+  background: #17324f;
+  color: #e7f1ff;
+}
+
+.vac-pill-paid {
+  border-color: #2f8a55;
+  background: #143826;
+  color: #defbe8;
+}
+
+.vac-pill-main {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 1px 2px;
+  min-height: 0;
+  text-align: left;
+}
+
+.vac-pill-name {
+  line-height: 1.2;
+}
+
+.vac-pill-note {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.78;
+  line-height: 1.2;
+}
+
+.vac-pill-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.8;
+}
+
+.vac-pill-x:hover,
+.vac-pill-x:focus-visible {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
+}
+
+.vac-add-link {
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px dashed #6a2a2c;
+  border-radius: 999px;
+  background: transparent;
+  color: #f0c4c6;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.vac-add-form,
+.vac-week-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: min(280px, 100%);
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid #5a2024;
+  background: #181012;
+}
+
+.vac-add-name,
+.vac-add-note,
+.vac-cap-input {
+  margin-top: 0;
+  min-height: 36px;
+  padding: 6px 10px;
+}
+
+.vac-cap-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.vac-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vac-suggest-btn {
+  min-height: 28px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.vac-suggest-btn.selected {
+  border-color: var(--brand);
+  background: #2a1618;
+}
+
+.vac-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.vac-status-btn {
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.vac-status-pending {
+  border-color: #3b6ea8;
+  color: #cfe4ff;
+}
+
+.vac-status-approved {
+  border-color: #5a564c;
+  color: #e8e4da;
+}
+
+.vac-status-paid {
+  border-color: #2f8a55;
+  color: #c8f5d6;
+}
+
+.vac-status-pending.selected {
+  background: #1d3a5c;
+  border-color: #7eb6ff;
+  color: #eaf3ff;
+}
+
+.vac-status-approved.selected,
+.vac-status-btn.selected {
+  background: #2a2c32;
+  border-color: #c4c0b6;
+  color: #fff;
+}
+
+.vac-status-paid.selected {
+  background: #164b2e;
+  border-color: #6ee7a0;
+  color: #e8ffef;
+}
+
+.vac-add-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vac-add-actions .text-btn {
+  min-height: 36px;
+}
+
+@media (max-width: 959px) {
+  .vac-table {
+    min-width: 0;
+  }
+  .vac-col-week,
+  .vac-col-cap,
+  .vac-col-drivers {
+    width: auto;
+  }
+  .vac-legend-note {
+    margin-left: 0;
+  }
 }
