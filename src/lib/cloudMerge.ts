@@ -145,11 +145,12 @@ export type CloudMergeResult = {
   /** Pending / in-flight rows remote is missing or that are newer than remote. */
   toUpsert: Load[];
   /**
-   * Remote-only rows this device should delete. Fired when this device has a
-   * coherent last-good that is a subset of remote (desktop 406 vs inflated 435).
+   * Remote rows this device should delete: pending deletes and durable
+   * tombstones (including a previously deleted id resurrecting). Never
+   * "cloud extras this device does not have" — missing locally ≠ deleted.
    */
   toDelete: Load[];
-  /** Device ids to tombstone: dropped ghosts plus `toDelete`. */
+  /** Device ids to tombstone: dropped local ghosts plus `toDelete`. */
   toTombstone: string[];
 };
 
@@ -197,26 +198,29 @@ export function isProtectedDeviceLoad(load: Load, opts: ProtectLoadOpts): boolea
 }
 
 /**
- * Minimum loads on a date before this device may treat its last-good as the
- * full day and delete remote extras. Stops a phone with 10 cached rows from
- * wiping hundreds of cloud ids.
+ * Prefix for the diagnostic log when a subset last-good would have pruned
+ * cloud-only rows. Grep this if Sep 11-style 408→404 repeats.
+ */
+export const SKIP_REMOTE_PRUNE_LOG_PREFIX = "[load-sync] skip remote prune";
+
+/**
+ * Shape of the old "device-win" prune (desktop 406 vs inflated 435). Kept
+ * only to log that we refused to delete cloud extras — it must not enqueue
+ * remote deletes. A 403-of-408 cache matches this shape and is a subset,
+ * not a wipe.
  */
 export const DEVICE_WIN_MIN_LOADS = 50;
 
-/**
- * Remote extras / remote size. 2026-09-10 was 29/435 ≈ 6.7%. Larger growth is
- * treated as real multi-device logging (adopt extras) rather than ghosts.
- */
+/** Remote extras / remote size. 2026-09-10 was 29/435 ≈ 6.7%. */
 export const DEVICE_WIN_MAX_REMOTE_EXTRA_RATIO = 0.15;
 
 /**
  * True when this device already has a substantial overlap with remote for
- * `date`, and remote only has a small extra tail. That is the desktop 406 vs
- * mobile/cloud 435 class — not a 10-row partial cache, and not a busy day of
- * genuine adds on another device.
+ * `date`, and remote only has a small extra tail. Diagnostic only — do not
+ * DELETE those extras. Missing locally ≠ deleted (Sep 11 408→404).
  *
  * Overlap (not a strict subset) is required so a pending local save that is
- * not on remote yet does not disable recovery.
+ * not on remote yet does not hide the log.
  */
 export function deviceWinsDateAgainstRemote(
   deviceLoads: Load[],
@@ -507,10 +511,10 @@ function collectInflightLoads(
  * - pending queue upserts and in-flight saves (newer than lastSuccessfulSync /
  *   refreshStartedAt) stay and may `toUpsert`
  * - stale local-only STORAGE_KEY rows are dropped and tombstoned, not re-clouded
- * - when this device has a coherent thinner last-good for a date (desktop 406
- *   vs inflated cloud 435), remote extras are `toDelete` rather than adopted
+ * - same-day remote extras are adopted (union). A thinner last-good must
+ *   never DELETE cloud-only rows — missing locally ≠ deleted
  *
- * Tombstones / pending deletes always win.
+ * Tombstones / pending deletes always win (including a deleted id resurrecting).
  */
 export function mergeCloudLoads(input: CloudMergeInput): CloudMergeResult {
   const extras = input.extra ?? [];
@@ -559,7 +563,10 @@ export function mergeCloudLoads(input: CloudMergeInput): CloudMergeResult {
   const mergedMap = new Map<string, Load>();
   putUnseeded(mergedMap, remoteKept);
 
-  const toDelete: Load[] = [];
+  // Intentional remote deletes only. The old device-win loop DELETEd every
+  // remote extra on a subset last-good (desktop 406 vs 435; then Sep 11
+  // 403-of-408 wiped API-restored MSW / Rockdale rows). Missing ≠ deleted.
+  const toDelete = input.remote.filter((load) => !load.seeded && deleted.has(load.id));
   const dates = new Set<string>();
   for (const load of authority) dates.add(load.date);
   for (const load of remoteKept) dates.add(load.date);
@@ -568,18 +575,19 @@ export function mergeCloudLoads(input: CloudMergeInput): CloudMergeResult {
     const deviceIds = new Set(
       authority.filter((load) => load.date === date).map((load) => load.id),
     );
+    const extraIds: string[] = [];
     for (const load of remoteKept) {
-      if (load.date !== date) continue;
-      if (deviceIds.has(load.id)) continue;
-      // DB trigger stamps updated_at=now() on ghost upserts, so createdAt is
-      // the signal for a genuine load logged after this device last synced.
-      if (lastSync && isoAfter(load.createdAt, lastSync)) continue;
-      if (protectOpts.pending.some((op) => op.kind === "upsert" && op.load.id === load.id)) {
-        continue;
-      }
-      toDelete.push(load);
-      mergedMap.delete(load.id);
+      if (load.date !== date || deviceIds.has(load.id)) continue;
+      extraIds.push(load.id);
     }
+    if (extraIds.length === 0) continue;
+    const preview =
+      extraIds.length > 8
+        ? `${extraIds.slice(0, 8).join(",")}…+${extraIds.length - 8}`
+        : extraIds.join(",");
+    console.info(
+      `${SKIP_REMOTE_PRUNE_LOG_PREFIX} on ${date}: device has ${deviceIds.size}/${remoteKept.filter((load) => load.date === date).length}; missing locally ≠ deleted. Kept ${extraIds.length} cloud-only id(s): ${preview}`,
+    );
   }
 
   const deviceCandidates = [...authority, ...inflight, ...pendingUpserts];

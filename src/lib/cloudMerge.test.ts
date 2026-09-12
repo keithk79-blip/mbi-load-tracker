@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   collectDeviceLoads,
   deviceLoadsForPush,
@@ -9,6 +9,7 @@ import {
   reconcilePersistedSnapshot,
   shouldApplyRealtimeDelete,
   shouldApplyRealtimeUpsert,
+  SKIP_REMOTE_PRUNE_LOG_PREFIX,
   snapshotDropsDeviceLoads,
   snapshotDropsProtectedDeviceLoads,
   snapshotForDeviceBackup,
@@ -239,7 +240,7 @@ describe("mergeCloudLoads", () => {
     const cached = load("gone", "2026-09-08");
     const pending: QueueOp[] = [deleteOp("gone")];
 
-    const { merged, toUpsert } = mergeCloudLoads({
+    const { merged, toUpsert, toDelete } = mergeCloudLoads({
       remote: [cached],
       cache: store([cached]),
       local: store([]),
@@ -248,13 +249,14 @@ describe("mergeCloudLoads", () => {
 
     expect(merged).toEqual([]);
     expect(toUpsert).toEqual([]);
+    expect(toDelete.map((row) => row.id)).toEqual(["gone"]);
   });
 
   it("drops a tombstoned id when remote still has it and the queue is empty", () => {
     const gone = load("A", "2026-09-08");
     const kept = load("B", "2026-09-08", { truck: "418" });
 
-    const { merged, toUpsert } = mergeCloudLoads({
+    const { merged, toUpsert, toDelete } = mergeCloudLoads({
       remote: [gone, kept],
       cache: store([kept], ["A"]),
       local: store([gone, kept]),
@@ -263,6 +265,7 @@ describe("mergeCloudLoads", () => {
 
     expect(merged.map((row) => row.id)).toEqual(["B"]);
     expect(toUpsert.map((row) => row.id)).toEqual([]);
+    expect(toDelete.map((row) => row.id)).toEqual(["A"]);
   });
 
   it("does not restore tombstoned loads when remote is empty after a full-day delete", () => {
@@ -769,7 +772,8 @@ describe("2026-09-10 desktop 406 vs mobile/cloud 435 ghost inflation", () => {
     expect(deviceWinsDateAgainstRemote(ghosts29, remote435, SEP10)).toBe(false);
   });
 
-  it("desktop last-good 406 does not adopt the 29 remote ghosts and marks them toDelete", () => {
+  it("desktop last-good 406 unions the 29 remote extras instead of deleting them", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
     const { merged, toUpsert, toDelete, toTombstone } = mergeCloudLoads({
       remote: remote435,
       cache: store(desktop406),
@@ -777,15 +781,19 @@ describe("2026-09-10 desktop 406 vs mobile/cloud 435 ghost inflation", () => {
       pending: [],
     });
 
-    expect(merged.filter((row) => row.date === SEP10)).toHaveLength(406);
-    expect(merged.map((row) => row.id).some((id) => id.startsWith("ghost-"))).toBe(
-      false,
+    expect(merged.filter((row) => row.date === SEP10)).toHaveLength(435);
+    expect(merged.map((row) => row.id).filter((id) => id.startsWith("ghost-"))).toHaveLength(
+      29,
     );
     expect(toUpsert).toHaveLength(0);
-    expect(toDelete.map((row) => row.id).sort()).toEqual(
-      ghosts29.map((row) => row.id).sort(),
-    );
-    expect(toTombstone.sort()).toEqual(ghosts29.map((row) => row.id).sort());
+    expect(toDelete).toHaveLength(0);
+    expect(toTombstone.filter((id) => id.startsWith("ghost-"))).toEqual([]);
+    expect(
+      info.mock.calls.some((call) =>
+        String(call[0]).includes(SKIP_REMOTE_PRUNE_LOG_PREFIX),
+      ),
+    ).toBe(true);
+    info.mockRestore();
   });
 
   it("pending local save on desktop still survives the 435 remote snapshot", () => {
@@ -800,9 +808,9 @@ describe("2026-09-10 desktop 406 vs mobile/cloud 435 ghost inflation", () => {
     });
 
     expect(merged.map((row) => row.id)).toContain("desktop-new");
-    expect(merged.filter((row) => row.date === SEP10)).toHaveLength(407);
+    expect(merged.filter((row) => row.date === SEP10)).toHaveLength(436);
     expect(toUpsert.map((row) => row.id)).toEqual(["desktop-new"]);
-    expect(toDelete).toHaveLength(29);
+    expect(toDelete).toHaveLength(0);
   });
 
   it("mobile 435 matching inflated remote does not toUpsert ghosts", () => {
@@ -893,17 +901,17 @@ describe("2026-09-10 desktop 406 vs mobile/cloud 435 ghost inflation", () => {
       lastSuccessfulSyncAt,
     });
     expect(merged.map((row) => row.id)).toContain("phone-logged");
-    expect(merged.filter((row) => row.date === SEP10)).toHaveLength(407);
-    expect(toDelete.map((row) => row.id).sort()).toEqual(
-      ghosts29.map((row) => row.id).sort(),
+    expect(merged.filter((row) => row.date === SEP10)).toHaveLength(436);
+    expect(toDelete).toHaveLength(0);
+    expect(merged.map((row) => row.id).filter((id) => id.startsWith("ghost-"))).toHaveLength(
+      29,
     );
-    expect(toDelete.map((row) => row.id)).not.toContain("phone-logged");
   });
 
   it("tombstones still stick: local delete is not upserted when remote still has the row", () => {
     const gone = desktop406[0];
     const kept = desktop406.slice(1);
-    const { merged, toUpsert } = mergeCloudLoads({
+    const { merged, toUpsert, toDelete } = mergeCloudLoads({
       remote: desktop406,
       cache: store(kept, [gone.id]),
       local: store(desktop406, [gone.id]),
@@ -911,6 +919,72 @@ describe("2026-09-10 desktop 406 vs mobile/cloud 435 ghost inflation", () => {
     });
     expect(merged.map((row) => row.id)).not.toContain(gone.id);
     expect(toUpsert.map((row) => row.id)).not.toContain(gone.id);
+    expect(toDelete.map((row) => row.id)).toEqual([gone.id]);
+  });
+});
+
+const SEP11 = "2026-09-11";
+
+describe("2026-09-11 subset cache must not prune restored cloud loads", () => {
+  const restoredIds = [
+    "4fb99b04-5a3d-474f-a756-0181e17050fc", // 2463 Northlake → Pontiac Trash (MSW)
+    "25a9c1e0-8547-4db8-8ce5-8874c2630c1b", // 6096 LRS → Pontiac Trash (MSW)
+    "170ac965-9b9e-47d7-b812-752f0b37ecbf", // 2214 Medill → Newton County Trash (MSW)
+    "de981268-7d06-4daf-a685-da2381afc448", // TJ Medill → Newton County Trash (MSW)
+    "1c37c619-0000-4000-8000-000000000001", // Rockdale 2736 → Homewood Recycle
+  ] as const;
+  const ghostTriState = "3b05fb18-f3d7-444b-b99e-a25af66ab6b0";
+  const trucks = ["2463", "6096", "2214", "TJ", "2736"] as const;
+  const shared403 = busyToday(403, SEP11);
+  const restoredLoads = restoredIds.map((id, i) =>
+    load(id, SEP11, {
+      truck: trucks[i],
+      createdAt: `${SEP11}T14:00:00.000Z`,
+      updatedAt: `${SEP11}T14:00:00.000Z`,
+    }),
+  );
+  const remote408 = [...shared403, ...restoredLoads];
+
+  it("device-win heuristic still matches 403 ⊂ 408 (the old false-prune shape)", () => {
+    expect(deviceWinsDateAgainstRemote(shared403, remote408, SEP11)).toBe(true);
+  });
+
+  it("does not DELETE the five restored cloud-only ids from a 403-row subset cache", () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const { merged, toUpsert, toDelete } = mergeCloudLoads({
+      remote: remote408,
+      cache: store(shared403),
+      local: store(shared403),
+      pending: [],
+    });
+
+    expect(merged.filter((row) => row.date === SEP11)).toHaveLength(408);
+    expect(toDelete).toHaveLength(0);
+    expect(toUpsert).toHaveLength(0);
+    expect(merged.map((row) => row.id)).toEqual(expect.arrayContaining([...restoredIds]));
+    expect(
+      info.mock.calls.some(
+        (call) =>
+          String(call[0]).includes(SKIP_REMOTE_PRUNE_LOG_PREFIX) &&
+          String(call[0]).includes("4fb99b04-5a3d-474f-a756-0181e17050fc"),
+      ),
+    ).toBe(true);
+    info.mockRestore();
+  });
+
+  it("still deletes a resurrected tombstone (Tri-State ghost), not the restored ids", () => {
+    const ghost = load(ghostTriState, SEP11, { truck: "6096" });
+    const { merged, toDelete, toUpsert } = mergeCloudLoads({
+      remote: [...remote408, ghost],
+      cache: store(shared403, [ghostTriState]),
+      local: store(shared403, [ghostTriState]),
+      pending: [],
+    });
+
+    expect(merged.map((row) => row.id)).not.toContain(ghostTriState);
+    expect(toDelete.map((row) => row.id)).toEqual([ghostTriState]);
+    expect(merged.map((row) => row.id)).toEqual(expect.arrayContaining([...restoredIds]));
+    expect(toUpsert.map((row) => row.id)).not.toContain(ghostTriState);
   });
 });
 
