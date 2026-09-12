@@ -3,7 +3,14 @@ import { BrandMark } from "../components/BrandMark";
 import { CollapsibleRank } from "../components/CollapsibleRank";
 import { DayPicker } from "../components/DayPicker";
 import { LoadRow } from "../components/LoadRow";
+import { SheetTotalsForm } from "../components/SheetTotalsForm";
 import { dailyCounts } from "../lib/analytics";
+import {
+  applyDailyEodToSummary,
+  displayLoadCount,
+  isSheetEodCard,
+  sheetTotalsLabel,
+} from "../lib/dailyEod";
 import {
   chicagoToday,
   formatHeaderDate,
@@ -29,6 +36,7 @@ import {
   type TotalsFilter,
 } from "../lib/totals";
 import { useAuth } from "../store/AuthContext";
+import { useDailyEod } from "../store/DailyEodContext";
 import { useDrivers } from "../store/DriversContext";
 import { useLoads } from "../store/LoadsContext";
 
@@ -72,23 +80,29 @@ export function TotalsScreen({
 }: TotalsScreenProps) {
   const today = chicagoToday();
   const { loads, loadsOn, exportCsv, hasSampleLoads, clearSampleLoads } = useLoads();
+  const { totalsOn, upsertTotals } = useDailyEod();
   const { availabilityOn } = useDrivers();
   const [filter, setFilter] = useState<TotalsFilter | null>(null);
   const board = useStationCallBoard(date);
+  const snapshot = totalsOn(date);
+  const sourceLabel = sheetTotalsLabel(snapshot);
 
   const dayLoads = loadsOn(date);
   const countByDate = useMemo(() => {
     const map = new Map<string, number>();
     for (const row of dailyCounts(loads, weekStartingMonday(date))) {
-      map.set(row.date, row.count);
+      map.set(row.date, displayLoadCount(row.count, totalsOn(row.date)));
     }
     return map;
-  }, [loads, date]);
+  }, [loads, date, totalsOn]);
 
   const byPickup = useMemo(() => rankPickups(dayLoads), [dayLoads]);
   const byDestination = useMemo(() => rankDestinations(dayLoads), [dayLoads]);
   const byCommodity = useMemo(() => rankCommodities(dayLoads), [dayLoads]);
-  const eod = useMemo(() => endOfDaySummary(dayLoads, board), [dayLoads, board]);
+  const eod = useMemo(
+    () => applyDailyEodToSummary(endOfDaySummary(dayLoads, board), snapshot),
+    [dayLoads, board, snapshot],
+  );
 
   const matching = filter ? filterLoads(dayLoads, filter) : [];
   const dayPhrase = date === today ? "today" : `on ${formatShortDate(date)}`;
@@ -134,18 +148,35 @@ export function TotalsScreen({
       />
 
       <section className="eod-block">
-        <h2 className="section-title">End of day</h2>
-        <div className="eod-stat-row">
-          {endOfDayCards(eod).map((card) => (
-            <article
-              key={card.key}
-              className={card.emphasis ? "eod-stat eod-stat-loads" : "eod-stat"}
-            >
-              <span className="eod-stat-label">{card.label}</span>
-              <span className="eod-stat-value">{card.count}</span>
-            </article>
-          ))}
+        <div className="eod-head">
+          <h2 className="section-title">End of day</h2>
+          {sourceLabel ? <span className="sheet-totals-badge">{sourceLabel}</span> : null}
         </div>
+        <div className="eod-stat-row">
+          {endOfDayCards(eod).map((card) => {
+            const fromSheet = Boolean(snapshot) && isSheetEodCard(card.key);
+            return (
+              <article
+                key={card.key}
+                className={[
+                  card.emphasis ? "eod-stat eod-stat-loads" : "eod-stat",
+                  fromSheet ? "eod-stat-sheet" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                <span className="eod-stat-label">{card.label}</span>
+                <span className="eod-stat-value">{card.count}</span>
+              </article>
+            );
+          })}
+        </div>
+        <SheetTotalsForm
+          key={`${date}:${snapshot?.updatedAt ?? "new"}`}
+          date={date}
+          existing={snapshot}
+          onSave={upsertTotals}
+        />
         <div className="eod-table-wrap">
           <table className="eod-table">
             <thead>
@@ -171,7 +202,11 @@ export function TotalsScreen({
       {dayLoads.length === 0 ? (
         <div className="empty compact">
           <h2>No loads {dayPhrase}</h2>
-          <p>Log a haul and these rankings fill in live.</p>
+          <p>
+            {snapshot
+              ? "TRASH / LEACHATE / WF / LOADS / SUBS come from the Dispatch Board sheet. Log a haul if you want truck rows too."
+              : "Log a haul and these rankings fill in live."}
+          </p>
           <button type="button" className="btn-primary" onClick={() => onLog(date)}>
             + Log load
           </button>

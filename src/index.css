@@ -1020,6 +1020,147 @@ button.log-load-top {
   margin: 0;
 }
 
+.eod-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sheet-totals-badge,
+.sheet-totals-kicker {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid #5a4a28;
+  background: #2a2418;
+  color: #e0b07a;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.tally-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sheet-totals-kicker {
+  align-self: flex-start;
+}
+
+.tally-card-sheet,
+.eod-stat-sheet {
+  border-color: #5a4a28;
+  background: #221e16;
+}
+
+.sheet-totals-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sheet-totals-toggle {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #e0b07a;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.sheet-totals-toggle:hover,
+.sheet-totals-toggle:focus-visible {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  outline: none;
+}
+
+.sheet-totals-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #5a4a28;
+  border-radius: 12px;
+  background: #1a1814;
+}
+
+[data-layout="desktop"] .sheet-totals-fields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.sheet-totals-hint,
+.sheet-totals-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sheet-totals-hint {
+  color: var(--muted);
+}
+
+.sheet-totals-error {
+  color: var(--danger);
+  font-weight: 650;
+}
+
+.sheet-totals-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.sheet-totals-field span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.sheet-totals-field input {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel, var(--surface));
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color-scheme: dark;
+}
+
+.sheet-totals-field input:focus-visible {
+  outline: none;
+  border-color: #e0b07a;
+}
+
+.sheet-totals-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sheet-totals-save {
+  min-width: 10.5rem;
+}
+
 .eod-stat-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

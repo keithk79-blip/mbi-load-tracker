@@ -2,11 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { dailyCounts } from "../lib/analytics";
 import {
+  applyDailyEodToCards,
+  displayLoadCount,
+  isSheetEodCard,
+  sheetTotalsLabel,
+} from "../lib/dailyEod";
+import {
   chicagoToday,
   formatHeaderDate,
   weekStartingMonday,
 } from "../lib/chicagoDate";
 import { daySummaryCards } from "../lib/totals";
+import { useDailyEod } from "../store/DailyEodContext";
 import { useDrivers } from "../store/DriversContext";
 import { useLoads } from "../store/LoadsContext";
 import { BrandMark } from "../components/BrandMark";
@@ -36,8 +43,11 @@ export function TodayScreen({
 }: TodayScreenProps) {
   const today = chicagoToday();
   const { loads, loadsOn } = useLoads();
+  const { totalsOn } = useDailyEod();
   const { availabilityOn } = useDrivers();
   const dayLoads = loadsOn(date);
+  const snapshot = totalsOn(date);
+  const sourceLabel = sheetTotalsLabel(snapshot);
   const viewingToday = date === today;
   const [loadsOpen, setLoadsOpen] = useState(false);
 
@@ -48,12 +58,12 @@ export function TodayScreen({
   const countByDate = useMemo(() => {
     const map = new Map<string, number>();
     for (const row of dailyCounts(loads, weekStartingMonday(date))) {
-      map.set(row.date, row.count);
+      map.set(row.date, displayLoadCount(row.count, totalsOn(row.date)));
     }
     return map;
-  }, [loads, date]);
+  }, [loads, date, totalsOn]);
 
-  const summaryCards = daySummaryCards(dayLoads);
+  const summaryCards = applyDailyEodToCards(daySummaryCards(dayLoads), snapshot);
   const loadWord = dayLoads.length === 1 ? "load" : "loads";
 
   return (
@@ -82,16 +92,27 @@ export function TodayScreen({
         </button>
       ) : null}
 
-      <div className="tally-row">
-        {summaryCards.map((card) => (
-          <article
-            key={card.key}
-            className={card.emphasis ? "tally-card tally-loads" : "tally-card"}
-          >
-            <span className="tally-label">{card.label}</span>
-            <span className="tally-value">{card.count}</span>
-          </article>
-        ))}
+      <div className={sourceLabel ? "tally-block has-sheet-totals" : "tally-block"}>
+        {sourceLabel ? <p className="sheet-totals-kicker">{sourceLabel}</p> : null}
+        <div className="tally-row">
+          {summaryCards.map((card) => {
+            const fromSheet = Boolean(snapshot) && isSheetEodCard(card.key);
+            return (
+              <article
+                key={card.key}
+                className={[
+                  card.emphasis ? "tally-card tally-loads" : "tally-card",
+                  fromSheet ? "tally-card-sheet" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                <span className="tally-label">{card.label}</span>
+                <span className="tally-value">{card.count}</span>
+              </article>
+            );
+          })}
+        </div>
       </div>
 
       <button type="button" className="log-load-top" onClick={() => onLog(date)}>

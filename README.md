@@ -109,6 +109,26 @@ In the dashboard: **SQL Editor → New query**. Paste `supabase/migrations/20260
 
 For the **Vacation** tab, also paste and Run **`Load-Tracker-vacation.sql`** once (same DDL is in `supabase/migrations/20260912040000_vacation_calendar.sql` and `Load-Tracker-sync-tables.sql`). That creates `public.vacation_weeks` and `public.vacation_entries` with the same authenticated-crew RLS + Realtime. Then open a signed-in client so the 2025–2026 seed can upload; other devices pick it up on refresh. If those tables are missing, the board still works in localStorage on that device only.
 
+For **historical End-of-Day bubbles** (Dispatch Board Loads tab totals without truck-by-truck rows), paste and Run **`Load-Tracker-daily-eod-totals.sql`** once (same DDL is in `supabase/migrations/20260912180000_daily_eod_totals.sql` and `Load-Tracker-sync-tables.sql`). That creates `public.daily_eod_totals`. Insert one row per America/Chicago calendar day:
+
+```sql
+insert into public.daily_eod_totals (
+  date, trash, leachate, walking_floor, loads, subs, source
+) values (
+  '2026-09-08', 334, 39, 31, 404, 15, 'sheet-import'
+)
+on conflict (date) do update set
+  trash = excluded.trash,
+  leachate = excluded.leachate,
+  walking_floor = excluded.walking_floor,
+  loads = excluded.loads,
+  subs = excluded.subs,
+  source = excluded.source,
+  updated_at = now();
+```
+
+`trash` = Total MSW, `leachate` = Total Tank Loads, `walking_floor` = Total Walking-Floor Loads, `loads` = Total Loads (MSW + tank + WF), `subs` = Total Sub Loads. If a `daily_eod_totals` row exists for the selected date, Totals / Today prefer those five bubbles even when some truck rows exist (partial history). Live today with no snapshot still sums logged loads. The station picked-up / Closed table stays live-derived. A **Sheet totals** badge marks the override. You can also enter the five numbers on Totals. Sync is a separate pull/push from `loads` — it never deletes or invents truck rows. Local cache: `chitrader.load-tracker.daily-eod-totals.v1`.
+
 Or with the Supabase CLI from the repo root:
 
 ```bash
@@ -202,7 +222,7 @@ truck,pickup,commodity,destination
 | **Custom** | Free-text pickup / commodity / destination, with leachate tanker suggestions (CID, Kankakee, Reworld) |
 | **Trucks** | Search a unit, pick any calendar day, list that day’s loads |
 | **Edit load** | Change any of the four fields (cascade still applies). Delete duplicates. Totals recalculate. |
-| **Totals** | Day totals for any Chicago calendar day. Grand total at the top (“42 loads today”). Collapsible groups: **Transfer station** (pickup), **Landfill** (destination), **Commodity**. Transfer station starts open; tap a section header to expand or collapse. Tap a bar to list those loads. Export CSV and **Clear sample loads** (local mode) are unchanged. |
+| **Totals** | Day totals for any Chicago calendar day. **End of day** bubbles (TRASH / LEACHATE / WF / LOADS / SUBS) use a `daily_eod_totals` snapshot when one exists for that date — even if some truck rows exist — otherwise they sum logged loads. Collapsible groups: **Transfer station** (pickup), **Landfill** (destination), **Commodity**. Transfer station starts open; tap a section header to expand or collapse. Tap a bar to list those loads. Export CSV and **Clear sample loads** (local mode) are unchanged. |
 | **Analytics** | Running view of whatever is already in the store (localStorage or the Supabase cache). **Year to date** grand total, **available drivers** (Burnham!L13 minus classified offs, with Refresh sheets), a **transfer-station donut**, **day-to-day** bars + list (loads, available drivers, loads/driver) for the last 21 days, then YTD breakdowns by transfer station, landfill, and commodity. |
 | **Vacation** | Crew vacation calendar (separate tab). Desktop-first week table: week-of, capacity or holiday/blocked badge, driver name pills. **Pending** = blue, **approved** = neutral, **paid** = green. Year picker (defaults to the current America/Chicago year), **This week** jump, **+ Year** to seed a future calendar without needing named rows. First open bootstraps **2025** (weeks + holidays) and **2026** (sheet names from the Vacation Calendar export). Local `chitrader.load-tracker.vacation.v1` plus Supabase `vacation_weeks` / `vacation_entries` (run **`Load-Tracker-vacation.sql`** once). |
 
@@ -224,6 +244,7 @@ When pickup changes, invalid commodity and destination values are cleared and sh
 10c. On **Today**, confirm the compact available-drivers strip matches Analytics for the current Chicago date (hidden tally on Saturday).
 10d. Open **Vacation**. Confirm the sidebar tab, year chips (2026 default), status legend, and a week table (not stuffed into Today). 2026 should list seeded names (e.g. Greg Cellarius the week of Jan 4). Tap a name to cycle pending (blue) / approved / paid (green). **+ Add** a driver on a week. **This week** scrolls to the current Chicago week. Capacity chips show “n of N filled”; holiday weeks show Memorial Day / Labor Day / etc.
 11. Switch Totals to yesterday via the day chips. Counts should match that day’s loads. **Jump to today** returns to the current Chicago date.
+11b. On a date with a `daily_eod_totals` row (SQL insert or Totals → Enter sheet totals), End of day / Today TRASH · LEACHATE · WF · LOADS · SUBS match the snapshot and show a **Sheet totals** badge — even if some truck rows exist. The station table stays load-derived. A day without a snapshot still sums logged loads. Syncing totals must not delete or invent truck rows.
 12. Totals → **Export CSV** and open the file: four columns (`truck,pickup,commodity,destination`), no extra fields.
 13. Widen the window past 960px (or run `npm run tauri dev` on Windows). Confirm sidebar, Today + Totals side-by-side, and that typing a truck # + Enter works.
 13b. On **Today** (web, phone, and Windows), the **Chicago traffic** card (SigAlert · Chicago) lists hot-corridor incidents. Incidents sort severe → moderate → minor; construction-like rows sit under Construction. Web/phone load via `/api/sigalert` (Pages Function in production, Vite middleware in `npm run dev`) — they must **not** call the Tauri invoke. If the feed fails, the card shows a truncated error. After merging, redeploy Cloudflare Pages **including `functions/`**, and rebuild the Windows exe (`npm run tauri:build`) so both platforms match.

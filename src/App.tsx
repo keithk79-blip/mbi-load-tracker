@@ -14,6 +14,7 @@ import { TodayScreen } from "./screens/TodayScreen";
 import { TotalsScreen } from "./screens/TotalsScreen";
 import { VacationScreen } from "./screens/VacationScreen";
 import { AuthProvider, useAuth } from "./store/AuthContext";
+import { DailyEodProvider } from "./store/DailyEodContext";
 import { DriversProvider } from "./store/DriversContext";
 import { SpecialtyProvider } from "./store/SpecialtyContext";
 import { VacationProvider } from "./store/VacationContext";
@@ -196,9 +197,11 @@ export default function App() {
         <DriversProvider>
           <SpecialtyProvider>
             <VacationProvider>
-              <Gate>
-                <Shell />
-              </Gate>
+              <DailyEodProvider>
+                <Gate>
+                  <Shell />
+                </Gate>
+              </DailyEodProvider>
             </VacationProvider>
           </SpecialtyProvider>
         </DriversProvider>
