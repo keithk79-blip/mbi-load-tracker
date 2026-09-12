@@ -112,11 +112,17 @@ describe("roster cell classifiers", () => {
 describe("parseRosterPeople", () => {
   it("reads Burnham's three truck|name|status groups and skips totals", () => {
     const { people } = parseRosterPeople(BURNHAM_FULL);
+    expect(people[0]).toEqual({
+      truckNumber: "56",
+      name: "Dave Vanderbilt",
+      status: null,
+    });
     expect(people.find((row) => row.name === "Dave Vanderbilt")).toEqual({
       truckNumber: "56",
       name: "Dave Vanderbilt",
       status: null,
     });
+    expect(people.map((row) => row.truckNumber).slice(0, 3)).toEqual(["56", "102", "184"]);
     expect(people.find((row) => row.name === "Zachary Valadez")?.status).toBe("oot");
     expect(people.find((row) => row.name === "John Wegner")?.status).toBe("wc");
     expect(people.find((row) => row.name === "Josh Maciejewski")?.status).toBe("vac");
@@ -174,7 +180,7 @@ describe("parseRosterPeople", () => {
 
     const rock = parseRosterTabCsv(SAT_ROCKFORD, "sat", "rockford", "Sat-Rockford");
     expect(rock.forDate).toBe("2026-09-12");
-    expect(rock.people.map((row) => row.truckNumber)).toEqual(["185", "32246", "1495", "33573", "13"]);
+    expect(rock.people.map((row) => row.truckNumber)).toEqual(["185", "1495", "13", "32246", "33573"]);
   });
 });
 

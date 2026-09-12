@@ -184,14 +184,19 @@ export function DriverScreen() {
           <p className="drv-count">
             {count} {count === 1 ? "driver" : "drivers"}
           </p>
-          <button
-            type="button"
-            className="text-btn amber"
-            disabled={importing}
-            onClick={() => void importFromSheet()}
-          >
-            {importing ? "Importing…" : "Import from sheet"}
-          </button>
+          <div className="vac-add-actions">
+            <button type="button" className="text-btn amber" onClick={() => setAdding(true)}>
+              + Add
+            </button>
+            <button
+              type="button"
+              className="text-btn"
+              disabled={importing}
+              onClick={() => void importFromSheet()}
+            >
+              {importing ? "Importing…" : "Import from sheet"}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -245,6 +250,22 @@ export function DriverScreen() {
           </span>
         )}
       </div>
+
+      {adding ? (
+        <AddRosterForm
+          kind={kind}
+          onCancel={() => setAdding(false)}
+          onSave={(truck, name, status) => {
+            void addDriver({
+              truckNumber: truck,
+              name,
+              status,
+              forDate: satDate,
+            });
+            setAdding(false);
+          }}
+        />
+      ) : null}
 
       {lastImport?.error ? <p className="form-error">{lastImport.error}</p> : null}
       {lastImport && !lastImport.error ? (
@@ -356,26 +377,10 @@ export function DriverScreen() {
                 </tr>
               ))}
               <tr className="drv-add-row">
-                <td colSpan={kind === "full" ? 4 : 4}>
-                  {adding ? (
-                    <AddRosterForm
-                      kind={kind}
-                      onCancel={() => setAdding(false)}
-                      onSave={(truck, name, status) => {
-                        void addDriver({
-                          truckNumber: truck,
-                          name,
-                          status,
-                          forDate: satDate,
-                        });
-                        setAdding(false);
-                      }}
-                    />
-                  ) : (
-                    <button type="button" className="vac-add-link" onClick={() => setAdding(true)}>
-                      + Add
-                    </button>
-                  )}
+                <td colSpan={4}>
+                  <button type="button" className="vac-add-link" onClick={() => setAdding(true)}>
+                    + Add
+                  </button>
                 </td>
               </tr>
             </tbody>

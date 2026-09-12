@@ -119,10 +119,10 @@ export function parseRosterPeople(csv: string): {
   forDate: string | null;
 } {
   const table = parseCsv(csv);
-  const people: ParsedRosterPerson[] = [];
+  const found: Array<ParsedRosterPerson & { col: number; row: number }> = [];
   const seen = new Set<string>();
 
-  for (const row of table) {
+  table.forEach((row, rowIdx) => {
     for (let c = 0; c < row.length; c++) {
       const cell = (row[c] ?? "").trim();
       if (!cell) continue;
@@ -143,13 +143,17 @@ export function parseRosterPeople(csv: string): {
       const key = `${truckNumber ?? ""}|${name.toLowerCase()}`;
       if (!seen.has(key)) {
         seen.add(key);
-        people.push({ truckNumber, name, status });
+        found.push({ truckNumber, name, status, col: c, row: rowIdx });
       }
       c = status ? nameIdx + 1 : nameIdx;
     }
-  }
+  });
 
-  return { people, forDate: extractSheetDate(table) };
+  found.sort((a, b) => a.col - b.col || a.row - b.row);
+  return {
+    people: found.map(({ truckNumber, name, status }) => ({ truckNumber, name, status })),
+    forDate: extractSheetDate(table),
+  };
 }
 
 export function parseRosterTabCsv(
