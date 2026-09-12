@@ -75,9 +75,9 @@ export function collectDeviceLoads(
 }
 
 /**
- * Union of cache + STORAGE_KEY minus tombstones / pending deletes.
- * Not what Push all should enqueue — that re-upserts already-clouded rows
- * (resurrects other-device deletes; retriggers loads.updated_at = now()).
+ * Reconciled cache minus tombstones / pending deletes.
+ * Does not re-union STORAGE_KEY leftovers (those are Upload-local or ghosts).
+ * Push all is refresh-first and must not re-upsert the whole cache.
  */
 export function deviceLoadsForPush(
   cache: Persisted,
@@ -85,7 +85,12 @@ export function deviceLoadsForPush(
   pending: QueueOp[] = [],
 ): Load[] {
   const deleted = deletedLoadIds(pending, cache, local);
-  return collectDeviceLoads(cache, local, deleted).filter((load) => !load.seeded);
+  // Cache is the reconciled crew snapshot. Do not re-union STORAGE_KEY
+  // leftovers — that re-clouds stale local ghosts (and used to tombstone
+  // them as if the user had deleted them).
+  return collectDeviceLoads(cache, { version: 1, loadsByDate: {} }, deleted).filter(
+    (load) => !load.seeded,
+  );
 }
 
 /**
@@ -119,8 +124,8 @@ export function snapshotForDeviceBackup(
   local: Persisted,
   pending: QueueOp[] = [],
 ): Persisted | null {
-  const deleted = deletedLoadIds(pending, cache, local);
-  const union = collectDeviceLoads(cache, local, deleted).filter((load) => !load.seeded);
+  const deleted = deletedLoadIds(pending, cache);
+  const union = allLoads(cache).filter((load) => !load.seeded && !deleted.has(load.id));
   const existingReal = allLoads(local).filter(
     (load) => !load.seeded && !deleted.has(load.id),
   );
@@ -629,17 +634,15 @@ export function mergeCloudLoads(input: CloudMergeInput): CloudMergeResult {
   }
 
   const merged = sortLoads([...mergedMap.values()]);
-  const mergedIds = new Set(merged.map((load) => load.id));
 
+  // deletedIds grow only from explicit UI deletes (and leftover durable
+  // tombstones that are still absent from remote). Sync must not write
+  // "local cache lacks this id" into deletedIds — that is how the Sep 11
+  // MSW rows became poison tombstones.
   const toTombstoneSet = new Set<string>(toDeleteIds);
   for (const id of durableTombstones) {
     if (remoteById.has(id) && !explicitDeletes.has(id)) continue;
     toTombstoneSet.add(id);
-  }
-  for (const load of [...authority, ...inflight]) {
-    if (mergedIds.has(load.id)) continue;
-    if (isProtectedDeviceLoad(load, protectOpts)) continue;
-    toTombstoneSet.add(load.id);
   }
 
   const toUpsert = merged.filter((load) => {

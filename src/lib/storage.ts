@@ -38,11 +38,25 @@ export type Persisted = {
 
 const EMPTY: Persisted = { version: 1, loadsByDate: {} };
 
+/**
+ * Sep 11 sheet-reconciliation ids that the old device-win prune wrote into
+ * `deletedIds`. They are not user deletes. Never persist or honor them.
+ */
+export const STALE_AUTO_PRUNE_LOAD_IDS = new Set<string>([
+  "4fb99b04-5a3d-474f-a756-0181e17050fc",
+  "25a9c1e0-8547-4db8-8ce5-8874c2630c1b",
+  "170ac965-9b9e-47d7-b812-752f0b37ecbf",
+  "de981268-7d06-4daf-a685-da2381afc448",
+]);
+
 export function parseDeletedIds(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   return [
     ...new Set(
-      raw.filter((id): id is string => typeof id === "string" && id.length > 0),
+      raw.filter(
+        (id): id is string =>
+          typeof id === "string" && id.length > 0 && !STALE_AUTO_PRUNE_LOAD_IDS.has(id),
+      ),
     ),
   ];
 }

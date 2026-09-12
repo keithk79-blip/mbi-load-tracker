@@ -8,6 +8,8 @@ import {
   forgetDeletedId,
   gcLoadDeletedIds,
   LAST_CLOUD_SYNC_KEY,
+  parseDeletedIds,
+  STALE_AUTO_PRUNE_LOAD_IDS,
   loadsForDate,
   readLastSuccessfulSyncAt,
   readStore,
@@ -174,6 +176,16 @@ describe("deletedIds tombstones", () => {
     expect(saved.deletedIds).toBeUndefined();
     expect(allLoads(saved).map((row) => row.id)).toEqual(["A"]);
     expect(forgetDeletedId(afterDelete, "A").deletedIds).toBeUndefined();
+  });
+
+  it("strips the Sep 11 auto-prune poison ids so they cannot stay in deletedIds", () => {
+    const poison = [...STALE_AUTO_PRUNE_LOAD_IDS];
+    expect(parseDeletedIds(["keep-me", ...poison, ""])).toEqual(["keep-me"]);
+    const next = rememberDeletedIds(
+      { version: 1, loadsByDate: {} },
+      poison,
+    );
+    expect(next.deletedIds).toBeUndefined();
   });
 
   it("gc drops a stale tombstone when the id is live on remote, unless explicitly deleted", () => {

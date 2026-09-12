@@ -165,7 +165,7 @@ describe("mergeCloudLoads", () => {
 
     expect(merged.map((row) => row.id)).toEqual(["already-cloud"]);
     expect(toUpsert.map((row) => row.id)).toEqual([]);
-    expect(toTombstone).toContain("desktop-only");
+    expect(toTombstone).not.toContain("desktop-only");
   });
 
   it("pending local save survives a thinner complete remote and is upserted", () => {
@@ -398,10 +398,7 @@ describe("delete then backup / Push all (resurrection bug)", () => {
     const cache = store([b], ["A"]);
     const staleLocal = store([a, b, load("legacy-local", "2026-09-07")]);
 
-    expect(deviceLoadsForPush(cache, staleLocal, []).map((row) => row.id).sort()).toEqual([
-      "B",
-      "legacy-local",
-    ]);
+    expect(deviceLoadsForPush(cache, staleLocal, []).map((row) => row.id)).toEqual(["B"]);
     expect(localOnlyLoadsForUpload(cache, staleLocal, []).map((row) => row.id)).toEqual([
       "legacy-local",
     ]);
@@ -519,7 +516,7 @@ describe("2026-09-09 count oscillation (324 → 306 class)", () => {
 
     expect(merged.filter((row) => row.date === TODAY)).toHaveLength(306);
     expect(toUpsert).toHaveLength(0);
-    expect(toTombstone.sort()).toEqual(localOnly18.map((row) => row.id).sort());
+    expect(toTombstone).toEqual([]);
   });
 
   it("stale persist of 306 does not re-union unprotected local 324 ghosts", () => {
@@ -590,7 +587,7 @@ describe("2026-09-09 count oscillation (324 → 306 class)", () => {
 
     expect(merged.filter((row) => row.date === TODAY)).toHaveLength(306);
     expect(toUpsert).toHaveLength(0);
-    expect(toTombstone).toHaveLength(18);
+    expect(toTombstone).toEqual([]);
 
     const next = reconcilePersistedSnapshot({
       incoming: store(merged, toTombstone),
@@ -601,7 +598,7 @@ describe("2026-09-09 count oscillation (324 → 306 class)", () => {
       pending: [],
     });
     expect((next!.loadsByDate[TODAY] ?? []).length).toBe(306);
-    expect(next!.deletedIds).toEqual(expect.arrayContaining(toTombstone));
+    expect(next!.deletedIds ?? []).toEqual([]);
   });
 
   it("in-flight refresh extra restores loads saved during the fetch", () => {
@@ -902,7 +899,7 @@ describe("2026-09-10 desktop 406 vs mobile/cloud 435 ghost inflation", () => {
     expect(merged.filter((row) => row.date === SEP10)).toHaveLength(406);
     expect(toUpsert).toHaveLength(0);
     expect(toDelete).toHaveLength(0);
-    expect(toTombstone.sort()).toEqual(ghosts29.map((row) => row.id).sort());
+    expect(toTombstone.filter((id) => id.startsWith("ghost-"))).toEqual([]);
 
     const next = reconcilePersistedSnapshot({
       incoming: store(merged, toTombstone),
@@ -913,7 +910,7 @@ describe("2026-09-10 desktop 406 vs mobile/cloud 435 ghost inflation", () => {
       pending: [],
     });
     expect((next!.loadsByDate[SEP10] ?? []).length).toBe(406);
-    expect(next!.deletedIds).toEqual(expect.arrayContaining(toTombstone));
+    expect(next!.deletedIds ?? []).toEqual([]);
 
     const backup = snapshotForDeviceBackup(next!, store(remote435), []);
     expect(backup).not.toBeNull();
@@ -1087,6 +1084,47 @@ describe("2026-09-11 subset cache must not prune restored cloud loads", () => {
     expect(toDelete).toHaveLength(0);
     expect(merged.map((row) => row.id)).toEqual(expect.arrayContaining([...restoredIds]));
     expect(toUpsert.map((row) => row.id)).not.toContain(ghostTriState);
+  });
+
+  it("new replacement UUIDs survive a thin cache that still has the old poison tombstones", () => {
+    const replacementIds = [
+      "0aa5b988-f257-4713-8468-da015e7cea63",
+      "01894f68-c9c0-4ce2-afa6-d910a081dc62",
+      "0f50cd71-e475-4fda-8a80-f0aac48be178",
+      "7412c7c4-d4d6-4b8b-972b-ffbf01d022a0",
+    ] as const;
+    const replacementLoads = replacementIds.map((id, i) =>
+      load(id, SEP11, {
+        truck: trucks[i],
+        createdAt: `${SEP11}T15:00:00.000Z`,
+        updatedAt: `${SEP11}T15:00:00.000Z`,
+      }),
+    );
+    const remote = [...shared403, ...replacementLoads];
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const { merged, toDelete, toUpsert, toTombstone } = mergeCloudLoads({
+      remote,
+      cache: store(shared403, [...restoredIds]),
+      local: store(shared403, [...restoredIds]),
+      pending: [],
+    });
+
+    expect(merged.filter((row) => row.date === SEP11)).toHaveLength(407);
+    expect(merged.map((row) => row.id)).toEqual(expect.arrayContaining([...replacementIds]));
+    expect(toDelete).toHaveLength(0);
+    expect(toUpsert).toHaveLength(0);
+    expect(toTombstone.filter((id) => replacementIds.includes(id as (typeof replacementIds)[number]))).toEqual(
+      [],
+    );
+    expect(enqueueRemoteDeletesFromRefresh(replacementIds, [])).toEqual([]);
+    expect(
+      warn.mock.calls.some((call) =>
+        String(call[0]).includes(NON_EXPLICIT_REMOTE_DELETE_WARN),
+      ),
+    ).toBe(true);
+    info.mockRestore();
+    warn.mockRestore();
   });
 
   it("explicit UI delete still deletes that remote id and not the restored MSW rows", () => {
