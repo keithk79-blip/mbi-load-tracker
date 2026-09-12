@@ -1,10 +1,11 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { BrandMark } from "./components/BrandMark";
 import { SessionBar } from "./components/SessionBar";
 import { TabBar } from "./components/TabBar";
 import { chicagoToday } from "./lib/chicagoDate";
 import { useDesktopLayout } from "./lib/layout";
+import { replaceRetiredTotalsLocation } from "./lib/tabRoute";
 import { EditLoadScreen } from "./screens/EditLoadScreen";
 import { LogLoadScreen } from "./screens/LogLoadScreen";
 import { LoginScreen } from "./screens/LoginScreen";
@@ -67,9 +68,22 @@ function Shell() {
     setJustEditedId(id);
     setOverlay(null);
     if (date) setFeedDate(date);
-    if (tab === "totals" || tab === "analytics" || tab === "vacation") return;
+    if (tab === "analytics" || tab === "vacation") return;
     setTab("today");
   };
+
+  useEffect(() => {
+    const apply = () => {
+      if (replaceRetiredTotalsLocation(window.location)) setTab("today");
+    };
+    apply();
+    window.addEventListener("popstate", apply);
+    window.addEventListener("hashchange", apply);
+    return () => {
+      window.removeEventListener("popstate", apply);
+      window.removeEventListener("hashchange", apply);
+    };
+  }, []);
 
   const main = (
     <>
@@ -132,15 +146,6 @@ function Shell() {
               onLogForTruck={(truck, date) =>
                 setOverlay({ kind: "log", truck, date })
               }
-            />
-          ) : null}
-
-          {tab === "totals" ? (
-            <TotalsScreen
-              date={feedDate}
-              onDateChange={setFeedDate}
-              onEdit={(loadId) => setOverlay({ kind: "edit", loadId })}
-              onLog={(date) => setOverlay({ kind: "log", date })}
             />
           ) : null}
 

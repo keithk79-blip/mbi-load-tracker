@@ -17,4 +17,4 @@ export type Load = {
   displayName?: string;
 };
 
-export type TabId = "today" | "trucks" | "totals" | "analytics" | "vacation";
+export type TabId = "today" | "trucks" | "analytics" | "vacation";

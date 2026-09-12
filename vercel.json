@@ -1,4 +1,8 @@
 {
+  "redirects": [
+    { "source": "/totals", "destination": "/", "permanent": false },
+    { "source": "/totals/", "destination": "/", "permanent": false }
+  ],
   "rewrites": [
     {
       "source": "/sheets/roster-grid",
