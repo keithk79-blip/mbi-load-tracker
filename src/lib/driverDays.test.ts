@@ -518,7 +518,7 @@ describe("past-day call-offs lock", () => {
       "Pablo Cruz",
       "Sheet Friday",
     ]);
-    expect(refreshed["2026-09-11"]?.ootNames).toBeUndefined();
+    expect(refreshed["2026-09-11"]?.ootNames).toEqual([]);
     expect(refreshed["2026-09-12"]?.ootNames).toEqual(["New OOT"]);
   });
 });
