@@ -5,7 +5,6 @@ import {
   applyDailyEodToCards,
   displayLoadCount,
   isSheetEodCard,
-  sheetTotalsLabel,
 } from "../lib/dailyEod";
 import {
   chicagoToday,
@@ -47,7 +46,6 @@ export function TodayScreen({
   const { availabilityOn } = useDrivers();
   const dayLoads = loadsOn(date);
   const snapshot = totalsOn(date);
-  const sourceLabel = sheetTotalsLabel(snapshot);
   const viewingToday = date === today;
   const [loadsOpen, setLoadsOpen] = useState(false);
 
@@ -92,8 +90,7 @@ export function TodayScreen({
         </button>
       ) : null}
 
-      <div className={sourceLabel ? "tally-block has-sheet-totals" : "tally-block"}>
-        {sourceLabel ? <p className="sheet-totals-kicker">{sourceLabel}</p> : null}
+      <div className="tally-block">
         <div className="tally-row">
           {summaryCards.map((card) => {
             const fromSheet = Boolean(snapshot) && isSheetEodCard(card.key);

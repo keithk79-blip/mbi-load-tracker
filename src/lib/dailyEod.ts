@@ -354,13 +354,6 @@ export function displayLoadCount(
   return snapshot ? snapshot.loads : liveCount;
 }
 
-export function sheetTotalsLabel(
-  snapshot: DailyEodTotals | null | undefined,
-): string | null {
-  if (!snapshot) return null;
-  return snapshot.source === "sheet-import" ? "Sheet totals" : "Saved totals";
-}
-
 export type CloudErrorLike = {
   code?: string | null;
   message?: string | null;
