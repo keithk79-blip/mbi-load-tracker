@@ -20,7 +20,7 @@ function parseField(raw: string): number | null {
 }
 
 export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps) {
-  const [open, setOpen] = useState(!existing);
+  const [open, setOpen] = useState(false);
   const [trash, setTrash] = useState(asField(existing?.trash ?? null));
   const [leachate, setLeachate] = useState(asField(existing?.leachate ?? null));
   const [walkingFloor, setWalkingFloor] = useState(
