@@ -3,11 +3,7 @@ import {
   BURNHAM_OOT_PAIRS,
   ROCKFORD_OOT_PAIRS,
   SINGLE_COL_OOT_PAIRS,
-  combineOotNames,
-  parseBaseHeadcount,
   parseCallOffCsv,
-  parseCsv,
-  parseOotNames,
   type CallOffRow,
   type OotPair,
 } from "./driverAvailability";
@@ -75,7 +71,7 @@ export const SATURDAY_CELLS = [
   { slug: "zion", tab: "Sat-Zion", range: "H3" },
 ] as const;
 
-/** Full-grid ranges for the Driver tab import (not the Today L13 / Sat-sum cells). */
+/** Full-grid ranges for the Driver tab one-time import. */
 export const ROSTER_FULL_GRID_RANGE = "A:Z";
 export const ROSTER_SAT_GRID_RANGE = "A:Z";
 
@@ -118,7 +114,7 @@ const CACHE_KEY = "chitrader.load-tracker.drivers.v1";
 export type DriverSnapshot = {
   baseAvailable: number;
   saturdayAvailable: number;
-  /** Sat tabs say full-mandatory / holiday — use weekday L13 + call-off rules. */
+  /** Sat tabs say full-mandatory / holiday — use weekday Full Roster + call-off rules. */
   saturdayUsesWeekdayBase: boolean;
   offs: CallOffRow[];
   ootNames: string[];
@@ -261,48 +257,27 @@ async function fetchText(url: string): Promise<string> {
   return text;
 }
 
-function extractHeadcount(csv: string, label: string): number {
-  const table = parseCsv(csv);
-  const blob = table.flat().join(" ");
-  const n = parseBaseHeadcount(blob);
-  if (n === null) throw new Error(`${label} is not a number`);
-  return n;
-}
-
+/**
+ * Call-off sheet + Sat-tab “full mandatory” flag only.
+ * Today’s available **base** is Full Roster (see `liveSheetFromRoster`).
+ * Do not fetch Burnham!L13 or Sat-* sum cells here.
+ */
 export async function fetchDriverSnapshot(): Promise<DriverSnapshot> {
-  const satFetches = SATURDAY_CELLS.map((cell) =>
-    fetchText(saturdayFetchUrl(cell.slug, cell.tab, cell.range)).then((csv) => ({
-      count: extractHeadcount(csv, `${cell.tab}!${cell.range}`),
-      csv,
-    })),
-  );
   const satBodyFetches = SATURDAY_CELLS.flatMap((cell) =>
     SATURDAY_BODY_SCANS.map((scan) =>
       fetchText(saturdayBodyFetchUrl(cell.slug, cell.tab, scan)),
     ),
   );
-  const ootFetches = OOT_YARDS.map((yard) =>
-    fetchText(ootYardFetchUrl(yard.slug, yard.tab, yard.range)).then((csv) =>
-      parseOotNames(csv, yard.pairs),
-    ),
-  );
-  const [rosterCsv, offsCsv, ootGroups, satCells, satBodies] = await Promise.all([
-    fetchText(rosterFetchUrl()),
+  const [offsCsv, satBodies] = await Promise.all([
     fetchText(calloffFetchUrl()),
-    Promise.all(ootFetches),
-    Promise.all(satFetches),
     Promise.all(satBodyFetches),
   ]);
-  const saturdayAvailable = satCells.reduce((sum, cell) => sum + cell.count, 0);
   const snap: DriverSnapshot = {
-    baseAvailable: extractHeadcount(rosterCsv, "Burnham!L13"),
-    saturdayAvailable,
-    saturdayUsesWeekdayBase: saturdaySheetsUseWeekdayBase([
-      ...satBodies,
-      ...satCells.map((cell) => cell.csv),
-    ]),
+    baseAvailable: 0,
+    saturdayAvailable: 0,
+    saturdayUsesWeekdayBase: saturdaySheetsUseWeekdayBase(satBodies),
     offs: parseCallOffCsv(offsCsv),
-    ootNames: combineOotNames(ootGroups),
+    ootNames: [],
     fetchedAt: new Date().toISOString(),
     source: "live",
   };

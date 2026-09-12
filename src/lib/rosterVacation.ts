@@ -1,13 +1,13 @@
 /**
  * Vacation tab → Full Roster auto-VAC (derived, not persisted).
  *
- * Later Today rewiring (sheet L13 / Sat-sum stay live until that rewrite):
+ * Today’s available tally uses `liveSheetFromRoster` (Full Roster − VAC −
+ * leftover full-day offs). Per-yard join:
  *
  *   const names = vacationNamesOnDate(vacationStore, chicagoDate, rosterYard);
  *   const { hired, unavailable, available } = fullRosterTally(fullEntries, {
  *     treatAsUnavailable: (entry) => rosterEntryOnVacation(entry, names),
  *   });
- *   // then subtract same-day call-offs whose names are not already unavailable
  *
  * Yard map: Rockford vacation ↔ Rockford roster; Chicago vacation ↔
  * Burnham / Pontiac / Arc / Zion. Prefer that mapping, then fall back to

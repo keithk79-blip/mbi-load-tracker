@@ -216,7 +216,7 @@ export function DriverScreen() {
         </div>
         <div className="drv-header-meta">
           {tally ? (
-            <p className="drv-count" title="Hired − status − Vacation VAC for this yard/day. Today still uses L13 / sheet offs.">
+            <p className="drv-count" title="Hired − status − Vacation VAC for this yard/day. Today uses this Full Roster across all yards, minus leftover full-day offs.">
               <strong>{tally.hired}</strong> hired
               {tally.unavailable ? (
                 <>
@@ -330,8 +330,8 @@ export function DriverScreen() {
             Everyone listed is hired at this yard. OOT / FMLA / vac / WC (and similar marks)
             mean they are <strong>out</strong> — still on the roster, not available. Names
             on the Vacation tab for this week are marked <strong>Vac</strong> automatically
-            (not written onto the row). × removes a hire. Today’s available count still
-            reads L13 / sheet offs.
+            (not written onto the row). × removes a hire. Today’s available count uses
+            Full Roster across all yards, minus leftover full-day offs.
           </span>
         )}
       </div>
@@ -391,7 +391,7 @@ export function DriverScreen() {
             {kind === "full"
               ? "Full Roster is everyone hired at this yard. Import the workbook or add names. Marks like OOT stay on the list and count as out."
               : "Sat Roster is the Saturday planning list (a subset you edit through the week)."}{" "}
-            Today’s available-driver count still reads Burnham L13 / Sat-sum from the sheet.
+            Today’s available-driver count uses Full Roster (all yards) minus leftover full-day offs.
           </p>
           <div className="vac-add-actions">
             <button

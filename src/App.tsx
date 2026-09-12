@@ -215,19 +215,19 @@ export default function App() {
   return (
     <AuthProvider>
       <LoadsProvider>
-        <DriversProvider>
-          <SpecialtyProvider>
-            <VacationProvider>
-              <DriverRosterProvider>
+        <SpecialtyProvider>
+          <VacationProvider>
+            <DriverRosterProvider>
+              <DriversProvider>
                 <DailyEodProvider>
                   <Gate>
                     <Shell />
                   </Gate>
                 </DailyEodProvider>
-              </DriverRosterProvider>
-            </VacationProvider>
-          </SpecialtyProvider>
-        </DriversProvider>
+              </DriversProvider>
+            </DriverRosterProvider>
+          </VacationProvider>
+        </SpecialtyProvider>
       </LoadsProvider>
     </AuthProvider>
   );

@@ -36,7 +36,7 @@ describe("tally days", () => {
 });
 
 describe("applyLiveSheet lock", () => {
-  it("uses the Saturday yard sum, not L13 minus offs", () => {
+  it("uses the Saturday worklist subtract, not weekday offs, on a normal Saturday", () => {
     const first = applyLiveSheet({}, live, "2026-09-05", "t1");
     expect(first["2026-09-05"]).toMatchObject({
       available: 33,
@@ -109,7 +109,7 @@ describe("applyLiveSheet lock", () => {
     });
   });
 
-  it("does not rewrite a locked day when L13 changes", () => {
+  it("does not rewrite a locked day when the live weekday base changes", () => {
     const store: DayStore = {
       "2026-09-03": {
         date: "2026-09-03",
@@ -253,7 +253,7 @@ describe("applyLiveSheet lock", () => {
     });
   });
 
-  it("uses weekday L13 and call-off rules on a full-mandatory Saturday", () => {
+  it("uses weekday Full Roster base and call-off rules on a full-mandatory Saturday", () => {
     expect(isChicagoSaturday("2026-09-12")).toBe(true);
     const next = applyLiveSheet(
       {},
