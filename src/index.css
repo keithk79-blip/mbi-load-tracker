@@ -3262,8 +3262,8 @@ body.app-ready .splash {
 
 .drv-copy-block {
   width: 100%;
-  min-height: 140px;
-  max-height: 220px;
+  min-height: 96px;
+  max-height: 160px;
   resize: vertical;
   padding: 10px 12px;
   border: 1px solid var(--line);
@@ -3522,6 +3522,9 @@ body.app-ready .splash {
 @media (max-width: 959px) {
   .drv-header-meta {
     align-items: flex-start;
+  }
+  .drv-header-meta .vac-add-actions {
+    flex-wrap: wrap;
   }
   .drv-table {
     min-width: 0;
