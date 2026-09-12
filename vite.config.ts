@@ -53,6 +53,13 @@ for (const yard of ROSTER_SAT_GRIDS) {
   };
 }
 
+const GONE_SHEET_ID = "1azaww09ttC1p571RzB_NDkeBqAFkRBhpTboODpk4z40";
+sheetProxy["/sheets/roster-gone"] = {
+  target: "https://docs.google.com",
+  changeOrigin: true,
+  rewrite: () => gviz(GONE_SHEET_ID, "gid=544546254"),
+};
+
 /** Local /api/sigalert — same Map.asp → ChicagoData.json path as the Pages Function. */
 function sigalertDevApi(): Plugin {
   const handle = async (

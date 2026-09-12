@@ -3531,6 +3531,48 @@ body.app-ready .splash {
   }
 }
 
+.drv-gone-table {
+  min-width: 920px;
+}
+
+.drv-col-hire,
+.drv-col-term {
+  width: 148px;
+}
+
+.drv-col-notes {
+  min-width: 220px;
+}
+
+.drv-gone-date {
+  margin-top: 0;
+  width: 140px;
+  min-height: 34px;
+}
+
+.drv-gone-notes {
+  margin-top: 0;
+  width: 100%;
+  min-height: 34px;
+}
+
+.drv-gone-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.drv-gone-add-form {
+  align-items: flex-end;
+}
+
+.confirm-overlay-card .drv-gone-field {
+  margin-bottom: 10px;
+}
+
 @media (max-width: 639px) {
   .drv-sat-grid {
     grid-template-columns: minmax(0, 1fr);

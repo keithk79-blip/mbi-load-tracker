@@ -27,6 +27,11 @@ export const DRIVER_ROSTER_KINDS = ["full", "sat"] as const;
 export type DriverRosterKind = (typeof DRIVER_ROSTER_KINDS)[number];
 export const DEFAULT_DRIVER_ROSTER_KIND: DriverRosterKind = "full";
 
+/** Driver tab flipper: hired list, Saturday planning, terminated archive. */
+export const DRIVER_TAB_GROUPS = ["full", "sat", "gone"] as const;
+export type DriverTabGroup = (typeof DRIVER_TAB_GROUPS)[number];
+export const DEFAULT_DRIVER_TAB_GROUP: DriverTabGroup = "full";
+
 export const DRIVER_ROSTER_YARD_LABELS: Record<DriverRosterYard, string> = {
   burnham: "Burnham",
   rockford: "Rockford",
@@ -105,6 +110,7 @@ export type DriverRosterPersisted = {
 
 export type DriverRosterUi = {
   kind: DriverRosterKind;
+  group: DriverTabGroup;
   yard: DriverRosterYard;
 };
 
@@ -150,6 +156,19 @@ export function cleanDriverRosterYard(value: unknown): DriverRosterYard {
 
 export function cleanDriverRosterKind(value: unknown): DriverRosterKind {
   return isDriverRosterKind(value) ? value : DEFAULT_DRIVER_ROSTER_KIND;
+}
+
+export function isDriverTabGroup(value: unknown): value is DriverTabGroup {
+  return value === "full" || value === "sat" || value === "gone";
+}
+
+export function cleanDriverTabGroup(
+  value: unknown,
+  fallbackKind: DriverRosterKind = DEFAULT_DRIVER_ROSTER_KIND,
+): DriverTabGroup {
+  if (value === "gone") return "gone";
+  if (isDriverRosterKind(value)) return value;
+  return fallbackKind;
 }
 
 export function driverRosterYardLabel(yard: DriverRosterYard): string {
@@ -389,24 +408,33 @@ export function writeDriverRosterPersisted(next: DriverRosterPersisted): void {
 }
 
 export function readDriverRosterUi(): DriverRosterUi {
+  const fallback = {
+    kind: DEFAULT_DRIVER_ROSTER_KIND,
+    group: DEFAULT_DRIVER_TAB_GROUP,
+    yard: DEFAULT_DRIVER_ROSTER_YARD,
+  };
   try {
     const raw = localStorage.getItem(DRIVER_ROSTER_UI_KEY);
-    if (!raw) return { kind: DEFAULT_DRIVER_ROSTER_KIND, yard: DEFAULT_DRIVER_ROSTER_YARD };
-    const parsed = JSON.parse(raw) as Partial<DriverRosterUi>;
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<DriverRosterUi> & { kind?: unknown };
+    const kind = cleanDriverRosterKind(parsed.kind);
     return {
-      kind: cleanDriverRosterKind(parsed.kind),
+      kind,
+      group: cleanDriverTabGroup(parsed.group ?? parsed.kind, kind),
       yard: cleanDriverRosterYard(parsed.yard),
     };
   } catch {
-    return { kind: DEFAULT_DRIVER_ROSTER_KIND, yard: DEFAULT_DRIVER_ROSTER_YARD };
+    return fallback;
   }
 }
 
 export function writeDriverRosterUi(ui: DriverRosterUi): void {
+  const kind = cleanDriverRosterKind(ui.kind);
   localStorage.setItem(
     DRIVER_ROSTER_UI_KEY,
     JSON.stringify({
-      kind: cleanDriverRosterKind(ui.kind),
+      kind,
+      group: cleanDriverTabGroup(ui.group, kind),
       yard: cleanDriverRosterYard(ui.yard),
     }),
   );
@@ -500,6 +528,49 @@ export function satEntryIdFromFull(
 
 function rosterIdentityKey(entry: Pick<DriverRosterEntry, "truckNumber" | "name">): string {
   return `${entry.truckNumber ?? ""}\u0000${cleanDriverName(entry.name).toLowerCase()}`;
+}
+
+export function rosterPersonMatches(
+  a: Pick<DriverRosterEntry, "truckNumber" | "name">,
+  b: Pick<DriverRosterEntry, "truckNumber" | "name">,
+): boolean {
+  return rosterIdentityKey(a) === rosterIdentityKey(b);
+}
+
+/** Sat planning rows for the same emp# + name (any yard). */
+export function matchingSatEntriesForPerson(
+  store: DriverRosterStore,
+  person: Pick<DriverRosterEntry, "truckNumber" | "name">,
+): DriverRosterEntry[] {
+  return Object.values(store.entries).filter(
+    (entry) => entry.kind === "sat" && rosterPersonMatches(entry, person),
+  );
+}
+
+/**
+ * Explicit Full Roster × — drop the hired row and any Sat row for that person.
+ * Sync may DELETE only these user-initiated ids.
+ */
+export function removeHiredAndMatchingSat(
+  store: DriverRosterStore,
+  id: string,
+): { store: DriverRosterStore; removed: DriverRosterEntry[] } {
+  const target = store.entries[id];
+  if (!target) return { store, removed: [] };
+  const ids = new Set<string>([id]);
+  if (target.kind === "full") {
+    for (const sat of matchingSatEntriesForPerson(store, target)) {
+      ids.add(sat.id);
+    }
+  }
+  let next = store;
+  const removed: DriverRosterEntry[] = [];
+  for (const removeId of ids) {
+    const result = removeRosterEntry(next, removeId);
+    next = result.store;
+    if (result.removed) removed.push(result.removed);
+  }
+  return { store: next, removed };
 }
 
 /** True when Sat emp# + name + order match this yard's current Full hired list. */
