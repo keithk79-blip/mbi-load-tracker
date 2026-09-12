@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { chicagoToday, yearOfISO } from "../lib/chicagoDate";
 import {
+  VACATION_YARDS,
   entriesForWeek,
   formatWeekRange,
   holidayLabelForWeek,
@@ -10,6 +11,8 @@ import {
   rosterNamesFromStore,
   sundayOnOrBefore,
   sundaysForVacationYear,
+  vacationWeekKey,
+  vacationYardLabel,
   weekBelongsToYear,
   weekContainsDate,
   weekFillLabel,
@@ -267,7 +270,7 @@ export function VacationScreen() {
   const today = chicagoToday();
   const currentYear = yearOfISO(today);
   const thisWeek = sundayOnOrBefore(today);
-  const { store, addDriver, cycleDriverStatus, removeDriver, editWeek, createYear } =
+  const { store, yard, setYard, addDriver, cycleDriverStatus, removeDriver, editWeek, createYear } =
     useVacation();
   const { ootNames } = useDrivers();
   const [year, setYear] = useState(currentYear);
@@ -291,13 +294,13 @@ export function VacationScreen() {
   }
 
   const knownYears = useMemo(
-    () => yearsInStore(store, [currentYear, 2025, 2026, year]),
-    [store, currentYear, year],
+    () => yearsInStore(store, [currentYear, 2025, 2026, year], yard),
+    [store, currentYear, year, yard],
   );
-  const yearExists = yearHasWeeks(store, year);
+  const yearExists = yearHasWeeks(store, year, yard);
   const suggestions = useMemo(
-    () => rosterNamesFromStore(store, ootNames),
-    [store, ootNames],
+    () => rosterNamesFromStore(store, ootNames, yard),
+    [store, ootNames, yard],
   );
 
   const rows = useMemo(() => {
@@ -308,7 +311,7 @@ export function VacationScreen() {
     > = [];
     let lastMonth = "";
     for (const weekOf of sundays) {
-      const week = store.weeks[weekOf];
+      const week = store.weeks[vacationWeekKey(yard, weekOf)];
       if (!week || !weekBelongsToYear(weekOf, year)) continue;
       const month = monthKeyForWeek(weekOf);
       if (month !== lastMonth) {
@@ -318,12 +321,12 @@ export function VacationScreen() {
       out.push({
         type: "week",
         week,
-        entries: entriesForWeek(store, weekOf),
+        entries: entriesForWeek(store, weekOf, yard),
         current: weekContainsDate(weekOf, today),
       });
     }
     return out;
-  }, [store, year, today]);
+  }, [store, year, yard, today]);
 
   useEffect(() => {
     if (year !== currentYear || !yearExists) return;
@@ -354,12 +357,35 @@ export function VacationScreen() {
 
   return (
     <div className="screen vac-screen">
+      <div className="vac-yard-switch" role="tablist" aria-label="Vacation yard">
+        {VACATION_YARDS.map((item) => {
+          const selected = yard === item;
+          return (
+            <button
+              key={item}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              className={selected ? "vac-yard-btn is-active" : "vac-yard-btn"}
+              onClick={() => {
+                setYard(item);
+                setYear(2026);
+                setAddingWeek(null);
+                setEditingWeek(null);
+              }}
+            >
+              {vacationYardLabel(item, 2026)}
+            </button>
+          );
+        })}
+      </div>
+
       <header className="page-header">
         <div className="page-header-brand">
           <BrandMark />
           <div>
             <p className="eyebrow">Vacation calendar</p>
-            <h1 className="page-title">{year}</h1>
+            <h1 className="page-title">{vacationYardLabel(yard, year)}</h1>
           </div>
         </div>
         <button type="button" className="text-btn amber" onClick={jumpThisWeek}>
@@ -420,17 +446,18 @@ export function VacationScreen() {
 
       {!yearExists ? (
         <div className="empty">
-          <h2>{year} isn’t created yet</h2>
+          <h2>{vacationYardLabel(yard, year)} isn’t created yet</h2>
           <p>
             Next year’s calendar can be seeded later — empty week rows with
-            holiday labels, no driver names required.
+            holiday labels, no driver names required. Rockford and Chicago
+            stay on separate boards.
           </p>
           <button
             type="button"
             className="text-btn amber"
             onClick={() => void createYear(year).then((ok) => ok && setYear(year))}
           >
-            Create {year} weeks
+            Create {vacationYardLabel(yard, year)} weeks
           </button>
         </div>
       ) : (
@@ -459,7 +486,7 @@ export function VacationScreen() {
                 const editing = editingWeek === week.weekOf;
                 return (
                   <tr
-                    key={week.weekOf}
+                    key={vacationWeekKey(week.yard, week.weekOf)}
                     id={`vac-week-${week.weekOf}`}
                     data-current-week={current ? "true" : undefined}
                     className={`vac-week-row${current ? " is-current" : ""}${week.kind !== "open" ? " is-closed" : ""}`}
@@ -534,8 +561,10 @@ export function VacationScreen() {
       )}
 
       <p className="field-hint">
-        Shared crew calendar · America/Chicago. Seeded from the 2025–2026
-        Vacation Calendar sheet (names on 2026; 2025 weeks + holidays).
+        Shared crew calendar · America/Chicago. Flip Rockford 2026 / Chicago
+        2026 at the top — each yard has its own weeks and names. Existing rows
+        stay on Rockford. Seeded Rockford 2025–2026 (sheet names on 2026);
+        Chicago 2026 is an empty week grid until imported.
         {thisWeek ? ` This week starts ${formatWeekRange(thisWeek)}.` : ""}
       </p>
     </div>

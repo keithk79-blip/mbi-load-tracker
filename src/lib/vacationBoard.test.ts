@@ -6,6 +6,7 @@ import {
   applySeedWeeks,
   applyVacationTombstones,
   buildEmptyYearWeeks,
+  cleanVacationStore,
   cycleVacationEntryStatus,
   defaultCapacityForWeek,
   emptyVacationStore,
@@ -19,6 +20,7 @@ import {
   nextVacationStatus,
   normalizeWeekOf,
   parseDriverCell,
+  parseVacationWeekKey,
   parseWeekCapacityLabel,
   reconcileVacationCloud,
   removeVacationEntry,
@@ -30,6 +32,8 @@ import {
   updateVacationEntry,
   upsertWeek,
   vacationSeedId,
+  vacationWeekKey,
+  vacationYardLabel,
   weekBelongsToYear,
   weekFillLabel,
   weekIsOverCapacity,
@@ -43,6 +47,10 @@ const LATER = "2026-09-12T13:00:00.000Z";
 
 function seeded2026(): VacationStore {
   return applySeedWeeks(emptyVacationStore(), 2026, VACATION_SEED_2026, AT);
+}
+
+function week(store: VacationStore, weekOf: string, yard: "rockford" | "chicago" = "rockford") {
+  return store.weeks[vacationWeekKey(yard, weekOf)];
 }
 
 describe("week helpers", () => {
@@ -158,11 +166,12 @@ describe("seed + mutations", () => {
     const store = seeded2026();
     expect(yearHasWeeks(store, 2026)).toBe(true);
     expect(weeksForYear(store, 2026)).toHaveLength(53);
-    expect(store.weeks["2026-01-04"]?.capacity).toBe(8);
-    expect(store.weeks["2026-03-08"]?.capacity).toBe(4);
-    expect(store.weeks["2025-12-28"]?.kind).toBe("holiday");
-    expect(store.weeks["2025-12-28"]?.label).toBe("New Years");
-    expect(store.weeks["2026-05-24"]?.label).toBe("Memorial Day");
+    expect(week(store, "2026-01-04")?.capacity).toBe(8);
+    expect(week(store, "2026-03-08")?.capacity).toBe(4);
+    expect(week(store, "2025-12-28")?.kind).toBe("holiday");
+    expect(week(store, "2025-12-28")?.label).toBe("New Years");
+    expect(week(store, "2026-05-24")?.label).toBe("Memorial Day");
+    expect(week(store, "2026-01-04")?.yard).toBe("rockford");
     expect(entriesForWeek(store, "2026-01-04").map((e) => e.name)).toEqual([
       "Greg Cellarius",
     ]);
@@ -192,7 +201,7 @@ describe("seed + mutations", () => {
     );
     const again = applySeedWeeks(store, 2026, VACATION_SEED_2026, AT);
     expect(entriesForWeek(again, "2026-01-04")[0].status).toBe("paid");
-    expect(again.weeks["2026-01-04"]?.updatedAt).toBe(AT);
+    expect(week(again, "2026-01-04")?.updatedAt).toBe(AT);
   });
 
   it("adds, updates, cycles, and removes driver entries", () => {
@@ -227,7 +236,8 @@ describe("seed + mutations", () => {
   });
 
   it("labels capacity chips and over-fill", () => {
-    const week = {
+    const openWeek = {
+      yard: "rockford" as const,
       weekOf: "2026-03-08",
       year: 2026,
       capacity: 4,
@@ -236,10 +246,10 @@ describe("seed + mutations", () => {
       createdAt: AT,
       updatedAt: AT,
     };
-    expect(weekFillLabel(week, 2)).toBe("2 of 4 filled");
-    expect(weekIsOverCapacity(week, 6)).toBe(true);
+    expect(weekFillLabel(openWeek, 2)).toBe("2 of 4 filled");
+    expect(weekIsOverCapacity(openWeek, 6)).toBe(true);
     expect(
-      weekFillLabel({ ...week, kind: "holiday", capacity: null, label: "Labor Day" }, 0),
+      weekFillLabel({ ...openWeek, kind: "holiday", capacity: null, label: "Labor Day" }, 0),
     ).toBe("Labor Day");
   });
 
@@ -357,5 +367,90 @@ describe("empty year create", () => {
       true,
     );
     expect(addDays(weeksForYear(store, 2027)[0].weekOf, 0)).toBe("2026-12-27");
+  });
+});
+
+describe("yard isolation", () => {
+  it("keys weeks per yard and labels the sheet tabs", () => {
+    expect(vacationWeekKey("rockford", "2026-01-04")).toBe("rockford:2026-01-04");
+    expect(parseVacationWeekKey("2026-01-04")).toEqual({
+      yard: "rockford",
+      weekOf: "2026-01-04",
+    });
+    expect(parseVacationWeekKey("chicago:1/11/26")).toEqual({
+      yard: "chicago",
+      weekOf: "2026-01-11",
+    });
+    expect(vacationYardLabel("rockford", 2026)).toBe("Rockford 2026");
+    expect(vacationYardLabel("chicago", 2026)).toBe("Chicago 2026");
+  });
+
+  it("defaults missing yard on v1 rows to rockford without blending Chicago", () => {
+    const cleaned = cleanVacationStore({
+      weeks: {
+        "2026-01-04": {
+          weekOf: "2026-01-04",
+          year: 2026,
+          capacity: 8,
+          label: "",
+          kind: "open",
+          createdAt: AT,
+          updatedAt: AT,
+        },
+      },
+      entries: {
+        "ent-rf": {
+          id: "ent-rf",
+          weekOf: "2026-01-04",
+          name: "Greg Cellarius",
+          note: "",
+          status: "approved",
+          createdAt: AT,
+          updatedAt: AT,
+        },
+      },
+    });
+    expect(week(cleaned, "2026-01-04")?.yard).toBe("rockford");
+    expect(cleaned.entries["ent-rf"]?.yard).toBe("rockford");
+    expect(entriesForWeek(cleaned, "2026-01-04", "chicago")).toEqual([]);
+  });
+
+  it("keeps Rockford names off the Chicago 2026 empty grid", () => {
+    const rockford = seeded2026();
+    const both = applySeedWeeks(rockford, 2026, [], AT, "chicago");
+    expect(yearHasWeeks(both, 2026, "chicago")).toBe(true);
+    expect(weeksForYear(both, 2026, "chicago")).toHaveLength(53);
+    expect(entriesForWeek(both, "2026-01-04", "chicago")).toEqual([]);
+    expect(entriesForWeek(both, "2026-01-04", "rockford").map((e) => e.name)).toEqual([
+      "Greg Cellarius",
+    ]);
+    expect(week(both, "2026-01-04", "chicago")?.capacity).toBe(8);
+    expect(rosterNamesFromStore(both, [], "chicago")).toEqual([]);
+  });
+
+  it("does not merge the same Sunday across yards", () => {
+    let store = seeded2026();
+    store = applySeedWeeks(store, 2026, [], AT, "chicago");
+    store = addVacationEntry(store, "2026-01-04", "Chicago Only", {
+      id: "chi-1",
+      at: AT,
+      yard: "chicago",
+    }).store;
+    const merged = mergeVacationStores(store, emptyVacationStore());
+    expect(entriesForWeek(merged, "2026-01-04", "rockford").some((e) => e.name === "Chicago Only")).toBe(
+      false,
+    );
+    expect(entriesForWeek(merged, "2026-01-04", "chicago").map((e) => e.name)).toEqual([
+      "Chicago Only",
+    ]);
+  });
+
+  it("tombstones a Rockford week without dropping Chicago", () => {
+    let store = seeded2026();
+    store = applySeedWeeks(store, 2026, [], AT, "chicago");
+    const stripped = applyVacationTombstones(store, ["rockford:2026-01-04"], []);
+    expect(week(stripped, "2026-01-04", "rockford")).toBeUndefined();
+    expect(week(stripped, "2026-01-04", "chicago")).toBeDefined();
+    expect(entriesForWeek(stripped, "2026-01-04", "rockford")).toEqual([]);
   });
 });

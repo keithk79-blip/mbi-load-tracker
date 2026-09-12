@@ -10,6 +10,7 @@ import {
 } from "./chicagoDate";
 
 export const VACATION_STORE_KEY = "chitrader.load-tracker.vacation.v1";
+export const VACATION_YARD_STORAGE_KEY = "chitrader.load-tracker.vacation-yard.v1";
 
 export const VACATION_STATUSES = ["pending", "approved", "paid"] as const;
 export type VacationStatus = (typeof VACATION_STATUSES)[number];
@@ -17,8 +18,18 @@ export type VacationStatus = (typeof VACATION_STATUSES)[number];
 export const VACATION_WEEK_KINDS = ["open", "holiday", "blocked"] as const;
 export type VacationWeekKind = (typeof VACATION_WEEK_KINDS)[number];
 
+export const VACATION_YARDS = ["rockford", "chicago"] as const;
+export type VacationYard = (typeof VACATION_YARDS)[number];
+export const DEFAULT_VACATION_YARD: VacationYard = "rockford";
+
+export const VACATION_YARD_LABELS: Record<VacationYard, string> = {
+  rockford: "Rockford",
+  chicago: "Chicago",
+};
+
 export type VacationEntry = {
   id: string;
+  yard: VacationYard;
   weekOf: string;
   name: string;
   note: string;
@@ -28,6 +39,7 @@ export type VacationEntry = {
 };
 
 export type VacationWeek = {
+  yard: VacationYard;
   weekOf: string;
   year: number;
   capacity: number | null;
@@ -43,7 +55,7 @@ export type VacationStore = {
 };
 
 export type VacationPersisted = {
-  version: 1;
+  version: 1 | 2;
   weeks: Record<string, VacationWeek>;
   entries: Record<string, VacationEntry>;
   deletedWeekOfs: string[];
@@ -68,6 +80,7 @@ export type VacationSeedWeek = {
 
 const STATUS_SET = new Set<string>(VACATION_STATUSES);
 const KIND_SET = new Set<string>(VACATION_WEEK_KINDS);
+const YARD_SET = new Set<string>(VACATION_YARDS);
 
 const HOLIDAY_ALIASES: Record<string, string> = {
   blocked: "Blocked",
@@ -91,6 +104,50 @@ export function isVacationStatus(value: unknown): value is VacationStatus {
 
 export function isVacationWeekKind(value: unknown): value is VacationWeekKind {
   return typeof value === "string" && KIND_SET.has(value);
+}
+
+export function isVacationYard(value: unknown): value is VacationYard {
+  return typeof value === "string" && YARD_SET.has(value);
+}
+
+export function cleanVacationYard(value: unknown): VacationYard {
+  return isVacationYard(value) ? value : DEFAULT_VACATION_YARD;
+}
+
+export function vacationYardLabel(yard: VacationYard, year?: number): string {
+  const name = VACATION_YARD_LABELS[yard];
+  return year != null ? `${name} ${year}` : name;
+}
+
+/** Composite store / tombstone key so Rockford and Chicago can share a Sunday. */
+export function vacationWeekKey(yard: VacationYard, weekOf: string): string {
+  return `${yard}:${weekOf}`;
+}
+
+export function parseVacationWeekKey(
+  key: string,
+): { yard: VacationYard; weekOf: string } | null {
+  if (!key) return null;
+  const colon = key.indexOf(":");
+  if (colon === -1) {
+    const weekOf = normalizeWeekOf(key);
+    return weekOf ? { yard: DEFAULT_VACATION_YARD, weekOf } : null;
+  }
+  const yard = cleanVacationYard(key.slice(0, colon));
+  const weekOf = normalizeWeekOf(key.slice(colon + 1));
+  return weekOf ? { yard, weekOf } : null;
+}
+
+export function readSelectedVacationYard(): VacationYard {
+  try {
+    return cleanVacationYard(localStorage.getItem(VACATION_YARD_STORAGE_KEY));
+  } catch {
+    return DEFAULT_VACATION_YARD;
+  }
+}
+
+export function writeSelectedVacationYard(yard: VacationYard): void {
+  localStorage.setItem(VACATION_YARD_STORAGE_KEY, yard);
 }
 
 export function vacationNameKey(name: string): string {
@@ -285,6 +342,7 @@ function cleanWeek(raw: unknown): VacationWeek | null {
   const createdAt = typeof rec.createdAt === "string" ? rec.createdAt : nowIso();
   const updatedAt = typeof rec.updatedAt === "string" ? rec.updatedAt : createdAt;
   return {
+    yard: cleanVacationYard(rec.yard),
     weekOf,
     year,
     capacity: kind === "open" ? capacity : null,
@@ -309,7 +367,16 @@ function cleanEntry(raw: unknown): VacationEntry | null {
   const status = isVacationStatus(rec.status) ? rec.status : "approved";
   const createdAt = typeof rec.createdAt === "string" ? rec.createdAt : nowIso();
   const updatedAt = typeof rec.updatedAt === "string" ? rec.updatedAt : createdAt;
-  return { id: rec.id, weekOf, name, note, status, createdAt, updatedAt };
+  return {
+    id: rec.id,
+    yard: cleanVacationYard(rec.yard),
+    weekOf,
+    name,
+    note,
+    status,
+    createdAt,
+    updatedAt,
+  };
 }
 
 export function cleanVacationStore(raw: unknown): VacationStore {
@@ -319,13 +386,13 @@ export function cleanVacationStore(raw: unknown): VacationStore {
   if (rec.weeks && typeof rec.weeks === "object") {
     for (const week of Object.values(rec.weeks as Record<string, unknown>)) {
       const cleaned = cleanWeek(week);
-      if (cleaned) store.weeks[cleaned.weekOf] = cleaned;
+      if (cleaned) store.weeks[vacationWeekKey(cleaned.yard, cleaned.weekOf)] = cleaned;
     }
   }
   if (Array.isArray(rec.weeks)) {
     for (const week of rec.weeks) {
       const cleaned = cleanWeek(week);
-      if (cleaned) store.weeks[cleaned.weekOf] = cleaned;
+      if (cleaned) store.weeks[vacationWeekKey(cleaned.yard, cleaned.weekOf)] = cleaned;
     }
   }
   if (rec.entries && typeof rec.entries === "object") {
@@ -345,21 +412,49 @@ function parseIdList(raw: unknown): string[] {
   return raw.filter((id): id is string => typeof id === "string" && id.length > 0);
 }
 
+function normalizeDeletedWeekKey(id: string): string {
+  const parsed = parseVacationWeekKey(id);
+  return parsed ? vacationWeekKey(parsed.yard, parsed.weekOf) : id;
+}
+
+function weekIsTombstoned(week: VacationWeek, dropWeeks: Set<string>): boolean {
+  const key = vacationWeekKey(week.yard, week.weekOf);
+  if (dropWeeks.has(key) || dropWeeks.has(week.weekOf)) return true;
+  if (week.yard === DEFAULT_VACATION_YARD && dropWeeks.has(week.weekOf)) return true;
+  return false;
+}
+
+function entryWeekIsTombstoned(entry: VacationEntry, dropWeeks: Set<string>): boolean {
+  return weekIsTombstoned(
+    {
+      yard: entry.yard,
+      weekOf: entry.weekOf,
+      year: 0,
+      capacity: null,
+      label: "",
+      kind: "open",
+      createdAt: "",
+      updatedAt: "",
+    },
+    dropWeeks,
+  );
+}
+
 export function applyVacationTombstones(
   store: VacationStore,
   deletedWeekOfs: Iterable<string> = [],
   deletedEntryIds: Iterable<string> = [],
 ): VacationStore {
-  const dropWeeks = new Set(deletedWeekOfs);
+  const dropWeeks = new Set([...deletedWeekOfs].map(normalizeDeletedWeekKey));
   const dropEntries = new Set(deletedEntryIds);
   const weeks: Record<string, VacationWeek> = {};
   const entries: Record<string, VacationEntry> = {};
-  for (const [key, week] of Object.entries(store.weeks)) {
-    if (dropWeeks.has(week.weekOf) || dropWeeks.has(key)) continue;
-    weeks[week.weekOf] = week;
+  for (const week of Object.values(store.weeks)) {
+    if (weekIsTombstoned(week, dropWeeks)) continue;
+    weeks[vacationWeekKey(week.yard, week.weekOf)] = week;
   }
   for (const [id, entry] of Object.entries(store.entries)) {
-    if (dropEntries.has(id) || dropWeeks.has(entry.weekOf)) continue;
+    if (dropEntries.has(id) || entryWeekIsTombstoned(entry, dropWeeks)) continue;
     entries[id] = entry;
   }
   return { weeks, entries };
@@ -367,7 +462,7 @@ export function applyVacationTombstones(
 
 export function readVacationPersisted(): VacationPersisted {
   const empty: VacationPersisted = {
-    version: 1,
+    version: 2,
     weeks: {},
     entries: {},
     deletedWeekOfs: [],
@@ -379,19 +474,19 @@ export function readVacationPersisted(): VacationPersisted {
     const raw = localStorage.getItem(VACATION_STORE_KEY);
     if (!raw) return empty;
     const parsed = JSON.parse(raw) as Partial<VacationPersisted>;
-    if (parsed?.version !== 1) return empty;
+    if (parsed?.version !== 1 && parsed?.version !== 2) return empty;
     const store = applyVacationTombstones(
       cleanVacationStore(parsed),
       parseIdList(parsed.deletedWeekOfs),
       parseIdList(parsed.deletedEntryIds),
     );
     return {
-      version: 1,
+      version: 2,
       weeks: store.weeks,
       entries: store.entries,
-      deletedWeekOfs: parseIdList(parsed.deletedWeekOfs),
+      deletedWeekOfs: parseIdList(parsed.deletedWeekOfs).map(normalizeDeletedWeekKey),
       deletedEntryIds: parseIdList(parsed.deletedEntryIds),
-      seenRemoteWeekOfs: parseIdList(parsed.seenRemoteWeekOfs),
+      seenRemoteWeekOfs: parseIdList(parsed.seenRemoteWeekOfs).map(normalizeDeletedWeekKey),
       seenRemoteEntryIds: parseIdList(parsed.seenRemoteEntryIds),
     };
   } catch {
@@ -413,12 +508,12 @@ export function writeVacationPersisted(persisted: VacationPersisted): void {
   localStorage.setItem(
     VACATION_STORE_KEY,
     JSON.stringify({
-      version: 1,
+      version: 2,
       weeks: stripped.weeks,
       entries: stripped.entries,
-      deletedWeekOfs: persisted.deletedWeekOfs,
+      deletedWeekOfs: persisted.deletedWeekOfs.map(normalizeDeletedWeekKey),
       deletedEntryIds: persisted.deletedEntryIds,
-      seenRemoteWeekOfs: persisted.seenRemoteWeekOfs,
+      seenRemoteWeekOfs: persisted.seenRemoteWeekOfs.map(normalizeDeletedWeekKey),
       seenRemoteEntryIds: persisted.seenRemoteEntryIds,
     }),
   );
@@ -433,7 +528,7 @@ export function writeVacationStore(
 ): void {
   const prev = readVacationPersisted();
   writeVacationPersisted({
-    version: 1,
+    version: 2,
     weeks: store.weeks,
     entries: store.entries,
     deletedWeekOfs: deletedWeekOfs ?? prev.deletedWeekOfs,
@@ -447,10 +542,14 @@ export function newerVacation<T extends { updatedAt: string }>(a: T, b: T): T {
   return a.updatedAt >= b.updatedAt ? a : b;
 }
 
-export function entriesForWeek(store: VacationStore, weekOf: string): VacationEntry[] {
+export function entriesForWeek(
+  store: VacationStore,
+  weekOf: string,
+  yard: VacationYard = DEFAULT_VACATION_YARD,
+): VacationEntry[] {
   const key = normalizeWeekOf(weekOf) ?? weekOf;
   return Object.values(store.entries)
-    .filter((entry) => entry.weekOf === key)
+    .filter((entry) => entry.weekOf === key && entry.yard === yard)
     .sort((a, b) => {
       const name = a.name.localeCompare(b.name, "en", { sensitivity: "base" });
       if (name) return name;
@@ -458,29 +557,42 @@ export function entriesForWeek(store: VacationStore, weekOf: string): VacationEn
     });
 }
 
-export function weeksForYear(store: VacationStore, year: number): VacationWeek[] {
+export function weeksForYear(
+  store: VacationStore,
+  year: number,
+  yard: VacationYard = DEFAULT_VACATION_YARD,
+): VacationWeek[] {
   return sundaysForVacationYear(year)
-    .map((weekOf) => store.weeks[weekOf])
+    .map((weekOf) => store.weeks[vacationWeekKey(yard, weekOf)])
     .filter((week): week is VacationWeek => Boolean(week));
 }
 
-export function yearsInStore(store: VacationStore, extra: number[] = []): number[] {
+export function yearsInStore(
+  store: VacationStore,
+  extra: number[] = [],
+  yard?: VacationYard,
+): number[] {
   const set = new Set<number>(extra);
-  for (const week of Object.values(store.weeks)) set.add(week.year);
-  for (const weekOf of Object.keys(store.weeks)) {
-    const mid = addDays(weekOf, 3);
-    set.add(yearOfISO(mid));
+  for (const week of Object.values(store.weeks)) {
+    if (yard && week.yard !== yard) continue;
+    set.add(week.year);
+    set.add(yearOfISO(addDays(week.weekOf, 3)));
   }
   return [...set].filter((y) => y >= 2000 && y <= 2100).sort((a, b) => a - b);
 }
 
-export function rosterNamesFromStore(store: VacationStore, extra: string[] = []): string[] {
+export function rosterNamesFromStore(
+  store: VacationStore,
+  extra: string[] = [],
+  yard?: VacationYard,
+): string[] {
   const map = new Map<string, string>();
   for (const name of extra) {
     const key = vacationNameKey(name);
     if (key && !map.has(key)) map.set(key, name.trim());
   }
   for (const entry of Object.values(store.entries)) {
+    if (yard && entry.yard !== yard) continue;
     const key = vacationNameKey(entry.name);
     if (key && !map.has(key)) map.set(key, entry.name);
   }
@@ -512,11 +624,16 @@ export function nextVacationStatus(status: VacationStatus): VacationStatus {
   return "approved";
 }
 
-export function buildEmptyYearWeeks(year: number, at = nowIso()): VacationWeek[] {
+export function buildEmptyYearWeeks(
+  year: number,
+  at = nowIso(),
+  yard: VacationYard = DEFAULT_VACATION_YARD,
+): VacationWeek[] {
   return sundaysForVacationYear(year).map((weekOf) => {
     const holiday = holidayLabelForWeek(weekOf, year);
     if (holiday) {
       return {
+        yard,
         weekOf,
         year,
         capacity: null,
@@ -527,6 +644,7 @@ export function buildEmptyYearWeeks(year: number, at = nowIso()): VacationWeek[]
       };
     }
     return {
+      yard,
       weekOf,
       year,
       capacity: defaultCapacityForWeek(weekOf),
@@ -542,6 +660,7 @@ export function seedWeekToStoreWeek(
   seed: VacationSeedWeek,
   year: number,
   at: string,
+  yard: VacationYard = DEFAULT_VACATION_YARD,
 ): VacationWeek | null {
   const weekOf = normalizeWeekOf(seed.weekOf);
   if (!weekOf) return null;
@@ -561,6 +680,7 @@ export function seedWeekToStoreWeek(
       ? (seed.capacity ?? parsed.capacity ?? defaultCapacityForWeek(weekOf))
       : null;
   return {
+    yard,
     weekOf,
     year,
     capacity,
@@ -596,6 +716,7 @@ export function applySeedWeeks(
   year: number,
   seeds: VacationSeedWeek[],
   at = nowIso(),
+  yard: VacationYard = DEFAULT_VACATION_YARD,
 ): VacationStore {
   const weeks = { ...store.weeks };
   const entries = { ...store.entries };
@@ -604,20 +725,30 @@ export function applySeedWeeks(
     const weekOf = normalizeWeekOf(seed.weekOf);
     if (weekOf) byWeek.set(weekOf, seed);
   }
+  const emptyByWeek = new Map(
+    buildEmptyYearWeeks(year, at, yard).map((row) => [row.weekOf, row]),
+  );
 
   for (const weekOf of sundaysForVacationYear(year)) {
-    if (weeks[weekOf]) continue;
+    const key = vacationWeekKey(yard, weekOf);
+    if (weeks[key]) continue;
     const seed = byWeek.get(weekOf);
     const week = seed
-      ? seedWeekToStoreWeek(seed, year, at)
-      : buildEmptyYearWeeks(year, at).find((row) => row.weekOf === weekOf) ?? null;
-    if (week) weeks[weekOf] = week;
+      ? seedWeekToStoreWeek(seed, year, at, yard)
+      : emptyByWeek.get(weekOf) ?? null;
+    if (week) weeks[key] = week;
     if (!seed) continue;
     seedCellsForWeek(seed).forEach((cell, index) => {
-      const id = vacationSeedId(`${weekOf}|${vacationNameKey(cell.name)}|${index}`);
+      // Rockford keeps the original seed ids so existing local/cloud rows match.
+      const seedKey =
+        yard === DEFAULT_VACATION_YARD
+          ? `${weekOf}|${vacationNameKey(cell.name)}|${index}`
+          : `${yard}|${weekOf}|${vacationNameKey(cell.name)}|${index}`;
+      const id = vacationSeedId(seedKey);
       if (entries[id]) return;
       entries[id] = {
         id,
+        yard,
         weekOf,
         name: cell.name,
         note: cell.note ?? "",
@@ -630,9 +761,13 @@ export function applySeedWeeks(
   return { weeks, entries };
 }
 
-export function yearHasWeeks(store: VacationStore, year: number): boolean {
+export function yearHasWeeks(
+  store: VacationStore,
+  year: number,
+  yard: VacationYard = DEFAULT_VACATION_YARD,
+): boolean {
   return sundaysForVacationYear(year).some(
-    (weekOf) => store.weeks[weekOf]?.year === year,
+    (weekOf) => store.weeks[vacationWeekKey(yard, weekOf)]?.year === year,
   );
 }
 
@@ -643,10 +778,13 @@ export function upsertWeek(
 ): VacationStore {
   const weekOf = normalizeWeekOf(patch.weekOf);
   if (!weekOf) return store;
-  const prev = store.weeks[weekOf];
+  const yard = cleanVacationYard(patch.yard);
+  const key = vacationWeekKey(yard, weekOf);
+  const prev = store.weeks[key];
   const year = patch.year ?? prev?.year ?? yearOfISO(addDays(weekOf, 3));
   const kind = patch.kind ?? prev?.kind ?? "open";
   const next: VacationWeek = {
+    yard,
     weekOf,
     year,
     capacity:
@@ -661,14 +799,20 @@ export function upsertWeek(
     createdAt: prev?.createdAt ?? at,
     updatedAt: at,
   };
-  return { ...store, weeks: { ...store.weeks, [weekOf]: next } };
+  return { ...store, weeks: { ...store.weeks, [key]: next } };
 }
 
 export function addVacationEntry(
   store: VacationStore,
   weekOf: string,
   name: string,
-  opts: { note?: string; status?: VacationStatus; id?: string; at?: string } = {},
+  opts: {
+    note?: string;
+    status?: VacationStatus;
+    id?: string;
+    at?: string;
+    yard?: VacationYard;
+  } = {},
 ): { store: VacationStore; entry: VacationEntry | null } {
   const week = normalizeWeekOf(weekOf);
   const trimmed = name.trim();
@@ -677,6 +821,7 @@ export function addVacationEntry(
   const note = opts.note?.trim() ?? "";
   const entry: VacationEntry = {
     id: opts.id ?? newVacationId(),
+    yard: cleanVacationYard(opts.yard),
     weekOf: week,
     name: trimmed,
     note,
@@ -737,25 +882,26 @@ export function mergeVacationStores(
   deletedWeekOfs: Iterable<string> = [],
   deletedEntryIds: Iterable<string> = [],
 ): VacationStore {
-  const dropWeeks = new Set(deletedWeekOfs);
+  const dropWeeks = new Set([...deletedWeekOfs].map(normalizeDeletedWeekKey));
   const dropEntries = new Set(deletedEntryIds);
   const weeks: Record<string, VacationWeek> = {};
   for (const week of Object.values(remote.weeks)) {
-    if (dropWeeks.has(week.weekOf)) continue;
-    weeks[week.weekOf] = week;
+    if (weekIsTombstoned(week, dropWeeks)) continue;
+    weeks[vacationWeekKey(week.yard, week.weekOf)] = week;
   }
   for (const week of Object.values(local.weeks)) {
-    if (dropWeeks.has(week.weekOf)) continue;
-    const existing = weeks[week.weekOf];
-    weeks[week.weekOf] = existing ? newerVacation(existing, week) : week;
+    if (weekIsTombstoned(week, dropWeeks)) continue;
+    const key = vacationWeekKey(week.yard, week.weekOf);
+    const existing = weeks[key];
+    weeks[key] = existing ? newerVacation(existing, week) : week;
   }
   const entries: Record<string, VacationEntry> = {};
   for (const entry of Object.values(remote.entries)) {
-    if (dropEntries.has(entry.id) || dropWeeks.has(entry.weekOf)) continue;
+    if (dropEntries.has(entry.id) || entryWeekIsTombstoned(entry, dropWeeks)) continue;
     entries[entry.id] = entry;
   }
   for (const entry of Object.values(local.entries)) {
-    if (dropEntries.has(entry.id) || dropWeeks.has(entry.weekOf)) continue;
+    if (dropEntries.has(entry.id) || entryWeekIsTombstoned(entry, dropWeeks)) continue;
     const existing = entries[entry.id];
     entries[entry.id] = existing ? newerVacation(existing, entry) : entry;
   }
@@ -792,18 +938,24 @@ export function reconcileVacationCloud(
   input: VacationCloudReconcileInput,
 ): VacationCloudReconcileResult {
   const deletedWeeks = new Set(
-    [...input.deletedWeekOfs].filter((id) => typeof id === "string" && id.length > 0),
+    [...input.deletedWeekOfs]
+      .filter((id) => typeof id === "string" && id.length > 0)
+      .map(normalizeDeletedWeekKey),
   );
   const deletedEntries = new Set(
     [...input.deletedEntryIds].filter((id) => typeof id === "string" && id.length > 0),
   );
   const seenWeeks = new Set(
-    [...(input.seenRemoteWeekOfs ?? [])].filter((id) => typeof id === "string" && id.length > 0),
+    [...(input.seenRemoteWeekOfs ?? [])]
+      .filter((id) => typeof id === "string" && id.length > 0)
+      .map(normalizeDeletedWeekKey),
   );
   const seenEntries = new Set(
     [...(input.seenRemoteEntryIds ?? [])].filter((id) => typeof id === "string" && id.length > 0),
   );
-  const remoteWeeks = new Set(Object.keys(input.remote.weeks));
+  const remoteWeeks = new Set(
+    Object.values(input.remote.weeks).map((week) => vacationWeekKey(week.yard, week.weekOf)),
+  );
   const remoteEntries = new Set(Object.keys(input.remote.entries));
   const remoteCount = remoteWeeks.size + remoteEntries.size;
   const trustRemoteAbsence = remoteCount > 0 || (seenWeeks.size === 0 && seenEntries.size === 0);
@@ -824,10 +976,11 @@ export function reconcileVacationCloud(
 
   const toUploadWeeks: VacationWeek[] = [];
   for (const week of Object.values(next.weeks)) {
-    if (deletedWeeks.has(week.weekOf)) continue;
-    const remote = input.remote.weeks[week.weekOf];
+    const key = vacationWeekKey(week.yard, week.weekOf);
+    if (deletedWeeks.has(key)) continue;
+    const remote = input.remote.weeks[key];
     if (!remote) {
-      if (!seenWeeks.has(week.weekOf)) toUploadWeeks.push(week);
+      if (!seenWeeks.has(key)) toUploadWeeks.push(week);
       continue;
     }
     if (week.updatedAt > remote.updatedAt) toUploadWeeks.push(week);
@@ -835,7 +988,7 @@ export function reconcileVacationCloud(
 
   const toUploadEntries: VacationEntry[] = [];
   for (const entry of Object.values(next.entries)) {
-    if (deletedEntries.has(entry.id) || deletedWeeks.has(entry.weekOf)) continue;
+    if (deletedEntries.has(entry.id) || entryWeekIsTombstoned(entry, deletedWeeks)) continue;
     const remote = input.remote.entries[entry.id];
     if (!remote) {
       if (!seenEntries.has(entry.id)) toUploadEntries.push(entry);

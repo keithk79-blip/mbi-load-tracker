@@ -2,9 +2,10 @@ import type { VacationSeedWeek } from "../lib/vacationBoard";
 import seed2025 from "./vacationSeed2025.json" with { type: "json" };
 
 /**
- * 2026 named weeks from the MBI Vacation Calendar sheet export sketch.
+ * 2026 named weeks from the MBI Vacation Calendar **Rockford 2026** tab.
  * Remaining weeks are filled by `applySeedWeeks` (capacity pattern + holidays).
  * Status is not in the export: Pay/Payout → paid, else approved.
+ * Chicago is a separate yard — do not put Chicago names in this Rockford seed.
  */
 export const VACATION_SEED_2026: VacationSeedWeek[] = [
   { weekOf: "12/29/25", label: "New Years", kind: "holiday" },

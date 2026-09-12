@@ -16,13 +16,19 @@ import {
   applySeedWeeks,
   applyVacationTombstones,
   buildEmptyYearWeeks,
+  cleanVacationYard,
   cycleVacationEntryStatus,
+  DEFAULT_VACATION_YARD,
   emptyVacationStore,
+  parseVacationWeekKey,
+  readSelectedVacationYard,
   readVacationPersisted,
   reconcileVacationCloud,
   removeVacationEntry,
   updateVacationEntry,
   upsertWeek,
+  vacationWeekKey,
+  writeSelectedVacationYard,
   writeVacationPersisted,
   yearHasWeeks,
   type VacationEntry,
@@ -31,10 +37,12 @@ import {
   type VacationStore,
   type VacationWeek,
   type VacationWeekKind,
+  type VacationYard,
 } from "../lib/vacationBoard";
 import { useAuth } from "./AuthContext";
 
 type WeekRow = {
+  yard?: string | null;
   week_of: string;
   year: number;
   capacity: number | null;
@@ -46,6 +54,7 @@ type WeekRow = {
 
 type EntryRow = {
   id: string;
+  yard?: string | null;
   week_of: string;
   name: string;
   note: string | null;
@@ -56,6 +65,8 @@ type EntryRow = {
 
 type VacationContextValue = {
   store: VacationStore;
+  yard: VacationYard;
+  setYard: (yard: VacationYard) => void;
   cloud: boolean;
   refresh: () => Promise<void>;
   addDriver: (
@@ -81,7 +92,9 @@ const VacationContext = createContext<VacationContextValue | null>(null);
 function rowsToStore(weeks: WeekRow[], entries: EntryRow[]): VacationStore {
   const store = emptyVacationStore();
   for (const row of weeks) {
-    store.weeks[row.week_of] = {
+    const yard = cleanVacationYard(row.yard);
+    store.weeks[vacationWeekKey(yard, row.week_of)] = {
+      yard,
       weekOf: row.week_of,
       year: row.year,
       capacity: row.capacity,
@@ -94,6 +107,7 @@ function rowsToStore(weeks: WeekRow[], entries: EntryRow[]): VacationStore {
   for (const row of entries) {
     store.entries[row.id] = {
       id: row.id,
+      yard: cleanVacationYard(row.yard),
       weekOf: row.week_of,
       name: row.name,
       note: row.note ?? "",
@@ -107,6 +121,7 @@ function rowsToStore(weeks: WeekRow[], entries: EntryRow[]): VacationStore {
 
 function weekToRow(week: VacationWeek, userId: string | null) {
   return {
+    yard: week.yard,
     week_of: week.weekOf,
     year: week.year,
     capacity: week.capacity,
@@ -121,6 +136,7 @@ function weekToRow(week: VacationWeek, userId: string | null) {
 function entryToRow(entry: VacationEntry, userId: string | null) {
   return {
     id: entry.id,
+    yard: entry.yard,
     week_of: entry.weekOf,
     name: entry.name,
     note: entry.note,
@@ -131,13 +147,21 @@ function entryToRow(entry: VacationEntry, userId: string | null) {
   };
 }
 
+function seedsForYard(year: number, yard: VacationYard) {
+  return yard === DEFAULT_VACATION_YARD ? (VACATION_SEEDS_BY_YEAR[year] ?? []) : [];
+}
+
 function bootstrapStore(base: VacationStore): VacationStore {
   let next = base;
   for (const [yearText, seeds] of Object.entries(VACATION_SEEDS_BY_YEAR)) {
     const year = Number(yearText);
-    if (!yearHasWeeks(next, year)) {
-      next = applySeedWeeks(next, year, seeds);
+    if (!yearHasWeeks(next, year, DEFAULT_VACATION_YARD)) {
+      next = applySeedWeeks(next, year, seeds, undefined, DEFAULT_VACATION_YARD);
     }
+  }
+  // Empty Chicago 2026 week grid only — no invented driver names.
+  if (!yearHasWeeks(next, 2026, "chicago")) {
+    next = applySeedWeeks(next, 2026, [], undefined, "chicago");
   }
   return next;
 }
@@ -155,6 +179,7 @@ function persistSnapshot(next: VacationPersisted): VacationStore {
 export function VacationProvider({ children }: { children: ReactNode }) {
   const { configured, session, user } = useAuth();
   const cloud = configured && !!session;
+  const [yard, setYardState] = useState<VacationYard>(readSelectedVacationYard);
   const [store, setStore] = useState<VacationStore>(() => {
     const persisted = readVacationPersisted();
     const bootstrapped = bootstrapStore({
@@ -181,7 +206,7 @@ export function VacationProvider({ children }: { children: ReactNode }) {
 
   const persistLocal = useCallback((next: VacationStore) => {
     const snapshot: VacationPersisted = {
-      version: 1,
+      version: 2,
       weeks: next.weeks,
       entries: next.entries,
       deletedWeekOfs: [...deletedWeeksRef.current],
@@ -203,26 +228,46 @@ export function VacationProvider({ children }: { children: ReactNode }) {
   const pullRemote = useCallback(async (): Promise<VacationStore | null> => {
     const supabase = getSupabase();
     if (!supabase || !session) return null;
-    const weeksPage = await fetchAllPaged<WeekRow>(async (from, to) => {
+    const weeksWithYard = await fetchAllPaged<WeekRow>(async (from, to) => {
       const page = await supabase
         .from("vacation_weeks")
-        .select("week_of, year, capacity, label, kind, created_at, updated_at")
+        .select("yard, week_of, year, capacity, label, kind, created_at, updated_at")
         .order("week_of", { ascending: true })
         .range(from, to);
       return { data: page.data as WeekRow[] | null, error: page.error };
     });
+    const weeksPage = weeksWithYard.error
+      ? await fetchAllPaged<WeekRow>(async (from, to) => {
+          const page = await supabase
+            .from("vacation_weeks")
+            .select("week_of, year, capacity, label, kind, created_at, updated_at")
+            .order("week_of", { ascending: true })
+            .range(from, to);
+          return { data: page.data as WeekRow[] | null, error: page.error };
+        })
+      : weeksWithYard;
     if (weeksPage.error || !weeksPage.data) {
       console.warn("vacation_weeks pull failed", pagedErrorMessage(weeksPage.error));
       return null;
     }
-    const entriesPage = await fetchAllPaged<EntryRow>(async (from, to) => {
+    const entriesWithYard = await fetchAllPaged<EntryRow>(async (from, to) => {
       const page = await supabase
         .from("vacation_entries")
-        .select("id, week_of, name, note, status, created_at, updated_at")
+        .select("id, yard, week_of, name, note, status, created_at, updated_at")
         .order("id", { ascending: true })
         .range(from, to);
       return { data: page.data as EntryRow[] | null, error: page.error };
     });
+    const entriesPage = entriesWithYard.error
+      ? await fetchAllPaged<EntryRow>(async (from, to) => {
+          const page = await supabase
+            .from("vacation_entries")
+            .select("id, week_of, name, note, status, created_at, updated_at")
+            .order("id", { ascending: true })
+            .range(from, to);
+          return { data: page.data as EntryRow[] | null, error: page.error };
+        })
+      : entriesWithYard;
     if (entriesPage.error || !entriesPage.data) {
       console.warn("vacation_entries pull failed", pagedErrorMessage(entriesPage.error));
       return null;
@@ -230,12 +275,32 @@ export function VacationProvider({ children }: { children: ReactNode }) {
     return rowsToStore(weeksPage.data, entriesPage.data);
   }, [session]);
 
-  const cloudDeleteWeeks = useCallback(async (weekOfs: string[]) => {
-    if (!weekOfs.length) return;
+  const cloudDeleteWeeks = useCallback(async (weekKeys: string[]) => {
+    if (!weekKeys.length) return;
     const supabase = getSupabase();
     if (!supabase) return;
-    const { error } = await supabase.from("vacation_weeks").delete().in("week_of", weekOfs);
-    if (error) console.warn("vacation week delete failed", error.message);
+    const byYard = new Map<VacationYard, string[]>();
+    for (const key of weekKeys) {
+      const parsed = parseVacationWeekKey(key);
+      if (!parsed) continue;
+      const list = byYard.get(parsed.yard) ?? [];
+      list.push(parsed.weekOf);
+      byYard.set(parsed.yard, list);
+    }
+    for (const [rowYard, weekOfs] of byYard) {
+      const scoped = await supabase
+        .from("vacation_weeks")
+        .delete()
+        .eq("yard", rowYard)
+        .in("week_of", weekOfs);
+      if (!scoped.error) continue;
+      if (rowYard !== DEFAULT_VACATION_YARD) {
+        console.warn("vacation week delete failed", scoped.error.message);
+        continue;
+      }
+      const { error } = await supabase.from("vacation_weeks").delete().in("week_of", weekOfs);
+      if (error) console.warn("vacation week delete failed", error.message);
+    }
   }, []);
 
   const cloudDeleteEntries = useCallback(async (ids: string[]) => {
@@ -251,16 +316,30 @@ export function VacationProvider({ children }: { children: ReactNode }) {
       const supabase = getSupabase();
       if (!supabase || !session) return;
       if (weeks.length) {
-        const { error } = await supabase
-          .from("vacation_weeks")
-          .upsert(weeks.map((week) => weekToRow(week, user?.id ?? null)));
-        if (error) console.warn("vacation week upsert failed", error.message);
+        const rows = weeks.map((week) => weekToRow(week, user?.id ?? null));
+        const { error } = await supabase.from("vacation_weeks").upsert(rows);
+        if (error) {
+          const rockford = rows.filter((row) => row.yard === DEFAULT_VACATION_YARD).map(
+            ({ yard: _yard, ...rest }) => rest,
+          );
+          const retry = rockford.length
+            ? await supabase.from("vacation_weeks").upsert(rockford)
+            : { error };
+          if (retry.error) console.warn("vacation week upsert failed", retry.error.message);
+        }
       }
       if (entries.length) {
-        const { error } = await supabase
-          .from("vacation_entries")
-          .upsert(entries.map((entry) => entryToRow(entry, user?.id ?? null)));
-        if (error) console.warn("vacation entry upsert failed", error.message);
+        const rows = entries.map((entry) => entryToRow(entry, user?.id ?? null));
+        const { error } = await supabase.from("vacation_entries").upsert(rows);
+        if (error) {
+          const rockford = rows.filter((row) => row.yard === DEFAULT_VACATION_YARD).map(
+            ({ yard: _yard, ...rest }) => rest,
+          );
+          const retry = rockford.length
+            ? await supabase.from("vacation_entries").upsert(rockford)
+            : { error };
+          if (retry.error) console.warn("vacation entry upsert failed", retry.error.message);
+        }
       }
     },
     [session, user?.id],
@@ -358,13 +437,16 @@ export function VacationProvider({ children }: { children: ReactNode }) {
       opts?: { note?: string; status?: VacationStatus },
     ) => {
       epochRef.current += 1;
-      const result = addVacationEntry(storeRef.current, weekOf, name, opts);
+      const result = addVacationEntry(storeRef.current, weekOf, name, {
+        ...opts,
+        yard,
+      });
       if (!result.entry) return null;
       persistLocal(result.store);
       if (cloud) await cloudUpsert([], [result.entry]);
       return result.entry;
     },
-    [cloud, cloudUpsert, persistLocal],
+    [cloud, cloudUpsert, persistLocal, yard],
   );
 
   const editDriver = useCallback(
@@ -410,39 +492,51 @@ export function VacationProvider({ children }: { children: ReactNode }) {
       patch: Partial<Pick<VacationWeek, "capacity" | "label" | "kind" | "year">>,
     ) => {
       epochRef.current += 1;
-      const next = upsertWeek(storeRef.current, { weekOf, ...patch });
-      const week = next.weeks[weekOf] ?? Object.values(next.weeks).find((row) => row.weekOf === weekOf);
+      const next = upsertWeek(storeRef.current, { weekOf, yard, ...patch });
+      const week =
+        next.weeks[vacationWeekKey(yard, weekOf)] ??
+        Object.values(next.weeks).find((row) => row.weekOf === weekOf && row.yard === yard);
       persistLocal(next);
       if (cloud && week) await cloudUpsert([week], []);
     },
-    [cloud, cloudUpsert, persistLocal],
+    [cloud, cloudUpsert, persistLocal, yard],
   );
 
   const createYear = useCallback(
     async (year: number) => {
       if (!Number.isInteger(year) || year < 2000 || year > 2100) return false;
-      if (yearHasWeeks(storeRef.current, year)) return false;
+      if (yearHasWeeks(storeRef.current, year, yard)) return false;
       epochRef.current += 1;
       const next = applySeedWeeks(
         storeRef.current,
         year,
-        VACATION_SEEDS_BY_YEAR[year] ?? [],
+        seedsForYard(year, yard),
+        undefined,
+        yard,
       );
       persistLocal(next);
       if (cloud) {
-        const created = buildEmptyYearWeeks(year)
-          .map((week) => next.weeks[week.weekOf])
+        const created = buildEmptyYearWeeks(year, undefined, yard)
+          .map((week) => next.weeks[vacationWeekKey(yard, week.weekOf)])
           .filter((week): week is VacationWeek => Boolean(week));
         await cloudUpsert(created, []);
       }
       return true;
     },
-    [cloud, cloudUpsert, persistLocal],
+    [cloud, cloudUpsert, persistLocal, yard],
   );
+
+  const setYard = useCallback((next: VacationYard) => {
+    const cleaned = cleanVacationYard(next);
+    writeSelectedVacationYard(cleaned);
+    setYardState(cleaned);
+  }, []);
 
   const value = useMemo<VacationContextValue>(
     () => ({
       store,
+      yard,
+      setYard,
       cloud,
       refresh,
       addDriver,
@@ -454,6 +548,8 @@ export function VacationProvider({ children }: { children: ReactNode }) {
     }),
     [
       store,
+      yard,
+      setYard,
       cloud,
       refresh,
       addDriver,
