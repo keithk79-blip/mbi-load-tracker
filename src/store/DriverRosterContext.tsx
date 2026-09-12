@@ -175,6 +175,10 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     return rowsToStore(page.data);
   }, [session]);
 
+  /**
+   * Remote DELETE is UI × only. Refresh / import / Vacation VAC must never
+   * call this — same class of bug as loads and vacation silent wipes.
+   */
   const cloudDeleteEntries = useCallback(async (ids: string[]) => {
     if (!ids.length) return;
     const supabase = getSupabase();
@@ -239,15 +243,14 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     if (epoch !== epochRef.current) return;
 
     if (remote) {
+      // Upsert-only merge. Never delete remote (or local) rows from a pull —
+      // not even when a stale tombstone list is present.
       const result = reconcileDriverRosterCloud({
         local: storeRef.current,
         remote,
         deletedEntryIds: deletedRef.current,
         seenRemoteEntryIds: seenRef.current,
       });
-      if (result.toDeleteRemoteEntries.length) {
-        await cloudDeleteEntries(result.toDeleteRemoteEntries);
-      }
       if (epoch !== epochRef.current) return;
       if (result.toUploadEntries.length && !uploadingRef.current) {
         uploadingRef.current = true;
@@ -264,7 +267,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     }
 
     await seedIfEmpty();
-  }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, pullRemote, seedIfEmpty]);
+  }, [cloud, cloudUpsert, persistLocal, pullRemote, seedIfEmpty]);
 
   const refresh = useCallback(() => {
     const run = refreshTailRef.current.then(refreshInner, refreshInner);
@@ -377,6 +380,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       epochRef.current += 1;
       const result = removeRosterEntry(storeRef.current, id);
       if (!result.removed) return;
+      // Explicit UI × — the only path that may DELETE a cloud roster row.
       deletedRef.current.add(id);
       persistLocal(result.store);
       if (cloud) await cloudDeleteEntries([id]);

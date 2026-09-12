@@ -166,6 +166,31 @@ describe("vacation → Full Roster auto-VAC", () => {
     expect(afterWeek).toEqual(withoutVac);
   });
 
+  it("never removes hired roster rows when applying Vacation VAC", () => {
+    let store = emptyDriverRosterStore();
+    store = addRosterEntry(store, {
+      kind: "full",
+      yard: "burnham",
+      name: "Ryan Lollis",
+    }).store;
+    store = addRosterEntry(store, {
+      kind: "full",
+      yard: "burnham",
+      name: "Working Driver",
+    }).store;
+    const before = { ...store.entries };
+    const vacation = vacationStore([{ weekOf, name: "Ryan Lollis" }]);
+    const tally = fullRosterTallyForDate(
+      entriesForRoster(store, "full", "burnham"),
+      vacation,
+      midweek,
+      "burnham",
+    );
+    expect(tally).toEqual({ hired: 2, unavailable: 1, available: 1 });
+    expect(store.entries).toEqual(before);
+    expect(Object.keys(store.entries)).toHaveLength(2);
+  });
+
   it("does not persist auto-VAC when a dispatcher later edits another field", () => {
     let store = emptyDriverRosterStore();
     const added = addRosterEntry(store, {

@@ -350,7 +350,7 @@ describe("driver roster cloud delete posture", () => {
     expect(result.toDeleteRemoteEntries).toEqual([]);
   });
 
-  it("does not schedule remote deletes for rows missing from a subset pull", () => {
+  it("keeps local rows missing from a subset pull and does not remote-delete them", () => {
     const a = addRosterEntry(emptyDriverRosterStore(), {
       kind: "full",
       yard: "arc",
@@ -375,7 +375,7 @@ describe("driver roster cloud delete posture", () => {
       seenRemoteEntryIds: [keepId, missingId],
     });
     expect(result.next.entries[keepId]).toBeDefined();
-    expect(result.next.entries[missingId]).toBeUndefined();
+    expect(result.next.entries[missingId]).toBeDefined();
     expect(result.toDeleteRemoteEntries).toEqual([]);
     expect(result.toUploadEntries).toEqual([]);
   });
@@ -384,9 +384,16 @@ describe("driver roster cloud delete posture", () => {
     const src = readFileSync(new URL("../store/DriverRosterContext.tsx", import.meta.url), "utf8");
     expect(src).toContain('.from("driver_roster_entries").delete().in("id", ids)');
     expect(src).not.toMatch(/\.from\(["']driver_roster_entries["']\)\s*\.delete\(\)\s*(?!.*\.in)/);
+    expect(src).not.toContain("toDeleteRemoteEntries");
+    expect(src).toContain("the only path that may DELETE a cloud roster row");
+    const sql = readFileSync(new URL("../../Load-Tracker-driver-roster.sql", import.meta.url), "utf8");
+    expect(sql).toContain("driver_roster_deletes_allowed");
+    expect(sql).not.toMatch(
+      /crew_delete_driver_roster_entries[\s\S]*for delete[\s\S]*using \(true\)/,
+    );
   });
 
-  it("deletes remotely only for explicit user tombstones", () => {
+  it("adopts a live remote row over a stale tombstone and never schedules a remote delete", () => {
     const added = addRosterEntry(emptyDriverRosterStore(), {
       kind: "full",
       yard: "burnham",
@@ -400,8 +407,47 @@ describe("driver roster cloud delete posture", () => {
       deletedEntryIds: [id],
       seenRemoteEntryIds: [id],
     });
-    expect(result.next.entries[id]).toBeUndefined();
-    expect(result.toDeleteRemoteEntries).toEqual([id]);
+    expect(result.next.entries[id]).toEqual(added.store.entries[id]);
+    expect(result.deletedEntryIds).toEqual([]);
+    expect(result.toDeleteRemoteEntries).toEqual([]);
     expect(result.toUploadEntries).toEqual([]);
+  });
+
+  it("does not drop hired names when a later sheet import is thinner", () => {
+    const first = mergeImportedRows(emptyDriverRosterStore(), [
+      {
+        kind: "full",
+        yard: "burnham",
+        truckNumber: "56",
+        name: "Dave Vanderbilt",
+        status: null,
+        forDate: null,
+      },
+      {
+        kind: "full",
+        yard: "burnham",
+        truckNumber: "102",
+        name: "Dan Kasprzycki",
+        status: null,
+        forDate: null,
+      },
+    ]);
+    expect(first.added).toBe(2);
+    const thinner = mergeImportedRows(first.store, [
+      {
+        kind: "full",
+        yard: "burnham",
+        truckNumber: "56",
+        name: "Dave Vanderbilt",
+        status: "oot",
+        forDate: null,
+      },
+    ]);
+    expect(thinner.added).toBe(0);
+    expect(thinner.skippedGroups).toEqual(["full:burnham"]);
+    expect(rosterEntryCount(thinner.store, "full", "burnham")).toBe(2);
+    expect(
+      entriesForRoster(thinner.store, "full", "burnham").map((row) => row.name),
+    ).toEqual(["Dave Vanderbilt", "Dan Kasprzycki"]);
   });
 });

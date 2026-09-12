@@ -12,6 +12,9 @@
  * Yard map: Rockford vacation ↔ Rockford roster; Chicago vacation ↔
  * Burnham / Pontiac / Arc / Zion. Prefer that mapping, then fall back to
  * the other Vacation yard (Vacation is names-only).
+ *
+ * Read-only: never writes `status`, never deletes hired / Sat rows. VAC is
+ * derived at display/tally time so a week rollover cannot wipe the roster.
  */
 
 import {

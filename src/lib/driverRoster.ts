@@ -1,4 +1,9 @@
-/** Chicago-area driver rosters — Full + Sat, per yard. Local persist + cloud merge. */
+/** Chicago-area driver rosters — Full + Sat, per yard. Local persist + cloud merge.
+ *
+ * HARD CONSTRAINT: never auto-delete / wipe / prune hired or Sat rows.
+ * Sheet import and Vacation VAC may add or update marks only. Remote DELETE
+ * is an explicit UI × (`removeDriver`). See `reconcileDriverRosterCloud`.
+ */
 
 import { isValidISODate } from "./chicagoDate";
 import { isFullDayOff } from "./driverAvailability";
@@ -381,6 +386,7 @@ export function writeDriverRosterUi(ui: DriverRosterUi): void {
   );
 }
 
+/** Local hide after an explicit UI ×. Sync must not invent these ids. */
 export function applyRosterTombstones(
   store: DriverRosterStore,
   deletedIds: Iterable<string>,
@@ -580,13 +586,16 @@ export type ImportedRosterRow = {
   forDate: string | null;
 };
 
+/**
+ * Fill empty kind+yard groups from the sheet. Never drops hired / Sat rows
+ * that are already in the store — a thinner sheet must not prune the roster.
+ */
 export function mergeImportedRows(
   store: DriverRosterStore,
   rows: readonly ImportedRosterRow[],
-  opts?: { replaceGroups?: Iterable<string>; at?: string },
+  opts?: { at?: string },
 ): { store: DriverRosterStore; added: number; skippedGroups: string[] } {
   const at = nowIso(opts?.at);
-  const replace = new Set(opts?.replaceGroups ?? []);
   const occupied = new Set<string>();
   for (const entry of Object.values(store.entries)) {
     occupied.add(`${entry.kind}:${entry.yard}`);
@@ -596,12 +605,10 @@ export function mergeImportedRows(
   let next = store;
   let added = 0;
   const counters = new Map<string, number>();
-  const groupCounts = new Map<string, number>();
 
   for (const row of rows) {
     const group = `${row.kind}:${row.yard}`;
-    groupCounts.set(group, (groupCounts.get(group) ?? 0) + 1);
-    if (occupied.has(group) && !replace.has(group)) {
+    if (occupied.has(group)) {
       if (!seenSkip.has(group)) {
         seenSkip.add(group);
         skippedGroups.push(group);
@@ -661,15 +668,22 @@ export type DriverRosterCloudReconcileResult = {
 };
 
 /**
- * Upsert + no-prune. Remote DELETEs are explicit user tombstones only.
- * A thin/empty pull must not wipe remote rows or invent tombstones.
- * Previously-seen ids missing from a non-empty pull stay hidden locally
- * (another device deleted them) but are not scheduled for remote delete.
+ * HARD CONSTRAINT — same class as loads / vacation silent wipes:
+ * Sync must never delete, wipe, or prune hired Full Roster or Sat Roster
+ * rows unless Keith pressed × in the UI.
+ *
+ * - No subset-pull hides, no seen-missing tombstones, no wipe-then-reinsert.
+ * - Empty / thin remote keeps every local row. Cloud-only remote rows upsert in.
+ * - Live remote beats a stale local tombstone (do not re-DELETE that row).
+ * - `toDeleteRemoteEntries` is always empty. The only remote DELETE is
+ *   DriverRosterContext.removeDriver (the × button).
+ * - Sheet import and Vacation auto-VAC may add or update marks; they never
+ *   remove rows.
  */
 export function reconcileDriverRosterCloud(
   input: DriverRosterCloudReconcileInput,
 ): DriverRosterCloudReconcileResult {
-  const deleted = new Set(
+  const incomingDeleted = new Set(
     [...input.deletedEntryIds].filter((id) => typeof id === "string" && id.length > 0),
   );
   const seen = new Set(
@@ -678,11 +692,12 @@ export function reconcileDriverRosterCloud(
     ),
   );
   const remoteIds = new Set(Object.keys(input.remote.entries));
-  const hideLocal = new Set<string>();
-  if (remoteIds.size > 0) {
-    for (const id of seen) {
-      if (!remoteIds.has(id) && !deleted.has(id)) hideLocal.add(id);
-    }
+
+  // Forget tombstones for ids that are live on remote. A leftover × on a
+  // stale client must not hide or delete a cloud-only hired row.
+  const deleted = new Set<string>();
+  for (const id of incomingDeleted) {
+    if (!remoteIds.has(id)) deleted.add(id);
   }
 
   const next: DriverRosterStore = { entries: {} };
@@ -693,7 +708,7 @@ export function reconcileDriverRosterCloud(
     ...Object.keys(input.remote.entries),
   ]);
   for (const id of ids) {
-    if (deleted.has(id) || hideLocal.has(id)) continue;
+    if (deleted.has(id)) continue;
     const local = input.local.entries[id];
     const remote = input.remote.entries[id];
     if (remote && !local) {
@@ -715,17 +730,14 @@ export function reconcileDriverRosterCloud(
     }
   }
 
-  const toDeleteRemoteEntries = [...deleted].filter((id) => remoteIds.has(id));
-
   const nextSeen = new Set(seen);
   for (const id of remoteIds) nextSeen.add(id);
-  for (const id of deleted) nextSeen.add(id);
 
   return {
     next,
     deletedEntryIds: [...deleted],
     seenRemoteEntryIds: [...nextSeen],
-    toDeleteRemoteEntries,
+    toDeleteRemoteEntries: [],
     toUploadEntries,
   };
 }

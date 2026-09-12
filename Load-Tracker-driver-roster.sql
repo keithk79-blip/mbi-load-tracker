@@ -45,7 +45,7 @@ create index if not exists driver_roster_entries_sat_date_idx
   where kind = 'sat' and for_date is not null;
 
 comment on table public.driver_roster_entries is
-  'Driver tab Full (hired) + Sat (planning) rosters per Chicago-area yard. Upsert-only sync; remote rows are deleted only by explicit user removes.';
+  'Driver tab Full (hired) + Sat (planning) rosters per Chicago-area yard. Sync is upsert-only. Remote DELETE is explicit UI × only — never import, Vacation VAC, or a thin/empty pull.';
 comment on column public.driver_roster_entries.kind is
   'full = hired master roster at the yard; sat = Saturday planning subset.';
 comment on column public.driver_roster_entries.yard is
@@ -71,9 +71,25 @@ drop policy if exists "crew_update_driver_roster_entries" on public.driver_roste
 create policy "crew_update_driver_roster_entries"
   on public.driver_roster_entries for update to authenticated using (true) with check (true);
 
+create or replace function public.driver_roster_deletes_allowed()
+returns boolean
+language sql
+stable
+as $$
+  select true
+$$;
+
+comment on function public.driver_roster_deletes_allowed() is
+  'Kill-switch for driver_roster_entries DELETE. Default true so UI × works. Set the body to select false to freeze all roster deletes.';
+
+grant execute on function public.driver_roster_deletes_allowed() to authenticated;
+
 drop policy if exists "crew_delete_driver_roster_entries" on public.driver_roster_entries;
 create policy "crew_delete_driver_roster_entries"
-  on public.driver_roster_entries for delete to authenticated using (true);
+  on public.driver_roster_entries
+  for delete
+  to authenticated
+  using (public.driver_roster_deletes_allowed());
 
 do $$
 begin
