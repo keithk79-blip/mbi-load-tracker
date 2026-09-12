@@ -20,7 +20,6 @@ import {
   cycleVacationEntryStatus,
   DEFAULT_VACATION_YARD,
   emptyVacationStore,
-  parseVacationWeekKey,
   readSelectedVacationYard,
   readVacationPersisted,
   reconcileVacationCloud,
@@ -275,34 +274,6 @@ export function VacationProvider({ children }: { children: ReactNode }) {
     return rowsToStore(weeksPage.data, entriesPage.data);
   }, [session]);
 
-  const cloudDeleteWeeks = useCallback(async (weekKeys: string[]) => {
-    if (!weekKeys.length) return;
-    const supabase = getSupabase();
-    if (!supabase) return;
-    const byYard = new Map<VacationYard, string[]>();
-    for (const key of weekKeys) {
-      const parsed = parseVacationWeekKey(key);
-      if (!parsed) continue;
-      const list = byYard.get(parsed.yard) ?? [];
-      list.push(parsed.weekOf);
-      byYard.set(parsed.yard, list);
-    }
-    for (const [rowYard, weekOfs] of byYard) {
-      const scoped = await supabase
-        .from("vacation_weeks")
-        .delete()
-        .eq("yard", rowYard)
-        .in("week_of", weekOfs);
-      if (!scoped.error) continue;
-      if (rowYard !== DEFAULT_VACATION_YARD) {
-        console.warn("vacation week delete failed", scoped.error.message);
-        continue;
-      }
-      const { error } = await supabase.from("vacation_weeks").delete().in("week_of", weekOfs);
-      if (error) console.warn("vacation week delete failed", error.message);
-    }
-  }, []);
-
   const cloudDeleteEntries = useCallback(async (ids: string[]) => {
     if (!ids.length) return;
     const supabase = getSupabase();
@@ -365,7 +336,6 @@ export function VacationProvider({ children }: { children: ReactNode }) {
       seenRemoteEntryIds: seenEntriesRef.current,
     });
 
-    if (result.toDeleteRemoteWeeks.length) await cloudDeleteWeeks(result.toDeleteRemoteWeeks);
     if (result.toDeleteRemoteEntries.length) {
       await cloudDeleteEntries(result.toDeleteRemoteEntries);
     }
@@ -389,7 +359,7 @@ export function VacationProvider({ children }: { children: ReactNode }) {
     seenWeeksRef.current = new Set(result.seenRemoteWeekOfs);
     seenEntriesRef.current = new Set(result.seenRemoteEntryIds);
     persistLocal(result.next);
-  }, [cloud, cloudDeleteEntries, cloudDeleteWeeks, cloudUpsert, persistLocal, pullRemote]);
+  }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, pullRemote]);
 
   const refresh = useCallback(() => {
     const run = refreshTailRef.current.then(refreshInner, refreshInner);

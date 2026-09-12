@@ -9,7 +9,7 @@ import {
   yearOfISO,
 } from "./chicagoDate";
 
-export const VACATION_STORE_KEY = "chitrader.load-tracker.vacation.v1";
+export const VACATION_STORE_KEY = "chitrader.load-tracker.vacation.v2";
 export const VACATION_YARD_STORAGE_KEY = "chitrader.load-tracker.vacation-yard.v1";
 
 export const VACATION_STATUSES = ["pending", "approved", "paid"] as const;
@@ -942,8 +942,12 @@ export type VacationCloudReconcileResult = {
 
 /**
  * One successful cloud refresh. Remote absence of a previously seen row is a
- * delete (do not re-upload). Never-seen local rows still upload. Tombstones
+ * local hide (do not re-upload). Never-seen local rows still upload. Tombstones
  * strip both sides. Empty remote + no prior pull keeps local (no wipe).
+ *
+ * Never schedule remote vacation_weeks DELETEs. A stale/empty client (or week
+ * tombstones written after a prior wipe while entries remained) must not prune
+ * the cloud week grid. Local tombstones still hide weeks on this device.
  */
 export function reconcileVacationCloud(
   input: VacationCloudReconcileInput,
@@ -968,13 +972,15 @@ export function reconcileVacationCloud(
     Object.values(input.remote.weeks).map((week) => vacationWeekKey(week.yard, week.weekOf)),
   );
   const remoteEntries = new Set(Object.keys(input.remote.entries));
-  const remoteCount = remoteWeeks.size + remoteEntries.size;
-  const trustRemoteAbsence = remoteCount > 0 || (seenWeeks.size === 0 && seenEntries.size === 0);
 
-  if (trustRemoteAbsence && remoteCount > 0) {
+  // Infer local hides per table. Leftover entries after a week-grid wipe must
+  // not tombstone every previously seen Sunday (that re-nuked restored weeks).
+  if (remoteWeeks.size > 0) {
     for (const id of seenWeeks) {
       if (!remoteWeeks.has(id)) deletedWeeks.add(id);
     }
+  }
+  if (remoteEntries.size > 0) {
     for (const id of seenEntries) {
       if (!remoteEntries.has(id)) deletedEntries.add(id);
     }
@@ -982,7 +988,7 @@ export function reconcileVacationCloud(
 
   const next = mergeVacationStores(input.local, input.remote, deletedWeeks, deletedEntries);
 
-  const toDeleteRemoteWeeks = [...deletedWeeks].filter((id) => remoteWeeks.has(id));
+  const toDeleteRemoteWeeks: string[] = [];
   const toDeleteRemoteEntries = [...deletedEntries].filter((id) => remoteEntries.has(id));
 
   const toUploadWeeks: VacationWeek[] = [];
