@@ -1,6 +1,7 @@
 /** Chicago-area driver rosters — Full + Sat, per yard. Local persist + cloud merge. */
 
 import { isValidISODate } from "./chicagoDate";
+import { isFullDayOff } from "./driverAvailability";
 
 export const DRIVER_ROSTER_STORE_KEY = "chitrader.load-tracker.driver-roster.v1";
 export const DRIVER_ROSTER_UI_KEY = "chitrader.load-tracker.driver-roster-ui.v1";
@@ -27,17 +28,47 @@ export const DRIVER_ROSTER_YARD_LABELS: Record<DriverRosterYard, string> = {
   zion: "Zion",
 };
 
+/**
+ * Optional Full Roster unavailability mark. The driver stays on the hired
+ * roster. `status` stores the sheet abbreviation (oot, fmla, vac, wc, …).
+ * A later Today tally can do hired − full-day status − day offs without a
+ * rewrite: use `fullRosterTally` / `rosterStatusRemovesFromAvailable`.
+ */
 export type DriverRosterEntry = {
   id: string;
   kind: DriverRosterKind;
   yard: DriverRosterYard;
   truckNumber: string | null;
   name: string;
+  /** Full Roster only: unavailability abbreviation, or null if working. */
   status: string | null;
   sortOrder: number;
   forDate: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+/** Sheet / UI abbreviations that mean full-day unavailable (still hired). */
+export const ROSTER_UNAVAILABLE_REASONS = [
+  { token: "oot", label: "OOT", reason: "OOT" },
+  { token: "fmla", label: "FMLA", reason: "FMLA" },
+  { token: "vac", label: "Vac", reason: "Vacation" },
+  { token: "wc", label: "WC", reason: "Workers Comp" },
+  { token: "pto", label: "PTO", reason: "PTO" },
+  { token: "loa", label: "LOA", reason: "LOA" },
+  { token: "sick", label: "Sick", reason: "Sick" },
+  { token: "injured", label: "Injured", reason: "Injured" },
+  { token: "off", label: "Off", reason: "Off" },
+] as const;
+
+const UNAVAIL_BY_TOKEN = new Map<string, (typeof ROSTER_UNAVAILABLE_REASONS)[number]>(
+  ROSTER_UNAVAILABLE_REASONS.map((row) => [row.token, row]),
+);
+
+export type FullRosterTally = {
+  hired: number;
+  unavailable: number;
+  available: number;
 };
 
 export type DriverRosterStore = {
@@ -133,7 +164,53 @@ export function cleanDriverName(raw: unknown): string {
 export function cleanDriverStatus(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.replace(/\s+/g, " ").trim();
-  return trimmed ? trimmed : null;
+  if (!trimmed) return null;
+  const known = UNAVAIL_BY_TOKEN.get(trimmed.toLowerCase());
+  return known ? known.token : trimmed;
+}
+
+export function isRosterUnavailableToken(raw: string): boolean {
+  return UNAVAIL_BY_TOKEN.has(raw.trim().toLowerCase());
+}
+
+/** Dispatcher label for a stored abbreviation (`oot` → `OOT`). */
+export function rosterStatusLabel(status: string | null | undefined): string {
+  const cleaned = cleanDriverStatus(status ?? null);
+  if (!cleaned) return "";
+  return UNAVAIL_BY_TOKEN.get(cleaned.toLowerCase())?.label ?? cleaned.toUpperCase();
+}
+
+/**
+ * True when this hired-roster mark should drop the driver from an available
+ * tally. Same idea as Today’s `isFullDayOff`: full-day reasons subtract;
+ * Late/Early and operational notes do not. Known sheet abbreviations
+ * (oot / fmla / vac / wc / …) are full-day. Unknown short status-column
+ * tokens also subtract — that column is only used for out marks.
+ */
+export function rosterStatusRemovesFromAvailable(status: string | null | undefined): boolean {
+  const cleaned = cleanDriverStatus(status ?? null);
+  if (!cleaned) return false;
+  if (isRosterUnavailableToken(cleaned)) return true;
+  if (isFullDayOff(cleaned)) return true;
+  const reason = UNAVAIL_BY_TOKEN.get(cleaned.toLowerCase())?.reason;
+  if (reason && isFullDayOff(reason)) return true;
+  if (/late[\s/-]*early/i.test(cleaned)) return false;
+  return /^[a-z]{2,8}$/i.test(cleaned);
+}
+
+export function fullRosterTally(entries: readonly DriverRosterEntry[]): FullRosterTally {
+  let hired = 0;
+  let unavailable = 0;
+  for (const entry of entries) {
+    if (entry.kind !== "full") continue;
+    hired += 1;
+    if (rosterStatusRemovesFromAvailable(entry.status)) unavailable += 1;
+  }
+  return {
+    hired,
+    unavailable,
+    available: Math.max(0, hired - unavailable),
+  };
 }
 
 export function cleanForDate(raw: unknown): string | null {

@@ -4,10 +4,14 @@ import { addDays, chicagoToday, formatMonthDayYear, weekdayOfISO } from "../lib/
 import {
   DRIVER_ROSTER_KINDS,
   DRIVER_ROSTER_YARDS,
+  ROSTER_UNAVAILABLE_REASONS,
   driverRosterYardLabel,
   entriesForRoster,
   formatRosterCopyList,
+  fullRosterTally,
   rosterEntryCount,
+  rosterStatusLabel,
+  rosterStatusRemovesFromAvailable,
   satDateForYard,
   type DriverRosterKind,
 } from "../lib/driverRoster";
@@ -89,14 +93,19 @@ function AddRosterForm({
         aria-label="Driver name"
       />
       {kind === "full" ? (
-        <input
+        <select
           className="text-input drv-add-status"
           value={status}
           onChange={(event) => setStatus(event.target.value)}
-          placeholder="Status (oot, vac…)"
-          autoComplete="off"
-          aria-label="Status"
-        />
+          aria-label="Unavailability reason"
+        >
+          <option value="">Available (working)</option>
+          {ROSTER_UNAVAILABLE_REASONS.map((row) => (
+            <option key={row.token} value={row.token}>
+              {row.label} — out
+            </option>
+          ))}
+        </select>
       ) : null}
       <div className="vac-add-actions">
         <button type="submit" className="text-btn amber">
@@ -121,6 +130,7 @@ export function DriverScreen() {
     lastImport,
     importFromSheet,
     addDriver,
+    setDriverStatus,
     removeDriver,
     moveDriver,
     setSatDate,
@@ -131,10 +141,13 @@ export function DriverScreen() {
 
   const entries = useMemo(() => entriesForRoster(store, kind, yard), [store, kind, yard]);
   const count = rosterEntryCount(store, kind, yard);
+  const tally = useMemo(
+    () => (kind === "full" ? fullRosterTally(entries) : null),
+    [kind, entries],
+  );
   const satDate = satDateForYard(store, yard);
   const copyTextValue = formatRosterCopyList(entries);
   const yardLabel = driverRosterYardLabel(yard);
-  const kindLabel = kind === "sat" ? "Sat Roster" : "Full Roster";
 
   async function onCopy() {
     const ok = await copyText(copyTextValue);
@@ -176,14 +189,32 @@ export function DriverScreen() {
         <div className="page-header-brand">
           <BrandMark />
           <div>
-            <p className="eyebrow">{kindLabel}</p>
+            <p className="eyebrow">
+              {kind === "full" ? "Hired roster" : "Saturday planning"}
+            </p>
             <h1 className="page-title">{yardLabel}</h1>
           </div>
         </div>
         <div className="drv-header-meta">
-          <p className="drv-count">
-            {count} {count === 1 ? "driver" : "drivers"}
-          </p>
+          {tally ? (
+            <p className="drv-count" title="Preview tally from this hired list. Today still uses L13 / sheet offs.">
+              <strong>{tally.hired}</strong> hired
+              {tally.unavailable ? (
+                <>
+                  {" "}
+                  · <span className="drv-count-out">{tally.unavailable} out</span>
+                  {" "}
+                  · {tally.available} available
+                </>
+              ) : (
+                <> · all available</>
+              )}
+            </p>
+          ) : (
+            <p className="drv-count">
+              {count} {count === 1 ? "driver" : "drivers"}
+            </p>
+          )}
           <div className="vac-add-actions">
             <button type="button" className="text-btn amber" onClick={() => setAdding(true)}>
               + Add
@@ -245,8 +276,9 @@ export function DriverScreen() {
           </span>
         ) : (
           <span className="vac-legend-note">
-            Truck # and name. Status (oot, fmla, vac, wc) is optional. × removes. Edits save
-            immediately.
+            Everyone listed is hired at this yard. OOT / FMLA / vac / WC (and similar marks)
+            mean they are <strong>out</strong> — still on the roster, not available. ×
+            removes a hire. Today’s available count still reads L13 / sheet offs.
           </span>
         )}
       </div>
@@ -299,10 +331,14 @@ export function DriverScreen() {
 
       {!count && !adding ? (
         <div className="empty">
-          <h2>No {yardLabel} {kind === "sat" ? "Saturday" : "full"} drivers yet</h2>
+          <h2>
+            No {yardLabel} {kind === "sat" ? "Saturday planning" : "hired"} drivers yet
+          </h2>
           <p>
-            Import from the Chicago available-drivers workbook, or add names here. Today’s
-            available-driver count still reads Burnham L13 / Sat-sum from the sheet.
+            {kind === "full"
+              ? "Full Roster is everyone hired at this yard. Import the workbook or add names. Marks like OOT stay on the list and count as out."
+              : "Sat Roster is the Saturday planning list (a subset you edit through the week)."}{" "}
+            Today’s available-driver count still reads Burnham L13 / Sat-sum from the sheet.
           </p>
           <div className="vac-add-actions">
             <button
@@ -326,13 +362,18 @@ export function DriverScreen() {
                 {kind === "sat" ? <th className="drv-col-move"> </th> : null}
                 <th className="drv-col-truck">Truck</th>
                 <th className="drv-col-name">Name</th>
-                {kind === "full" ? <th className="drv-col-status">Status</th> : null}
+                {kind === "full" ? <th className="drv-col-status">Unavailable</th> : null}
                 <th className="drv-col-actions"> </th>
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry, index) => (
-                <tr key={entry.id} className="drv-row">
+              {entries.map((entry, index) => {
+                const out = kind === "full" && rosterStatusRemovesFromAvailable(entry.status);
+                return (
+                <tr
+                  key={entry.id}
+                  className={out ? "drv-row is-out" : "drv-row"}
+                >
                   {kind === "sat" ? (
                     <td className="drv-col-move">
                       <div className="drv-move">
@@ -358,10 +399,32 @@ export function DriverScreen() {
                     </td>
                   ) : null}
                   <td className="drv-col-truck">{entry.truckNumber ?? "—"}</td>
-                  <td className="drv-col-name">{entry.name}</td>
+                  <td className="drv-col-name">
+                    {entry.name}
+                    {out ? <span className="drv-out-tag">Out</span> : null}
+                  </td>
                   {kind === "full" ? (
                     <td className="drv-col-status">
-                      {entry.status ? <span className="drv-status">{entry.status}</span> : "—"}
+                      <select
+                        className={out ? "drv-status-select is-out" : "drv-status-select"}
+                        value={entry.status ?? ""}
+                        aria-label={`Unavailability for ${entry.name}`}
+                        onChange={(event) =>
+                          void setDriverStatus(entry.id, event.target.value || null)
+                        }
+                      >
+                        <option value="">Available</option>
+                        {ROSTER_UNAVAILABLE_REASONS.map((row) => (
+                          <option key={row.token} value={row.token}>
+                            {row.label}
+                          </option>
+                        ))}
+                        {entry.status && !ROSTER_UNAVAILABLE_REASONS.some((row) => row.token === entry.status) ? (
+                          <option value={entry.status}>
+                            {rosterStatusLabel(entry.status)}
+                          </option>
+                        ) : null}
+                      </select>
                     </td>
                   ) : null}
                   <td className="drv-col-actions">
@@ -375,7 +438,8 @@ export function DriverScreen() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
               <tr className="drv-add-row">
                 <td colSpan={4}>
                   <button type="button" className="vac-add-link" onClick={() => setAdding(true)}>

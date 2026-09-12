@@ -5,6 +5,7 @@ import {
   cleanDriverStatus,
   cleanTruckNumber,
   isDriverRosterYard,
+  isRosterUnavailableToken,
   yardFromSheetTab,
   type DriverRosterKind,
   type DriverRosterYard,
@@ -32,8 +33,6 @@ const SUMMARY_RE =
   /^(?:total|all)\b.*\bdrivers?\b|\bdrivers?\s+(?:un)?available\b|^(?:un)?available\s+drivers?\b|^pit\s*time\b/i;
 
 const TIME_RE = /^\d{1,2}:\d{2}(?:\s*(?:am|pm))?$/i;
-
-const STATUS_RE = /^(oot|fmla|vac|wc|pto|loa|sick|injured|off)$/i;
 
 const LOCATION_ONLY = new Set([
   "arc",
@@ -75,7 +74,7 @@ export function isRosterSummaryLabel(raw: string): boolean {
 }
 
 export function isRosterStatusToken(raw: string): boolean {
-  return STATUS_RE.test(raw.trim());
+  return isRosterUnavailableToken(raw);
 }
 
 export function isRosterTruckNumber(raw: string): boolean {

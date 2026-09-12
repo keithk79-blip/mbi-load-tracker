@@ -38,15 +38,15 @@ create index if not exists driver_roster_entries_sat_date_idx
   where kind = 'sat' and for_date is not null;
 
 comment on table public.driver_roster_entries is
-  'Driver tab Full + Sat rosters per Chicago-area yard. Upsert-only sync; remote rows are deleted only by explicit user removes.';
+  'Driver tab Full (hired) + Sat (planning) rosters per Chicago-area yard. Upsert-only sync; remote rows are deleted only by explicit user removes.';
 comment on column public.driver_roster_entries.kind is
-  'full = weekday Full Roster; sat = Saturday planning roster.';
+  'full = hired master roster at the yard; sat = Saturday planning subset.';
 comment on column public.driver_roster_entries.yard is
   'burnham | rockford | pontiac | arc | zion. Sheet “ARC Drivers” / Sat-Arc map to arc.';
 comment on column public.driver_roster_entries.truck_number is
   'Unit number as text (leading zeros stripped). Nullable.';
 comment on column public.driver_roster_entries.status is
-  'Optional Full Roster flag from the sheet (oot, fmla, vac, wc, …).';
+  'Full Roster unavailability abbreviation (oot, fmla, vac, wc, …). Null = working. Driver stays on the hired list. Later tally: hired − full-day status − day offs.';
 comment on column public.driver_roster_entries.for_date is
   'Optional Saturday this Sat roster is planning for (America/Chicago date).';
 

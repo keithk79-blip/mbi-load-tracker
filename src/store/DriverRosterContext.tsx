@@ -22,6 +22,7 @@ import {
   removeRosterEntry,
   rosterStoreIsEmpty,
   setSatDateForYard,
+  updateRosterEntry,
   writeDriverRosterPersisted,
   writeDriverRosterUi,
   type DriverRosterEntry,
@@ -66,6 +67,7 @@ type DriverRosterContextValue = {
   refresh: () => Promise<void>;
   importFromSheet: () => Promise<DriverRosterImportResult>;
   addDriver: (input: Omit<DriverRosterInput, "kind" | "yard">) => Promise<DriverRosterEntry | null>;
+  setDriverStatus: (id: string, status: string | null) => Promise<void>;
   removeDriver: (id: string) => Promise<void>;
   moveDriver: (id: string, delta: -1 | 1) => Promise<void>;
   setSatDate: (forDate: string | null) => Promise<void>;
@@ -359,6 +361,17 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     [cloud, cloudUpsert, persistLocal, ui.kind, ui.yard],
   );
 
+  const setDriverStatus = useCallback(
+    async (id: string, status: string | null) => {
+      epochRef.current += 1;
+      const next = updateRosterEntry(storeRef.current, id, { status });
+      const entry = next.entries[id];
+      persistLocal(next);
+      if (cloud && entry) await cloudUpsert([entry]);
+    },
+    [cloud, cloudUpsert, persistLocal],
+  );
+
   const removeDriver = useCallback(
     async (id: string) => {
       epochRef.current += 1;
@@ -430,6 +443,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       refresh,
       importFromSheet,
       addDriver,
+      setDriverStatus,
       removeDriver,
       moveDriver,
       setSatDate,
@@ -446,6 +460,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       refresh,
       importFromSheet,
       addDriver,
+      setDriverStatus,
       removeDriver,
       moveDriver,
       setSatDate,

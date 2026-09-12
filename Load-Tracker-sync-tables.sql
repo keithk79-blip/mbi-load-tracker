@@ -455,7 +455,7 @@ create index if not exists driver_roster_entries_sat_date_idx
   where kind = 'sat' and for_date is not null;
 
 comment on table public.driver_roster_entries is
-  'Driver tab Full + Sat rosters per Chicago-area yard. Upsert-only sync; remote rows are deleted only by explicit user removes.';
+  'Driver tab Full (hired) + Sat (planning) rosters per Chicago-area yard. Upsert-only sync; remote rows are deleted only by explicit user removes. status = optional Full Roster unavailability (oot/fmla/vac/wc); later tally hired − full-day status − day offs.';
 
 alter table public.driver_roster_entries enable row level security;
 

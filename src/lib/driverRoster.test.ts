@@ -9,7 +9,10 @@ import {
   entriesForRoster,
   formatRosterCopyList,
   formatRosterLine,
+  fullRosterTally,
   importEntryId,
+  rosterStatusLabel,
+  rosterStatusRemovesFromAvailable,
   mergeImportedRows,
   moveRosterEntry,
   reconcileDriverRosterCloud,
@@ -126,7 +129,7 @@ describe("parseRosterPeople", () => {
     expect(people.find((row) => row.name === "Zachary Valadez")?.status).toBe("oot");
     expect(people.find((row) => row.name === "John Wegner")?.status).toBe("wc");
     expect(people.find((row) => row.name === "Josh Maciejewski")?.status).toBe("vac");
-    expect(people.find((row) => row.name === "Zavier Alexander")?.status).toBe("OOT");
+    expect(people.find((row) => row.name === "Zavier Alexander")?.status).toBe("oot");
     expect(people.some((row) => /total|available/i.test(row.name))).toBe(false);
     expect(people.map((row) => row.truckNumber)).toContain("40676");
     expect(people).toHaveLength(28);
@@ -164,7 +167,7 @@ describe("parseRosterPeople", () => {
 
     const zion = parseRosterPeople(ZION_FULL).people;
     expect(zion).toHaveLength(3);
-    expect(zion.find((row) => row.name === "Sergio Valadez")?.status).toBe("Wc");
+    expect(zion.find((row) => row.name === "Sergio Valadez")?.status).toBe("wc");
   });
 
   it("parses Sat tabs without status columns and captures the planning date", () => {
@@ -181,6 +184,39 @@ describe("parseRosterPeople", () => {
     const rock = parseRosterTabCsv(SAT_ROCKFORD, "sat", "rockford", "Sat-Rockford");
     expect(rock.forDate).toBe("2026-09-12");
     expect(rock.people.map((row) => row.truckNumber)).toEqual(["185", "1495", "13", "32246", "33573"]);
+  });
+});
+
+describe("full roster unavailability tally", () => {
+  it("treats sheet abbreviations as hired-but-out, not a separate list", () => {
+    expect(rosterStatusRemovesFromAvailable("oot")).toBe(true);
+    expect(rosterStatusRemovesFromAvailable("OOT")).toBe(true);
+    expect(rosterStatusRemovesFromAvailable("fmla")).toBe(true);
+    expect(rosterStatusRemovesFromAvailable("vac")).toBe(true);
+    expect(rosterStatusRemovesFromAvailable("Wc")).toBe(true);
+    expect(rosterStatusRemovesFromAvailable("late/early")).toBe(false);
+    expect(rosterStatusRemovesFromAvailable(null)).toBe(false);
+    expect(rosterStatusLabel("oot")).toBe("OOT");
+    expect(rosterStatusLabel("vac")).toBe("Vac");
+  });
+
+  it("counts hired minus full-day status for a later Today tally", () => {
+    const { people } = parseRosterPeople(BURNHAM_FULL);
+    let store = emptyDriverRosterStore();
+    for (const person of people) {
+      store = addRosterEntry(store, {
+        kind: "full",
+        yard: "burnham",
+        truckNumber: person.truckNumber,
+        name: person.name,
+        status: person.status,
+      }).store;
+    }
+    const tally = fullRosterTally(entriesForRoster(store, "full", "burnham"));
+    expect(tally.hired).toBe(28);
+    expect(tally.unavailable).toBe(6);
+    expect(tally.available).toBe(22);
+    expect(tally.hired).toBe(rosterEntryCount(store, "full", "burnham"));
   });
 });
 
