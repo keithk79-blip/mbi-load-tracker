@@ -9,7 +9,6 @@ import {
   monthKeyForWeek,
   monthLabelForKey,
   rosterNamesFromStore,
-  sundayOnOrBefore,
   sundaysForVacationYear,
   vacationWeekKey,
   vacationYardLabel,
@@ -269,7 +268,6 @@ function WeekSettings({
 export function VacationScreen() {
   const today = chicagoToday();
   const currentYear = yearOfISO(today);
-  const thisWeek = sundayOnOrBefore(today);
   const { store, yard, setYard, addDriver, cycleDriverStatus, removeDriver, editWeek, createYear } =
     useVacation();
   const { ootNames } = useDrivers();
@@ -559,14 +557,6 @@ export function VacationScreen() {
           </table>
         </div>
       )}
-
-      <p className="field-hint">
-        Shared crew calendar · America/Chicago. Flip Rockford 2026 / Chicago
-        2026 at the top — each yard has its own weeks and names. Existing rows
-        stay on Rockford. Seeded Rockford 2025–2026 (sheet names on 2026);
-        Chicago 2026 is an empty week grid until imported.
-        {thisWeek ? ` This week starts ${formatWeekRange(thisWeek)}.` : ""}
-      </p>
     </div>
   );
 }
