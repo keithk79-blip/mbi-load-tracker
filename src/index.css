@@ -1027,31 +1027,10 @@ button.log-load-top {
   gap: 12px;
 }
 
-.sheet-totals-badge,
-.sheet-totals-kicker {
-  margin: 0;
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 9px;
-  border-radius: 999px;
-  border: 1px solid #5a4a28;
-  background: #2a2418;
-  color: #e0b07a;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
 .tally-block {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.sheet-totals-kicker {
-  align-self: flex-start;
 }
 
 .tally-card-sheet,

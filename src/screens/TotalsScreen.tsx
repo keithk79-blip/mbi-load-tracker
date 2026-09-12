@@ -9,7 +9,6 @@ import {
   applyDailyEodToSummary,
   displayLoadCount,
   isSheetEodCard,
-  sheetTotalsLabel,
 } from "../lib/dailyEod";
 import {
   chicagoToday,
@@ -85,7 +84,6 @@ export function TotalsScreen({
   const [filter, setFilter] = useState<TotalsFilter | null>(null);
   const board = useStationCallBoard(date);
   const snapshot = totalsOn(date);
-  const sourceLabel = sheetTotalsLabel(snapshot);
 
   const dayLoads = loadsOn(date);
   const countByDate = useMemo(() => {
@@ -150,7 +148,6 @@ export function TotalsScreen({
       <section className="eod-block">
         <div className="eod-head">
           <h2 className="section-title">End of day</h2>
-          {sourceLabel ? <span className="sheet-totals-badge">{sourceLabel}</span> : null}
         </div>
         <div className="eod-stat-row">
           {endOfDayCards(eod).map((card) => {

@@ -10,7 +10,6 @@ import {
   normalizeDailyEod,
   reconcileDailyEodCloud,
   rowToDailyEod,
-  sheetTotalsLabel,
   stampDailyEod,
   storeFromRows,
   totalsOn,
@@ -281,9 +280,6 @@ describe("EOD / Today override", () => {
     expect(applyDailyEodToCards(live, null)).toBe(live);
     expect(displayLoadCount(7, null)).toBe(7);
     expect(displayLoadCount(7, snap())).toBe(184);
-    expect(sheetTotalsLabel(null)).toBeNull();
-    expect(sheetTotalsLabel(snap())).toBe("Sheet totals");
-    expect(sheetTotalsLabel(snap({ source: "manual" }))).toBe("Saved totals");
   });
 
   it("does not invent truck load rows from a snapshot", () => {
