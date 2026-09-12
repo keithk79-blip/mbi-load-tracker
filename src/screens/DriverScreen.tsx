@@ -13,6 +13,7 @@ import {
   rosterStatusLabel,
   rosterStatusRemovesFromAvailable,
   satDateForYard,
+  satRosterMatchesFull,
   type DriverRosterKind,
 } from "../lib/driverRoster";
 import {
@@ -140,11 +141,14 @@ export function DriverScreen() {
     removeDriver,
     moveDriver,
     setSatDate,
+    resetSatToFullRoster,
   } = useDriverRoster();
   const vacation = useVacation();
   const [adding, setAdding] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [asOf, setAsOf] = useState(() => chicagoToday());
   const today = chicagoToday();
 
@@ -167,6 +171,26 @@ export function DriverScreen() {
   const copyTextValue = formatRosterCopyList(entries);
   const yardLabel = driverRosterYardLabel(yard);
   const vacationWeekOf = kind === "full" ? sundayOnOrBefore(asOf) : null;
+  const fullCount = rosterEntryCount(store, "full", yard);
+  const satMatchesFull = kind === "sat" && satRosterMatchesFull(store, yard);
+
+  async function runResetToFull() {
+    setResetting(true);
+    setResetConfirm(false);
+    try {
+      await resetSatToFullRoster();
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  function onResetToFull() {
+    if (count > 0 && !satMatchesFull) {
+      setResetConfirm(true);
+      return;
+    }
+    void runResetToFull();
+  }
 
   async function onCopy() {
     const ok = await copyText(copyTextValue);
@@ -196,6 +220,7 @@ export function DriverScreen() {
               onClick={() => {
                 setKind(item);
                 setAdding(false);
+                setResetConfirm(false);
               }}
             >
               {label}
@@ -238,6 +263,16 @@ export function DriverScreen() {
             <button type="button" className="text-btn amber" onClick={() => setAdding(true)}>
               + Add
             </button>
+            {kind === "sat" ? (
+              <button
+                type="button"
+                className="text-btn"
+                disabled={resetting || (!fullCount && !count)}
+                onClick={onResetToFull}
+              >
+                {resetting ? "Resetting…" : "Reset to full roster"}
+              </button>
+            ) : null}
             <button
               type="button"
               className="text-btn"
@@ -260,6 +295,7 @@ export function DriverScreen() {
               onClick={() => {
                 setYard(item);
                 setAdding(false);
+                setResetConfirm(false);
               }}
             >
               {driverRosterYardLabel(item)}
@@ -284,6 +320,27 @@ export function DriverScreen() {
           ) : (
             <p className="drv-sat-note">Optional week label — does not write back to the sheet.</p>
           )}
+          {resetConfirm ? (
+            <div className="drv-reset-confirm" role="status">
+              <p>Replace {yardLabel} Sat Roster with the current Full Roster?</p>
+              <button
+                type="button"
+                className="text-btn amber"
+                disabled={resetting}
+                onClick={() => void runResetToFull()}
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                className="text-btn"
+                disabled={resetting}
+                onClick={() => setResetConfirm(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="drv-sat-bar">
@@ -322,8 +379,11 @@ export function DriverScreen() {
       <div className="vac-legend" aria-label="Roster help">
         {kind === "sat" ? (
           <span className="vac-legend-note">
-            Copy list is one driver per line as <code>emp# name</code> (name only if no employee number).
-            Paste into email as-is.
+            Starts as this yard’s Full Roster (hired emp# + name). × people who are off
+            Saturday.{" "}
+            <strong>Reset to full roster</strong> copies Full again for this yard only.
+            Copy list is one driver per line as <code>emp# name</code> (name only if no
+            employee number). Paste into email as-is.
           </span>
         ) : (
           <span className="vac-legend-note">
@@ -391,122 +451,150 @@ export function DriverScreen() {
           <p>
             {kind === "full"
               ? "Full Roster is everyone hired at this yard. Import the workbook or add names. Marks like OOT stay on the list and count as out."
-              : "Sat Roster is the Saturday planning list (a subset you edit through the week)."}{" "}
+              : fullCount
+                ? "Sat Roster starts as this yard’s Full Roster. Reset copies everyone back, then × people who are off Saturday."
+                : "Sat Roster is the Saturday planning list. Add this yard’s Full Roster first, or import empty lists."}{" "}
             Today’s available-driver count uses this Full Roster (all yards) minus leftover full-day manuals — not the workbook.
           </p>
           <div className="vac-add-actions">
-            <button
-              type="button"
-              className="text-btn amber"
-              disabled={importing}
-              onClick={() => void importFromSheet()}
-            >
-              Import empty lists
-            </button>
+            {kind === "sat" && fullCount ? (
+              <button
+                type="button"
+                className="text-btn amber"
+                disabled={resetting}
+                onClick={() => void runResetToFull()}
+              >
+                {resetting ? "Resetting…" : "Reset to full roster"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="text-btn amber"
+                disabled={importing}
+                onClick={() => void importFromSheet()}
+              >
+                Import empty lists
+              </button>
+            )}
             <button type="button" className="text-btn" onClick={() => setAdding(true)}>
               + Add driver
             </button>
           </div>
+        </div>
+      ) : kind === "sat" ? (
+        <div className="drv-sat-board">
+          <div className="drv-sat-grid" role="list" aria-label={`${yardLabel} Saturday roster`}>
+            {entries.map((entry, index) => (
+              <div key={entry.id} className="drv-sat-cell" role="listitem">
+                <div className="drv-move drv-sat-cell-move">
+                  <button
+                    type="button"
+                    className="drv-move-btn"
+                    aria-label={`Move ${entry.name} up`}
+                    disabled={index === 0}
+                    onClick={() => void moveDriver(entry.id, -1)}
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    className="drv-move-btn"
+                    aria-label={`Move ${entry.name} down`}
+                    disabled={index === entries.length - 1}
+                    onClick={() => void moveDriver(entry.id, 1)}
+                  >
+                    ↓
+                  </button>
+                </div>
+                <div className="drv-sat-cell-body">
+                  <span className="drv-sat-emp">{entry.truckNumber ?? "—"}</span>
+                  <span className="drv-sat-cell-name">{entry.name}</span>
+                </div>
+                <button
+                  type="button"
+                  className="vac-pill-x drv-remove"
+                  aria-label={`Remove ${entry.name}`}
+                  onClick={() => void removeDriver(entry.id)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+          <button type="button" className="vac-add-link drv-sat-add" onClick={() => setAdding(true)}>
+            + Add
+          </button>
         </div>
       ) : (
         <div className="vac-table-wrap drv-table-wrap">
           <table className="vac-table drv-table">
             <thead>
               <tr>
-                {kind === "sat" ? <th className="drv-col-move"> </th> : null}
                 <th className="drv-col-truck">Emp #</th>
                 <th className="drv-col-name">Name</th>
-                {kind === "full" ? <th className="drv-col-status">Unavailable</th> : null}
+                <th className="drv-col-status">Unavailable</th>
                 <th className="drv-col-actions"> </th>
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry, index) => {
-                const effective =
-                  kind === "full" ? effectiveRosterStatus(entry, vacationNames) : null;
+              {entries.map((entry) => {
+                const effective = effectiveRosterStatus(entry, vacationNames);
                 const out =
-                  kind === "full" &&
-                  (rosterStatusRemovesFromAvailable(effective?.status) ||
-                    Boolean(effective?.onVacation));
+                  rosterStatusRemovesFromAvailable(effective.status) ||
+                  Boolean(effective.onVacation);
                 const storedOut = rosterStatusRemovesFromAvailable(entry.status);
                 return (
                 <tr
                   key={entry.id}
                   className={out ? "drv-row is-out" : "drv-row"}
                 >
-                  {kind === "sat" ? (
-                    <td className="drv-col-move">
-                      <div className="drv-move">
-                        <button
-                          type="button"
-                          className="drv-move-btn"
-                          aria-label={`Move ${entry.name} up`}
-                          disabled={index === 0}
-                          onClick={() => void moveDriver(entry.id, -1)}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          className="drv-move-btn"
-                          aria-label={`Move ${entry.name} down`}
-                          disabled={index === entries.length - 1}
-                          onClick={() => void moveDriver(entry.id, 1)}
-                        >
-                          ↓
-                        </button>
-                      </div>
-                    </td>
-                  ) : null}
                   <td className="drv-col-truck">{entry.truckNumber ?? "—"}</td>
                   <td className="drv-col-name">
                     {entry.name}
                     {out ? <span className="drv-out-tag">Out</span> : null}
-                    {effective?.onVacation ? (
+                    {effective.onVacation ? (
                       <span className="drv-vac-from" title="From the Vacation tab this week">
                         Vac
                       </span>
                     ) : null}
                   </td>
-                  {kind === "full" ? (
-                    <td className="drv-col-status">
-                      <div className="drv-status-cell">
-                        <select
-                          className={
-                            storedOut || effective?.onVacation
-                              ? "drv-status-select is-out"
-                              : "drv-status-select"
-                          }
-                          value={entry.status ?? ""}
-                          aria-label={`Unavailability for ${entry.name}`}
-                          onChange={(event) =>
-                            void setDriverStatus(entry.id, event.target.value || null)
-                          }
-                        >
-                          <option value="">{effective?.onVacation ? "No mark" : "Available"}</option>
-                          {ROSTER_UNAVAILABLE_REASONS.map((row) => (
-                            <option key={row.token} value={row.token}>
-                              {row.reason !== row.label
-                                ? `${row.label} — ${row.reason}`
-                                : row.label}
-                            </option>
-                          ))}
-                          {entry.status && !ROSTER_UNAVAILABLE_REASONS.some((row) => row.token === entry.status) ? (
-                            <option value={entry.status}>
-                              {rosterStatusLabel(entry.status)}
-                            </option>
-                          ) : null}
-                        </select>
-                        {effective?.onVacation &&
-                        entry.status &&
-                        entry.status.toLowerCase() !== "vac" ? (
-                          <span className="drv-also-status">
-                            Vac + {rosterStatusLabel(entry.status)}
-                          </span>
+                  <td className="drv-col-status">
+                    <div className="drv-status-cell">
+                      <select
+                        className={
+                          storedOut || effective.onVacation
+                            ? "drv-status-select is-out"
+                            : "drv-status-select"
+                        }
+                        value={entry.status ?? ""}
+                        aria-label={`Unavailability for ${entry.name}`}
+                        onChange={(event) =>
+                          void setDriverStatus(entry.id, event.target.value || null)
+                        }
+                      >
+                        <option value="">{effective.onVacation ? "No mark" : "Available"}</option>
+                        {ROSTER_UNAVAILABLE_REASONS.map((row) => (
+                          <option key={row.token} value={row.token}>
+                            {row.reason !== row.label
+                              ? `${row.label} — ${row.reason}`
+                              : row.label}
+                          </option>
+                        ))}
+                        {entry.status && !ROSTER_UNAVAILABLE_REASONS.some((row) => row.token === entry.status) ? (
+                          <option value={entry.status}>
+                            {rosterStatusLabel(entry.status)}
+                          </option>
                         ) : null}
-                      </div>
-                    </td>
-                  ) : null}
+                      </select>
+                      {effective.onVacation &&
+                      entry.status &&
+                      entry.status.toLowerCase() !== "vac" ? (
+                        <span className="drv-also-status">
+                          Vac + {rosterStatusLabel(entry.status)}
+                        </span>
+                      ) : null}
+                    </div>
+                  </td>
                   <td className="drv-col-actions">
                     <button
                       type="button"

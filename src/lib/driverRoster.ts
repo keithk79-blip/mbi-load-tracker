@@ -2,7 +2,9 @@
  *
  * HARD CONSTRAINT: never auto-delete / wipe / prune hired or Sat rows.
  * Sheet import and Vacation VAC may add or update marks only. Remote DELETE
- * is an explicit UI × (`removeDriver`). See `reconcileDriverRosterCloud`.
+ * is an explicit UI × (`removeDriver`) or Sat **Reset to full roster**
+ * (`resetSatRosterFromFull`) — never sync / refresh / import. See
+ * `reconcileDriverRosterCloud`.
  */
 
 import { isValidISODate } from "./chicagoDate";
@@ -93,6 +95,12 @@ export type DriverRosterPersisted = {
   deletedEntryIds: string[];
   seenRemoteEntryIds: string[];
   importedAt: string | null;
+  /**
+   * Yards whose Sat list has been seeded or edited. Empty Sat on a yard
+   * that is not listed still copies from Full; a yard listed here is left
+   * empty after Keith ×'s everyone (use Reset to refill).
+   */
+  satInitializedYards: DriverRosterYard[];
 };
 
 export type DriverRosterUi = {
@@ -288,7 +296,21 @@ export function emptyDriverRosterPersisted(): DriverRosterPersisted {
     deletedEntryIds: [],
     seenRemoteEntryIds: [],
     importedAt: null,
+    satInitializedYards: [],
   };
+}
+
+function parseYardList(raw: unknown): DriverRosterYard[] {
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.filter((yard): yard is DriverRosterYard => isDriverRosterYard(yard)))];
+}
+
+function inferSatInitializedYards(entries: Record<string, DriverRosterEntry>): DriverRosterYard[] {
+  const yards = new Set<DriverRosterYard>();
+  for (const entry of Object.values(entries)) {
+    if (entry.kind === "sat") yards.add(entry.yard);
+  }
+  return [...yards];
 }
 
 function parseIdList(raw: unknown): string[] {
@@ -345,6 +367,9 @@ export function readDriverRosterPersisted(): DriverRosterPersisted {
       deletedEntryIds: parseIdList(parsed.deletedEntryIds),
       seenRemoteEntryIds: parseIdList(parsed.seenRemoteEntryIds),
       importedAt: typeof parsed.importedAt === "string" ? parsed.importedAt : null,
+      satInitializedYards: Array.isArray(parsed.satInitializedYards)
+        ? parseYardList(parsed.satInitializedYards)
+        : inferSatInitializedYards(entries),
     };
   } catch {
     return emptyDriverRosterPersisted();
@@ -358,6 +383,7 @@ export function writeDriverRosterPersisted(next: DriverRosterPersisted): void {
     deletedEntryIds: parseIdList(next.deletedEntryIds),
     seenRemoteEntryIds: parseIdList(next.seenRemoteEntryIds),
     importedAt: next.importedAt ?? null,
+    satInitializedYards: parseYardList(next.satInitializedYards),
   };
   localStorage.setItem(DRIVER_ROSTER_STORE_KEY, JSON.stringify(payload));
 }
@@ -456,9 +482,149 @@ export function formatRosterLine(entry: Pick<DriverRosterEntry, "truckNumber" | 
   return truck ? `${truck} ${name}` : name;
 }
 
-/** Newline-separated `emp# name` lines for email paste. */
+/** Newline-separated `emp# name` lines for email paste. Independent of Sat grid layout. */
 export function formatRosterCopyList(entries: readonly DriverRosterEntry[]): string {
   return entries.map(formatRosterLine).filter(Boolean).join("\n");
+}
+
+/** Stable Sat id so two devices seeding the same Full hire land on one row. */
+export function satEntryIdFromFull(
+  yard: DriverRosterYard,
+  truckNumber: string | null,
+  name: string,
+): string {
+  const nameKey = cleanDriverName(name).toLowerCase();
+  const truck = cleanTruckNumber(truckNumber) ?? "";
+  return driverRosterSeedId(`sat-from-full|${cleanDriverRosterYard(yard)}|${truck}|${nameKey}`);
+}
+
+function rosterIdentityKey(entry: Pick<DriverRosterEntry, "truckNumber" | "name">): string {
+  return `${entry.truckNumber ?? ""}\u0000${cleanDriverName(entry.name).toLowerCase()}`;
+}
+
+/** True when Sat emp# + name + order match this yard's current Full hired list. */
+export function satRosterMatchesFull(
+  store: DriverRosterStore,
+  yard: DriverRosterYard,
+): boolean {
+  const sat = entriesForRoster(store, "sat", yard);
+  const full = entriesForRoster(store, "full", yard);
+  if (sat.length !== full.length) return false;
+  return sat.every((row, index) => rosterIdentityKey(row) === rosterIdentityKey(full[index]));
+}
+
+export type SeedEmptySatFromFullResult = {
+  store: DriverRosterStore;
+  added: number;
+  seededYards: DriverRosterYard[];
+};
+
+/**
+ * When Sat for a yard is empty and Full has hired drivers, copy emp# + name
+ * into Sat. Does not overwrite a Sat list that already has rows, does not
+ * copy Full status marks, and never touches other yards' existing Sat rows.
+ */
+export function seedEmptySatRostersFromFull(
+  store: DriverRosterStore,
+  opts?: { yards?: readonly DriverRosterYard[]; at?: string },
+): SeedEmptySatFromFullResult {
+  const yards = opts?.yards?.length ? opts.yards.map(cleanDriverRosterYard) : [...DRIVER_ROSTER_YARDS];
+  const at = opts?.at;
+  let next = store;
+  let added = 0;
+  const seededYards: DriverRosterYard[] = [];
+
+  for (const yard of yards) {
+    if (rosterEntryCount(next, "sat", yard) > 0) continue;
+    const full = entriesForRoster(next, "full", yard);
+    if (!full.length) continue;
+    const forDate = satDateForYard(next, yard);
+    let yardAdded = 0;
+    for (let index = 0; index < full.length; index += 1) {
+      const person = full[index];
+      const result = addRosterEntry(
+        next,
+        {
+          kind: "sat",
+          yard,
+          truckNumber: person.truckNumber,
+          name: person.name,
+          sortOrder: index,
+          forDate,
+        },
+        {
+          id: satEntryIdFromFull(yard, person.truckNumber, person.name),
+          at,
+        },
+      );
+      if (result.entry) {
+        next = result.store;
+        added += 1;
+        yardAdded += 1;
+      }
+    }
+    if (yardAdded) seededYards.push(yard);
+  }
+
+  return { store: next, added, seededYards };
+}
+
+export type ResetSatRosterFromFullResult = {
+  store: DriverRosterStore;
+  removedIds: string[];
+  addedIds: string[];
+};
+
+/**
+ * User-initiated rewrite of one yard's Sat list from that yard's current
+ * Full Roster. Other yards and Full Roster are untouched. Caller persists
+ * and may DELETE+upsert the replaced Sat rows — this is Reset, not sync prune.
+ */
+export function resetSatRosterFromFull(
+  store: DriverRosterStore,
+  yard: DriverRosterYard,
+  opts?: { at?: string; forDate?: string | null },
+): ResetSatRosterFromFullResult {
+  const cleanedYard = cleanDriverRosterYard(yard);
+  const full = entriesForRoster(store, "full", cleanedYard);
+  const existingSat = entriesForRoster(store, "sat", cleanedYard);
+  const forDate =
+    opts?.forDate !== undefined ? cleanForDate(opts.forDate) : satDateForYard(store, cleanedYard);
+  const at = opts?.at;
+  const nextIds = new Set(
+    full.map((person) => satEntryIdFromFull(cleanedYard, person.truckNumber, person.name)),
+  );
+  const removedIds = existingSat.map((entry) => entry.id).filter((id) => !nextIds.has(id));
+
+  let next = store;
+  for (const id of removedIds) {
+    next = removeRosterEntry(next, id).store;
+  }
+
+  const addedIds: string[] = [];
+  for (let index = 0; index < full.length; index += 1) {
+    const person = full[index];
+    const id = satEntryIdFromFull(cleanedYard, person.truckNumber, person.name);
+    const prev = next.entries[id];
+    const result = addRosterEntry(
+      next,
+      {
+        kind: "sat",
+        yard: cleanedYard,
+        truckNumber: person.truckNumber,
+        name: person.name,
+        sortOrder: index,
+        forDate,
+      },
+      { id, at, createdAt: prev?.createdAt },
+    );
+    if (result.entry) {
+      next = result.store;
+      addedIds.push(id);
+    }
+  }
+
+  return { store: next, removedIds, addedIds };
 }
 
 export function addRosterEntry(
@@ -675,8 +841,9 @@ export type DriverRosterCloudReconcileResult = {
  * - No subset-pull hides, no seen-missing tombstones, no wipe-then-reinsert.
  * - Empty / thin remote keeps every local row. Cloud-only remote rows upsert in.
  * - Live remote beats a stale local tombstone (do not re-DELETE that row).
- * - `toDeleteRemoteEntries` is always empty. The only remote DELETE is
- *   DriverRosterContext.removeDriver (the × button).
+ * - `toDeleteRemoteEntries` is always empty. Remote DELETE is only
+ *   DriverRosterContext.removeDriver (×) or resetSatToFullRoster (Reset).
+ *   Refresh / import / this merge must never DELETE.
  * - Sheet import and Vacation auto-VAC may add or update marks; they never
  *   remove rows.
  */

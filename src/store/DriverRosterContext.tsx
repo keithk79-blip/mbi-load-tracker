@@ -14,13 +14,17 @@ import {
   applyRosterTombstones,
   cleanDriverRosterKind,
   cleanDriverRosterYard,
+  DRIVER_ROSTER_YARDS,
   mergeImportedRows,
   moveRosterEntry,
   readDriverRosterPersisted,
   readDriverRosterUi,
   reconcileDriverRosterCloud,
   removeRosterEntry,
+  resetSatRosterFromFull,
+  rosterEntryCount,
   rosterStoreIsEmpty,
+  seedEmptySatRostersFromFull,
   setSatDateForYard,
   updateRosterEntry,
   writeDriverRosterPersisted,
@@ -71,6 +75,8 @@ type DriverRosterContextValue = {
   removeDriver: (id: string) => Promise<void>;
   moveDriver: (id: string, delta: -1 | 1) => Promise<void>;
   setSatDate: (forDate: string | null) => Promise<void>;
+  /** User-initiated: replace this yard's Sat list with a copy of Full Roster. */
+  resetSatToFullRoster: () => Promise<void>;
 };
 
 const DriverRosterContext = createContext<DriverRosterContextValue | null>(null);
@@ -137,6 +143,9 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
   const deletedRef = useRef<Set<string>>(new Set(readDriverRosterPersisted().deletedEntryIds));
   const seenRef = useRef<Set<string>>(new Set(readDriverRosterPersisted().seenRemoteEntryIds));
   const importedAtRef = useRef<string | null>(readDriverRosterPersisted().importedAt);
+  const satInitializedRef = useRef<Set<DriverRosterYard>>(
+    new Set(readDriverRosterPersisted().satInitializedYards),
+  );
   const epochRef = useRef(0);
   const refreshTailRef = useRef(Promise.resolve());
   const uploadingRef = useRef(false);
@@ -149,6 +158,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       deletedEntryIds: [...deletedRef.current],
       seenRemoteEntryIds: [...seenRef.current],
       importedAt: importedAtRef.current,
+      satInitializedYards: [...satInitializedRef.current],
     };
     const stripped = persistSnapshot(snapshot);
     storeRef.current = stripped;
@@ -176,8 +186,8 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
   }, [session]);
 
   /**
-   * Remote DELETE is UI × only. Refresh / import / Vacation VAC must never
-   * call this — same class of bug as loads and vacation silent wipes.
+   * Remote DELETE is UI × or Sat Reset only. Refresh / import / Vacation VAC
+   * must never call this — same class of bug as loads and vacation silent wipes.
    */
   const cloudDeleteEntries = useCallback(async (ids: string[]) => {
     if (!ids.length) return;
@@ -198,13 +208,48 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     [session, user?.id],
   );
 
+  /**
+   * First-open / never-edited Sat lists copy this yard's Full Roster.
+   * Skips yards Keith already edited (including × everyone). Never deletes.
+   */
+  const seedEmptySatFromFull = useCallback(async () => {
+    const pendingYards = DRIVER_ROSTER_YARDS.filter((yard) => !satInitializedRef.current.has(yard));
+    if (!pendingYards.length) return;
+    const initializedBefore = satInitializedRef.current.size;
+    const result = seedEmptySatRostersFromFull(storeRef.current, { yards: pendingYards });
+    for (const yard of DRIVER_ROSTER_YARDS) {
+      if (rosterEntryCount(result.store, "sat", yard) > 0) {
+        satInitializedRef.current.add(yard);
+      }
+    }
+    for (const yard of result.seededYards) satInitializedRef.current.add(yard);
+    const flagsChanged = satInitializedRef.current.size !== initializedBefore;
+    if (!result.added && result.store === storeRef.current) {
+      if (flagsChanged) persistLocal(storeRef.current);
+      return;
+    }
+    persistLocal(result.store);
+    if (cloud && result.added) {
+      const seeded = new Set(result.seededYards);
+      await cloudUpsert(
+        Object.values(result.store.entries).filter(
+          (entry) => entry.kind === "sat" && seeded.has(entry.yard),
+        ),
+      );
+    }
+  }, [cloud, cloudUpsert, persistLocal]);
+
   /** First-open only: fill an empty local store. Never a live Today pull. */
   const seedIfEmpty = useCallback(async () => {
     if (seedingRef.current) return;
-    if (importedAtRef.current) return;
+    if (importedAtRef.current) {
+      await seedEmptySatFromFull();
+      return;
+    }
     if (!rosterStoreIsEmpty(storeRef.current)) {
       importedAtRef.current = new Date().toISOString();
       persistLocal(storeRef.current);
+      await seedEmptySatFromFull();
       return;
     }
     seedingRef.current = true;
@@ -222,16 +267,18 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
         skippedGroups: result.skippedGroups.map(describeImportGroup),
         error: null,
       });
+      await seedEmptySatFromFull();
     } catch (err) {
       importedAtRef.current = new Date().toISOString();
       persistLocal(storeRef.current);
       const message = err instanceof Error ? err.message : "Sheet import failed";
       setLastImport({ added: 0, skippedGroups: [], error: message });
+      await seedEmptySatFromFull();
     } finally {
       seedingRef.current = false;
       setImporting(false);
     }
-  }, [cloud, cloudUpsert, persistLocal]);
+  }, [cloud, cloudUpsert, persistLocal, seedEmptySatFromFull]);
 
   const refreshInner = useCallback(async () => {
     if (!cloud) {
@@ -268,7 +315,8 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     }
 
     await seedIfEmpty();
-  }, [cloud, cloudUpsert, persistLocal, pullRemote, seedIfEmpty]);
+    await seedEmptySatFromFull();
+  }, [cloud, cloudUpsert, persistLocal, pullRemote, seedEmptySatFromFull, seedIfEmpty]);
 
   const refresh = useCallback(() => {
     const run = refreshTailRef.current.then(refreshInner, refreshInner);
@@ -327,6 +375,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
         error: null,
       };
       setLastImport(summary);
+      await seedEmptySatFromFull();
       return summary;
     } catch (err) {
       const summary: DriverRosterImportResult = {
@@ -339,7 +388,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     } finally {
       setImporting(false);
     }
-  }, [cloud, cloudUpsert, persistLocal]);
+  }, [cloud, cloudUpsert, persistLocal, seedEmptySatFromFull]);
 
   const addDriver = useCallback(
     async (input: Omit<DriverRosterInput, "kind" | "yard">) => {
@@ -359,6 +408,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
         forDate: satDate,
       });
       if (!result.entry) return null;
+      if (result.entry.kind === "sat") satInitializedRef.current.add(result.entry.yard);
       persistLocal(result.store);
       if (cloud) await cloudUpsert([result.entry]);
       return result.entry;
@@ -382,8 +432,11 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       epochRef.current += 1;
       const result = removeRosterEntry(storeRef.current, id);
       if (!result.removed) return;
-      // Explicit UI × — the only path that may DELETE a cloud roster row.
+      // Explicit UI × — one of the only paths that may DELETE a cloud roster row.
       deletedRef.current.add(id);
+      if (result.removed.kind === "sat") {
+        satInitializedRef.current.add(result.removed.yard);
+      }
       persistLocal(result.store);
       if (cloud) await cloudDeleteEntries([id]);
     },
@@ -420,21 +473,50 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     [cloud, cloudUpsert, persistLocal, ui.yard],
   );
 
-  const setKind = useCallback((kind: DriverRosterKind) => {
-    setUi((prev) => {
-      const next = { ...prev, kind: cleanDriverRosterKind(kind) };
-      writeDriverRosterUi(next);
-      return next;
-    });
-  }, []);
+  /**
+   * Explicit Sat Reset — the only paths that may DELETE a cloud roster row
+   * are this Reset (this yard's Sat rows) and removeDriver (×).
+   */
+  const resetSatToFullRoster = useCallback(async () => {
+    epochRef.current += 1;
+    const yard = ui.yard;
+    const result = resetSatRosterFromFull(storeRef.current, yard);
+    for (const id of result.addedIds) deletedRef.current.delete(id);
+    for (const id of result.removedIds) deletedRef.current.add(id);
+    satInitializedRef.current.add(yard);
+    persistLocal(result.store);
+    if (!cloud) return;
+    if (result.removedIds.length) await cloudDeleteEntries(result.removedIds);
+    const satRows = Object.values(result.store.entries).filter(
+      (entry) => entry.kind === "sat" && entry.yard === yard,
+    );
+    if (satRows.length) await cloudUpsert(satRows);
+  }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, ui.yard]);
 
-  const setYard = useCallback((yard: DriverRosterYard) => {
-    setUi((prev) => {
-      const next = { ...prev, yard: cleanDriverRosterYard(yard) };
-      writeDriverRosterUi(next);
-      return next;
-    });
-  }, []);
+  const setKind = useCallback(
+    (kind: DriverRosterKind) => {
+      const nextKind = cleanDriverRosterKind(kind);
+      setUi((prev) => {
+        const next = { ...prev, kind: nextKind };
+        writeDriverRosterUi(next);
+        return next;
+      });
+      if (nextKind === "sat") void seedEmptySatFromFull();
+    },
+    [seedEmptySatFromFull],
+  );
+
+  const setYard = useCallback(
+    (yard: DriverRosterYard) => {
+      setUi((prev) => {
+        const next = { ...prev, yard: cleanDriverRosterYard(yard) };
+        writeDriverRosterUi(next);
+        return next;
+      });
+      if (ui.kind === "sat") void seedEmptySatFromFull();
+    },
+    [seedEmptySatFromFull, ui.kind],
+  );
 
   const value = useMemo<DriverRosterContextValue>(
     () => ({
@@ -453,6 +535,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       removeDriver,
       moveDriver,
       setSatDate,
+      resetSatToFullRoster,
     }),
     [
       store,
@@ -470,6 +553,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       removeDriver,
       moveDriver,
       setSatDate,
+      resetSatToFullRoster,
     ],
   );
 

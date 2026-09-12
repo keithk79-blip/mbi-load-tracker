@@ -17,7 +17,11 @@ import {
   moveRosterEntry,
   reconcileDriverRosterCloud,
   removeRosterEntry,
+  resetSatRosterFromFull,
   rosterEntryCount,
+  satEntryIdFromFull,
+  satRosterMatchesFull,
+  seedEmptySatRostersFromFull,
   setSatDateForYard,
   yardFromSheetTab,
 } from "./driverRoster";
@@ -327,6 +331,154 @@ describe("roster add/remove helpers", () => {
   });
 });
 
+describe("sat roster seeds and resets from full", () => {
+  function addHired(
+    store: ReturnType<typeof emptyDriverRosterStore>,
+    yard: "burnham" | "rockford",
+    truckNumber: string,
+    name: string,
+    status?: string | null,
+  ) {
+    return addRosterEntry(store, { kind: "full", yard, truckNumber, name, status }).store;
+  }
+
+  it("seeds empty Sat from that yard's Full Roster hired emp# + name", () => {
+    let store = emptyDriverRosterStore();
+    store = addHired(store, "burnham", "56", "Dave Vanderbilt", "oot");
+    store = addHired(store, "burnham", "102", "Dan Kasprzycki -T");
+    store = addHired(store, "rockford", "185", "Christopher Oleson");
+
+    const result = seedEmptySatRostersFromFull(store);
+    expect(result.added).toBe(3);
+    expect(result.seededYards).toEqual(["burnham", "rockford"]);
+    expect(entriesForRoster(result.store, "sat", "burnham").map((row) => ({
+      emp: row.truckNumber,
+      name: row.name,
+      status: row.status,
+    }))).toEqual([
+      { emp: "56", name: "Dave Vanderbilt", status: null },
+      { emp: "102", name: "Dan Kasprzycki -T", status: null },
+    ]);
+    expect(entriesForRoster(result.store, "sat", "rockford").map((row) => row.name)).toEqual([
+      "Christopher Oleson",
+    ]);
+    expect(rosterEntryCount(result.store, "full", "burnham")).toBe(2);
+    expect(entriesForRoster(result.store, "full", "burnham")[0].status).toBe("oot");
+    expect(satRosterMatchesFull(result.store, "burnham")).toBe(true);
+    expect(
+      result.store.entries[satEntryIdFromFull("burnham", "56", "Dave Vanderbilt")]?.kind,
+    ).toBe("sat");
+  });
+
+  it("does not leave Sat empty when Full has people, and does not overwrite a Sat list", () => {
+    let store = emptyDriverRosterStore();
+    store = addHired(store, "burnham", "56", "Dave Vanderbilt");
+    store = addHired(store, "burnham", "102", "Dan Kasprzycki -T");
+    store = addRosterEntry(store, {
+      kind: "sat",
+      yard: "burnham",
+      truckNumber: "56",
+      name: "Dave Vanderbilt",
+    }).store;
+
+    const result = seedEmptySatRostersFromFull(store);
+    expect(result.added).toBe(0);
+    expect(result.seededYards).toEqual([]);
+    expect(rosterEntryCount(result.store, "sat", "burnham")).toBe(1);
+    expect(entriesForRoster(result.store, "sat", "burnham").map((row) => row.name)).toEqual([
+      "Dave Vanderbilt",
+    ]);
+  });
+
+  it("does not invent Sat rows when Full is empty", () => {
+    const result = seedEmptySatRostersFromFull(emptyDriverRosterStore(), { yards: ["pontiac"] });
+    expect(result.added).toBe(0);
+    expect(result.seededYards).toEqual([]);
+    expect(rosterEntryCount(result.store, "sat", "pontiac")).toBe(0);
+  });
+
+  it("Reset copies Full → Sat for one yard only and replaces existing Sat rows", () => {
+    let store = emptyDriverRosterStore();
+    store = addHired(store, "burnham", "56", "Dave Vanderbilt", "vac");
+    store = addHired(store, "burnham", "102", "Dan Kasprzycki -T");
+    store = addHired(store, "rockford", "185", "Christopher Oleson");
+    store = addRosterEntry(store, {
+      kind: "sat",
+      yard: "burnham",
+      truckNumber: "56",
+      name: "Dave Vanderbilt",
+    }).store;
+    store = addRosterEntry(store, {
+      kind: "sat",
+      yard: "burnham",
+      truckNumber: "999",
+      name: "Only On Sat",
+    }).store;
+    store = addRosterEntry(store, {
+      kind: "sat",
+      yard: "rockford",
+      truckNumber: "13",
+      name: "Hank Kingpavong",
+    }).store;
+    const rockfordSatId = entriesForRoster(store, "sat", "rockford")[0].id;
+    const leftoverSatId = entriesForRoster(store, "sat", "burnham").find(
+      (row) => row.name === "Only On Sat",
+    )!.id;
+
+    const result = resetSatRosterFromFull(store, "burnham");
+    expect(result.removedIds).toContain(leftoverSatId);
+    expect(entriesForRoster(result.store, "sat", "burnham").map((row) => ({
+      emp: row.truckNumber,
+      name: row.name,
+      status: row.status,
+    }))).toEqual([
+      { emp: "56", name: "Dave Vanderbilt", status: null },
+      { emp: "102", name: "Dan Kasprzycki -T", status: null },
+    ]);
+    expect(satRosterMatchesFull(result.store, "burnham")).toBe(true);
+    expect(entriesForRoster(result.store, "sat", "rockford").map((row) => row.id)).toEqual([
+      rockfordSatId,
+    ]);
+    expect(entriesForRoster(result.store, "full", "burnham").map((row) => row.name)).toEqual([
+      "Dave Vanderbilt",
+      "Dan Kasprzycki -T",
+    ]);
+    expect(result.store.entries[rockfordSatId]?.name).toBe("Hank Kingpavong");
+  });
+
+  it("copy list stays plain emp# name lines after seed and Reset (layout-independent)", () => {
+    let store = emptyDriverRosterStore();
+    store = addHired(store, "burnham", "56", "Dave Vanderbilt");
+    store = addHired(store, "burnham", "102", "Dan Kasprzycki -T");
+    const seeded = seedEmptySatRostersFromFull(store, { yards: ["burnham"] });
+    const satLines = formatRosterCopyList(entriesForRoster(seeded.store, "sat", "burnham"));
+    const fullLines = formatRosterCopyList(entriesForRoster(seeded.store, "full", "burnham"));
+    expect(satLines).toBe("56 Dave Vanderbilt\n102 Dan Kasprzycki -T");
+    expect(satLines).toBe(fullLines);
+    expect(satLines.includes("\t")).toBe(false);
+
+    store = addRosterEntry(seeded.store, {
+      kind: "sat",
+      yard: "burnham",
+      truckNumber: "231",
+      name: "Kevin Bray",
+    }).store;
+    const reset = resetSatRosterFromFull(store, "burnham");
+    expect(formatRosterCopyList(entriesForRoster(reset.store, "sat", "burnham"))).toBe(
+      "56 Dave Vanderbilt\n102 Dan Kasprzycki -T",
+    );
+  });
+
+  it("Driver Sat grid still feeds copy list from formatRosterCopyList, not the cell layout", () => {
+    const src = readFileSync(new URL("../screens/DriverScreen.tsx", import.meta.url), "utf8");
+    expect(src).toContain("formatRosterCopyList(entries)");
+    expect(src).toContain('className="drv-copy-block"');
+    expect(src).toContain("value={copyTextValue}");
+    expect(src).toContain("drv-sat-grid");
+    expect(src).toContain("Reset to full roster");
+  });
+});
+
 describe("driver roster cloud delete posture", () => {
   it("uses a dedicated persist key", () => {
     expect(DRIVER_ROSTER_STORE_KEY).toBe("chitrader.load-tracker.driver-roster.v1");
@@ -386,7 +538,7 @@ describe("driver roster cloud delete posture", () => {
     expect(src).toContain('.from("driver_roster_entries").delete().in("id", ids)');
     expect(src).not.toMatch(/\.from\(["']driver_roster_entries["']\)\s*\.delete\(\)\s*(?!.*\.in)/);
     expect(src).not.toContain("toDeleteRemoteEntries");
-    expect(src).toContain("the only path that may DELETE a cloud roster row");
+    expect(src).toContain("the only paths that may DELETE a cloud roster row");
     const sql = readFileSync(new URL("../../Load-Tracker-driver-roster.sql", import.meta.url), "utf8");
     expect(sql).toContain("driver_roster_deletes_allowed");
     expect(sql).not.toMatch(

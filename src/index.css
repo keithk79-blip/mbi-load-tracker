@@ -3262,8 +3262,8 @@ body.app-ready .splash {
 
 .drv-copy-block {
   width: 100%;
-  min-height: 140px;
-  max-height: 220px;
+  min-height: 96px;
+  max-height: 160px;
   resize: vertical;
   padding: 10px 12px;
   border: 1px solid var(--line);
@@ -3274,6 +3274,81 @@ body.app-ready .splash {
   font-size: 13px;
   line-height: 1.45;
   white-space: pre;
+}
+
+.drv-reset-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 6px 10px;
+  border: 1px solid #6a2a2c;
+  border-radius: 10px;
+  background: #2a1618;
+}
+
+.drv-reset-confirm p {
+  margin: 0;
+  color: #f0c4c6;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.drv-sat-board {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.drv-sat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.drv-sat-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 8px 6px 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.drv-sat-cell-move {
+  flex: 0 0 auto;
+}
+
+.drv-sat-cell-body {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.drv-sat-emp {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.drv-sat-cell-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drv-sat-add {
+  align-self: flex-start;
 }
 
 .drv-table {
@@ -3438,11 +3513,26 @@ body.app-ready .splash {
   vertical-align: middle;
 }
 
+@media (max-width: 1199px) {
+  .drv-sat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 959px) {
   .drv-header-meta {
     align-items: flex-start;
   }
+  .drv-header-meta .vac-add-actions {
+    flex-wrap: wrap;
+  }
   .drv-table {
     min-width: 0;
+  }
+}
+
+@media (max-width: 639px) {
+  .drv-sat-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
