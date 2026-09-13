@@ -12,3 +12,12 @@ export function sortLoads(loads: Load[]): Load[] {
     return a.id.localeCompare(b.id);
   });
 }
+
+/** Today Day loads under Specialty: most recently logged first. */
+export function sortLoadsNewestFirst(loads: Load[]): Load[] {
+  return [...loads].sort((a, b) => {
+    const byCreated = b.createdAt.localeCompare(a.createdAt);
+    if (byCreated !== 0) return byCreated;
+    return b.id.localeCompare(a.id);
+  });
+}

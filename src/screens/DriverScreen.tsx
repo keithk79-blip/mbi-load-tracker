@@ -2,8 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { DriverNameInput } from "../components/DriverNameInput";
 import { ConfirmOverlay } from "../components/ConfirmOverlay";
-import { addDays, chicagoToday, formatMonthDayYear, isValidISODate, weekdayOfISO } from "../lib/chicagoDate";
-import { entriesForGone, goneEntryCount, type DriverGoneEntry } from "../lib/driverGone";
+import { addDays, chicagoToday, formatMonthDayYear, isValidISODate, weekdayOfISO, yearOfISO } from "../lib/chicagoDate";
+import {
+  entriesForGoneYear,
+  goneArchiveYears,
+  goneEntryCount,
+  goneYearLabel,
+  type DriverGoneEntry,
+} from "../lib/driverGone";
 import {
   DRIVER_ROSTER_YARDS,
   DRIVER_TAB_GROUPS,
@@ -11,6 +17,7 @@ import {
   driverRosterYardLabel,
   entriesForRoster,
   formatRosterCopyList,
+  fullRosterRowCount,
   fullRosterTally,
   rosterEntryCount,
   rosterStatusLabel,
@@ -81,9 +88,10 @@ function AddRosterForm({
 }: {
   kind: DriverRosterKind;
   onCancel: () => void;
-  onSave: (truck: string, name: string, status: string) => void;
+  onSave: (emp: string, name: string, status: string, assignedTruck: string) => void;
 }) {
   const [truck, setTruck] = useState("");
+  const [assignedTruck, setAssignedTruck] = useState("");
   const [name, setName] = useState("");
   const [status, setStatus] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
@@ -98,7 +106,7 @@ function AddRosterForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (!name.trim()) return;
-        onSave(truck.trim(), name.trim(), status.trim());
+        onSave(truck.trim(), name.trim(), status.trim(), assignedTruck.trim());
       }}
     >
       <input
@@ -110,6 +118,16 @@ function AddRosterForm({
         autoComplete="off"
         aria-label="Employee number"
       />
+      {kind === "full" ? (
+        <input
+          className="text-input drv-add-truck"
+          value={assignedTruck}
+          onChange={(event) => setAssignedTruck(event.target.value)}
+          placeholder="Truck #"
+          autoComplete="off"
+          aria-label="Truck number"
+        />
+      ) : null}
       <DriverNameInput
         inputRef={nameRef}
         className="text-input drv-add-name"
@@ -145,10 +163,44 @@ function AddRosterForm({
   );
 }
 
-function tabGroupLabel(group: DriverTabGroup): string {
+function tabGroupLabel(group: DriverTabGroup, goneYear: number): string {
   if (group === "full") return "Full Roster";
   if (group === "sat") return "Sat Roster";
-  return "Gone";
+  return goneYearLabel(goneYear);
+}
+
+function AssignedTruckInput({
+  entry,
+  onSave,
+}: {
+  entry: DriverRosterEntry;
+  onSave: (value: string) => void;
+}) {
+  const [value, setValue] = useState(entry.assignedTruck ?? "");
+
+  useEffect(() => {
+    setValue(entry.assignedTruck ?? "");
+  }, [entry.assignedTruck]);
+
+  return (
+    <input
+      className="text-input drv-assigned-truck"
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={() => {
+        const next = value.trim();
+        if ((entry.assignedTruck ?? "") !== next) onSave(next);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.currentTarget.blur();
+        }
+      }}
+      placeholder="Truck #"
+      autoComplete="off"
+      aria-label={`Truck number for ${entry.name}`}
+    />
+  );
 }
 
 function AddGoneForm({
@@ -264,11 +316,9 @@ export function DriverScreen() {
     yard,
     setGroup,
     setYard,
-    importing,
-    lastImport,
-    importFromSheet,
     addDriver,
     setDriverStatus,
+    setDriverAssignedTruck,
     removeDriver,
     removeHiredAndSat,
     moveDriver,
@@ -287,12 +337,23 @@ export function DriverScreen() {
   const [asOf, setAsOf] = useState(() => chicagoToday());
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const today = chicagoToday();
+  const currentGoneYear = yearOfISO(today);
+  const [goneYear, setGoneYear] = useState(currentGoneYear);
   const onGone = group === "gone";
   const satCols = useSatRosterColumnCount();
+  const fullCols = satCols;
 
   const entries = useMemo(() => entriesForRoster(store, kind, yard), [store, kind, yard]);
-  const goneEntries = useMemo(() => entriesForGone(gone.store), [gone.store]);
-  const count = onGone ? goneEntryCount(gone.store) : rosterEntryCount(store, kind, yard);
+  const goneYears = useMemo(
+    () => goneArchiveYears(gone.store, currentGoneYear),
+    [gone.store, currentGoneYear],
+  );
+  const goneEntries = useMemo(
+    () => entriesForGoneYear(gone.store, goneYear, currentGoneYear),
+    [gone.store, goneYear, currentGoneYear],
+  );
+  const count = onGone ? goneEntries.length : rosterEntryCount(store, kind, yard);
+  const goneTotal = goneEntryCount(gone.store);
   const vacationNames = useMemo(
     () => (kind === "full" ? vacationNamesOnDate(vacation.store, asOf, yard) : []),
     [kind, vacation.store, asOf, yard],
@@ -313,6 +374,7 @@ export function DriverScreen() {
   const fullCount = rosterEntryCount(store, "full", yard);
   const satMatchesFull = kind === "sat" && satRosterMatchesFull(store, yard);
   const satRows = satRosterRowCount(entries.length, satCols);
+  const fullRows = fullRosterRowCount(entries.length, fullCols);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedCount = selectedIds.length;
 
@@ -360,14 +422,16 @@ export function DriverScreen() {
     if (removeDialog?.step !== "terminate") return;
     const { entry, hireDate, terminationDate, notes } = removeDialog;
     setRemoveDialog(null);
+    const term = terminationDate || today;
     await gone.addGone({
       employeeNumber: entry.truckNumber,
       name: entry.name,
       hireDate: hireDate || null,
-      terminationDate: terminationDate || today,
+      terminationDate: term,
       notes,
       yard: entry.yard,
     });
+    if (isValidISODate(term)) setGoneYear(yearOfISO(term));
     await removeHiredAndSat(entry.id);
   }
 
@@ -403,7 +467,7 @@ export function DriverScreen() {
                 setSelectedIds([]);
               }}
             >
-              {tabGroupLabel(item)}
+              {tabGroupLabel(item, item === "gone" ? goneYear : currentGoneYear)}
             </button>
           );
         })}
@@ -416,13 +480,14 @@ export function DriverScreen() {
             <p className="eyebrow">
               {onGone ? "Terminated archive" : kind === "full" ? "Hired roster" : "Saturday planning"}
             </p>
-            <h1 className="page-title">{onGone ? "Gone" : yardLabel}</h1>
+            <h1 className="page-title">{onGone ? goneYearLabel(goneYear) : yardLabel}</h1>
           </div>
         </div>
         <div className="drv-header-meta">
           {onGone ? (
             <p className="drv-count">
               {count} {count === 1 ? "driver" : "drivers"} archived
+              {goneYears.length > 1 ? ` in ${goneYear}` : null}
             </p>
           ) : tally ? (
             <p className="drv-count" title="Hired − status − Vacation VAC for this yard/day. Today uses this Full Roster across all yards, minus leftover full-day offs.">
@@ -461,26 +526,35 @@ export function DriverScreen() {
               <button
                 type="button"
                 className="text-btn"
-                disabled={gone.importing || count > 0}
+                disabled={gone.importing || goneTotal > 0}
                 onClick={() => void gone.importFromSheet()}
               >
                 {gone.importing ? "Importing…" : "Import Gone 2026"}
               </button>
-            ) : (
-              <button
-                type="button"
-                className="text-btn"
-                disabled={importing}
-                onClick={() => void importFromSheet()}
-              >
-                {importing ? "Importing…" : "Import empty lists"}
-              </button>
-            )}
+            ) : null}
           </div>
         </div>
       </header>
 
-      {onGone ? null : (
+      {onGone ? (
+      <div className="vac-toolbar">
+        <div className="vac-year-row" role="tablist" aria-label="Gone year">
+          {goneYears.map((year) => (
+            <button
+              key={year}
+              type="button"
+              className={goneYear === year ? "day-chip day-chip-active" : "day-chip"}
+              onClick={() => {
+                setGoneYear(year);
+                setAdding(false);
+              }}
+            >
+              {goneYearLabel(year)}
+            </button>
+          ))}
+        </div>
+      </div>
+      ) : (
       <div className="vac-toolbar">
         <div className="vac-year-row" role="tablist" aria-label="Yard">
           {DRIVER_ROSTER_YARDS.map((item) => (
@@ -581,6 +655,11 @@ export function DriverScreen() {
               terminationDate: input.terminationDate || null,
               notes: input.notes,
             });
+            if (isValidISODate(input.terminationDate)) {
+              setGoneYear(yearOfISO(input.terminationDate));
+            } else {
+              setGoneYear(currentGoneYear);
+            }
             setAdding(false);
           }}
         />
@@ -589,9 +668,10 @@ export function DriverScreen() {
         <AddRosterForm
           kind={kind}
           onCancel={() => setAdding(false)}
-          onSave={(truck, name, status) => {
+          onSave={(emp, name, status, assignedTruck) => {
             void addDriver({
-              truckNumber: truck,
+              truckNumber: emp,
+              assignedTruck: assignedTruck || null,
               name,
               status,
               forDate: satDate,
@@ -611,18 +691,6 @@ export function DriverScreen() {
               : "Import ran — no Gone rows found."}
         </p>
       ) : null}
-      {!onGone && lastImport?.error ? <p className="form-error">{lastImport.error}</p> : null}
-      {!onGone && lastImport && !lastImport.error ? (
-        <p className="field-hint">
-          {lastImport.added
-            ? `Imported ${lastImport.added} drivers into empty yard lists.`
-            : "Import ran — lists that already have drivers were left unchanged."}
-          {lastImport.skippedGroups.length
-            ? ` Skipped: ${lastImport.skippedGroups.join(", ")}.`
-            : null}
-        </p>
-      ) : null}
-
       {!onGone && kind === "sat" ? (
         <div className="drv-copy-card">
           <div className="drv-copy-toolbar">
@@ -641,7 +709,7 @@ export function DriverScreen() {
         </div>
       ) : null}
 
-      {!count && !adding ? (
+      {((onGone && goneTotal === 0) || (!onGone && !count)) && !adding ? (
         <div className="empty">
           <h2>
             {onGone
@@ -667,16 +735,7 @@ export function DriverScreen() {
               >
                 {resetting ? "Resetting…" : "Reset to full roster"}
               </button>
-            ) : (
-              <button
-                type="button"
-                className="text-btn amber"
-                disabled={importing}
-                onClick={() => void importFromSheet()}
-              >
-                Import empty lists
-              </button>
-            )}
+            ) : null}
             <button type="button" className="text-btn" onClick={() => setAdding(true)}>
               + Add driver
             </button>
@@ -851,39 +910,52 @@ export function DriverScreen() {
           </button>
         </div>
       ) : (
-        <div className="vac-table-wrap drv-table-wrap">
-          <table className="vac-table drv-table">
-            <thead>
-              <tr>
-                <th className="drv-col-truck">Emp #</th>
-                <th className="drv-col-name">Name</th>
-                <th className="drv-col-status">Unavailable</th>
-                <th className="drv-col-actions"> </th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((entry) => {
-                const effective = effectiveRosterStatus(entry, vacationNames);
-                const out =
-                  rosterStatusRemovesFromAvailable(effective.status) ||
-                  Boolean(effective.onVacation);
-                const storedOut = rosterStatusRemovesFromAvailable(entry.status);
-                return (
-                <tr
+        <div className="drv-sat-board">
+          <div
+            className="drv-sat-grid drv-full-grid"
+            role="list"
+            aria-label={`${yardLabel} hired roster`}
+            style={{ ["--drv-sat-rows" as string]: String(fullRows) }}
+          >
+            {entries.map((entry) => {
+              const effective = effectiveRosterStatus(entry, vacationNames);
+              const out =
+                rosterStatusRemovesFromAvailable(effective.status) ||
+                Boolean(effective.onVacation);
+              const storedOut = rosterStatusRemovesFromAvailable(entry.status);
+              return (
+                <div
                   key={entry.id}
-                  className={out ? "drv-row is-out" : "drv-row"}
+                  className={out ? "drv-sat-cell drv-full-cell is-out" : "drv-sat-cell drv-full-cell"}
+                  role="listitem"
                 >
-                  <td className="drv-col-truck">{entry.truckNumber ?? "—"}</td>
-                  <td className="drv-col-name">
-                    {entry.name}
-                    {out ? <span className="drv-out-tag">Out</span> : null}
-                    {effective.onVacation ? (
-                      <span className="drv-vac-from" title="From the Vacation tab this week">
-                        Vac
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="drv-col-status">
+                  <div className="drv-full-cell-top">
+                    <span className="drv-sat-emp" title="Employee number">
+                      {entry.truckNumber ?? "—"}
+                    </span>
+                    <span className="drv-sat-cell-name">
+                      {entry.name}
+                      {out ? <span className="drv-out-tag">Out</span> : null}
+                      {effective.onVacation ? (
+                        <span className="drv-vac-from" title="From the Vacation tab this week">
+                          Vac
+                        </span>
+                      ) : null}
+                    </span>
+                    <button
+                      type="button"
+                      className="vac-pill-x drv-remove"
+                      aria-label={`Remove ${entry.name}`}
+                      onClick={() => setRemoveDialog({ step: "choose", entry })}
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="drv-full-cell-meta">
+                    <AssignedTruckInput
+                      entry={entry}
+                      onSave={(value) => void setDriverAssignedTruck(entry.id, value || null)}
+                    />
                     <div className="drv-status-cell">
                       <select
                         className={
@@ -905,7 +977,8 @@ export function DriverScreen() {
                               : row.label}
                           </option>
                         ))}
-                        {entry.status && !ROSTER_UNAVAILABLE_REASONS.some((row) => row.token === entry.status) ? (
+                        {entry.status &&
+                        !ROSTER_UNAVAILABLE_REASONS.some((row) => row.token === entry.status) ? (
                           <option value={entry.status}>
                             {rosterStatusLabel(entry.status)}
                           </option>
@@ -919,29 +992,14 @@ export function DriverScreen() {
                         </span>
                       ) : null}
                     </div>
-                  </td>
-                  <td className="drv-col-actions">
-                    <button
-                      type="button"
-                      className="vac-pill-x drv-remove"
-                      aria-label={`Remove ${entry.name}`}
-                      onClick={() => setRemoveDialog({ step: "choose", entry })}
-                    >
-                      ×
-                    </button>
-                  </td>
-                </tr>
-                );
-              })}
-              <tr className="drv-add-row">
-                <td colSpan={4}>
-                  <button type="button" className="vac-add-link" onClick={() => setAdding(true)}>
-                    + Add
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <button type="button" className="vac-add-link drv-sat-add" onClick={() => setAdding(true)}>
+            + Add
+          </button>
         </div>
       )}
 

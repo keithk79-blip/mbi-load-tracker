@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   hrefForTab,
@@ -71,6 +72,17 @@ describe("tabFromLocation", () => {
     expect(tabFromLocation({ pathname: "/", search: "?tab=driver", hash: "" })).toBe("driver");
     expect(tabFromLocation({ pathname: "/", search: "", hash: "" })).toBeNull();
     expect(tabFromLocation({ pathname: "/totals", search: "", hash: "" })).toBe("today");
+  });
+});
+
+describe("sidebar labels and order", () => {
+  it("lists Today, Drivers, Vacation, Trucks, Analytics", () => {
+    const src = readFileSync(new URL("../components/TabBar.tsx", import.meta.url), "utf8");
+    expect(src).toMatch(
+      /id: "today".*label: "Today"[\s\S]*id: "driver".*label: "Drivers"[\s\S]*id: "vacation".*label: "Vacation"[\s\S]*id: "trucks".*label: "Trucks"[\s\S]*id: "analytics".*label: "Analytics"/,
+    );
+    expect(src).not.toContain("AnalyticsYTD");
+    expect(src).not.toMatch(/label: "Driver"/);
   });
 });
 

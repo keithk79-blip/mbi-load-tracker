@@ -1,5 +1,5 @@
-﻿import { useState } from "react";
-import { Plus, RefreshCw, X } from "lucide-react";
+﻿import { useMemo, useState } from "react";
+import { Plus, X } from "lucide-react";
 import {
   chicagoToday,
   formatHeaderDate,
@@ -10,8 +10,10 @@ import {
   CALL_OFF_KIND_OPTIONS,
   type CallOffKind,
 } from "../lib/driverAvailability";
+import { vacationNamesOnDateAllYards } from "../lib/rosterVacation";
 import { DriverNameInput } from "./DriverNameInput";
 import { useDrivers } from "../store/DriversContext";
+import { useVacation } from "../store/VacationContext";
 
 function pulledLabel(iso: string | null): string {
   if (!iso) return "Not pulled yet";
@@ -47,12 +49,16 @@ export function DriversCard({
     fetchedAt,
     availabilityOn,
     ytdAverage,
-    refresh,
     ootNames,
     callOffsOn,
     addManualOff,
     removeManualOff,
   } = useDrivers();
+  const vacation = useVacation();
+  const vacationNames = useMemo(
+    () => vacationNamesOnDateAllYards(vacation.store, viewed),
+    [vacation.store, viewed],
+  );
   const dayAvail = availabilityOn(viewed);
   const avg = ytdAverage(today);
   const callOffs = callOffsOn(viewed);
@@ -296,6 +302,28 @@ export function DriversCard({
         </div>
       ) : null}
 
+      {!sunday ? (
+        <div className="oot-block">
+          <p className="oot-label">Vacation</p>
+          <p className="oot-yards">
+            {viewingToday || viewingFuture
+              ? "Vacation tab · this week"
+              : "Vacation tab · that week"}
+          </p>
+          {vacationNames.length ? (
+            <ul className="oot-list">
+              {vacationNames.map((name) => (
+                <li key={name} className="oot-chip vacation-chip">
+                  {name}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="oot-empty">No vacation this week</p>
+          )}
+        </div>
+      ) : null}
+
       {!compact && avg !== null ? (
         <p className="drivers-avg">
           YTD average {avg.toFixed(0)} available · Mon–Sat (no Sundays)
@@ -303,15 +331,6 @@ export function DriversCard({
       ) : null}
 
       <div className="drivers-actions">
-        <button
-          type="button"
-          className="text-btn amber"
-          onClick={() => void refresh()}
-          disabled={status === "loading"}
-        >
-          <RefreshCw size={16} />
-          {status === "loading" ? "Refreshing…" : "Refresh"}
-        </button>
         <span className="field-hint tight">
           {status === "live"
             ? `Full Roster · ${pulledLabel(fetchedAt)}`
@@ -319,7 +338,9 @@ export function DriversCard({
               ? `Full Roster · ${pulledLabel(fetchedAt)}`
               : status === "error"
                 ? "Could not sync"
-                : "Refreshing…"}
+                : status === "loading"
+                  ? "Loading…"
+                  : "Full Roster"}
         </span>
       </div>
       {error ? <p className="field-hint">{error}</p> : null}

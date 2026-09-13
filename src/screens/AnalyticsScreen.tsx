@@ -48,7 +48,7 @@ export function AnalyticsScreen() {
         <div className="page-header-brand">
           <BrandMark />
           <div>
-            <p className="eyebrow">AnalyticsYTD</p>
+            <p className="eyebrow">Analytics</p>
             <h1 className="page-title">{year} year to date</h1>
           </div>
         </div>

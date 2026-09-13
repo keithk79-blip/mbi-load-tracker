@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Load } from "../types";
 import { batchCreatedAt } from "./quantity";
-import { sortLoads } from "./sortLoads";
+import { sortLoads, sortLoadsNewestFirst } from "./sortLoads";
 
 function load(partial: Partial<Load> & Pick<Load, "id" | "createdAt">): Load {
   return {
@@ -70,3 +70,32 @@ describe("sortLoads", () => {
     expect(sortLoads([b, a]).map((row) => row.id)).toEqual(["a-id", "b-id"]);
   });
 });
+
+describe("sortLoadsNewestFirst", () => {
+  it("puts the most recently logged load first", () => {
+    const later = load({ id: "later", createdAt: "2026-09-11T14:00:00.000Z" });
+    const earlier = load({ id: "earlier", createdAt: "2026-09-11T10:00:00.000Z" });
+    expect(sortLoadsNewestFirst([earlier, later]).map((row) => row.id)).toEqual([
+      "later",
+      "earlier",
+    ]);
+  });
+
+  it("ignores updatedAt the same way as oldest-first", () => {
+    const first = load({
+      id: "first",
+      createdAt: "2026-09-11T10:00:00.000Z",
+      updatedAt: "2026-09-11T18:00:00.000Z",
+    });
+    const second = load({
+      id: "second",
+      createdAt: "2026-09-11T10:05:00.000Z",
+      updatedAt: "2026-09-11T10:05:00.000Z",
+    });
+    expect(sortLoadsNewestFirst([first, second]).map((row) => row.id)).toEqual([
+      "second",
+      "first",
+    ]);
+  });
+});
+

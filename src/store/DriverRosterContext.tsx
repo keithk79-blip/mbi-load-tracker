@@ -12,6 +12,7 @@ import { fetchAllPaged, pagedErrorMessage } from "../lib/cloud";
 import {
   addRosterEntry,
   applyRosterTombstones,
+  cleanAssignedTruck,
   cleanDriverRosterKind,
   cleanDriverRosterYard,
   DRIVER_ROSTER_YARDS,
@@ -48,6 +49,7 @@ type EntryRow = {
   kind: string;
   yard: string;
   truck_number: string | null;
+  assigned_truck?: string | null;
   name: string;
   status: string | null;
   sort_order: number;
@@ -77,6 +79,7 @@ type DriverRosterContextValue = {
   importFromSheet: () => Promise<DriverRosterImportResult>;
   addDriver: (input: Omit<DriverRosterInput, "kind" | "yard">) => Promise<DriverRosterEntry | null>;
   setDriverStatus: (id: string, status: string | null) => Promise<void>;
+  setDriverAssignedTruck: (id: string, assignedTruck: string | null) => Promise<void>;
   removeDriver: (id: string) => Promise<void>;
   /** Explicit Full Roster × — hired row plus matching Sat. */
   removeHiredAndSat: (id: string) => Promise<void>;
@@ -96,6 +99,10 @@ function rowsToStore(rows: EntryRow[]): DriverRosterStore {
       kind: cleanDriverRosterKind(row.kind),
       yard: cleanDriverRosterYard(row.yard),
       truckNumber: row.truck_number,
+      assignedTruck:
+        cleanDriverRosterKind(row.kind) === "full"
+          ? cleanAssignedTruck(row.assigned_truck ?? null)
+          : null,
       name: row.name,
       status: row.status,
       sortOrder: row.sort_order,
@@ -113,6 +120,7 @@ function entryToRow(entry: DriverRosterEntry, userId: string | null) {
     kind: entry.kind,
     yard: entry.yard,
     truck_number: entry.truckNumber,
+    assigned_truck: entry.assignedTruck,
     name: entry.name,
     status: entry.status,
     sort_order: entry.sortOrder,
@@ -176,6 +184,22 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     const supabase = getSupabase();
     if (!supabase || !session) return null;
     const page = await fetchAllPaged<EntryRow>(async (from, to) => {
+      const withTruck = await supabase
+        .from("driver_roster_entries")
+        .select(
+          "id, kind, yard, truck_number, assigned_truck, name, status, sort_order, for_date, created_at, updated_at",
+        )
+        .order("id", { ascending: true })
+        .range(from, to);
+      if (!withTruck.error) {
+        return { data: withTruck.data as EntryRow[] | null, error: withTruck.error };
+      }
+      const missingAssigned =
+        /assigned_truck/i.test(withTruck.error.message ?? "") ||
+        withTruck.error.code === "42703";
+      if (!missingAssigned) {
+        return { data: withTruck.data as EntryRow[] | null, error: withTruck.error };
+      }
       const result = await supabase
         .from("driver_roster_entries")
         .select(
@@ -210,7 +234,16 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       if (!supabase || !session || !entries.length) return;
       const rows = entries.map((entry) => entryToRow(entry, user?.id ?? null));
       const { error } = await supabase.from("driver_roster_entries").upsert(rows);
-      if (error) console.warn("driver roster upsert failed", error.message);
+      if (!error) return;
+      const missingAssigned =
+        /assigned_truck/i.test(error.message ?? "") || error.code === "42703";
+      if (!missingAssigned) {
+        console.warn("driver roster upsert failed", error.message);
+        return;
+      }
+      const fallback = rows.map(({ assigned_truck: _assigned, ...row }) => row);
+      const retry = await supabase.from("driver_roster_entries").upsert(fallback);
+      if (retry.error) console.warn("driver roster upsert failed", retry.error.message);
     },
     [session, user?.id],
   );
@@ -434,6 +467,17 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     [cloud, cloudUpsert, persistLocal],
   );
 
+  const setDriverAssignedTruck = useCallback(
+    async (id: string, assignedTruck: string | null) => {
+      epochRef.current += 1;
+      const next = updateRosterEntry(storeRef.current, id, { assignedTruck });
+      const entry = next.entries[id];
+      persistLocal(next);
+      if (cloud && entry) await cloudUpsert([entry]);
+    },
+    [cloud, cloudUpsert, persistLocal],
+  );
+
   const removeDriver = useCallback(
     async (id: string) => {
       epochRef.current += 1;
@@ -567,6 +611,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       importFromSheet,
       addDriver,
       setDriverStatus,
+      setDriverAssignedTruck,
       removeDriver,
       removeHiredAndSat,
       moveDriver,
@@ -588,6 +633,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       importFromSheet,
       addDriver,
       setDriverStatus,
+      setDriverAssignedTruck,
       removeDriver,
       removeHiredAndSat,
       moveDriver,
