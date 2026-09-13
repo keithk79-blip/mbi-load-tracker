@@ -14,7 +14,9 @@ import { findNearDuplicate } from "../lib/duplicates";
 import { batchCreatedAt, clampLoadQty } from "../lib/quantity";
 import { resolveSpecialtyBoardMatch } from "../lib/specialtyBoard";
 import { useSpecialty } from "../store/SpecialtyContext";
+import { snapshotDriverNameForTruck } from "../lib/loadDriver";
 import { newLoadId } from "../lib/storage";
+import { useDriverRoster } from "../store/DriverRosterContext";
 import { useLoads } from "../store/LoadsContext";
 import type { Load } from "../types";
 
@@ -33,6 +35,7 @@ export function LogLoadScreen({
 }: LogLoadScreenProps) {
   const targetDate = date || chicagoToday();
   const { saveLoad, loads } = useLoads();
+  const { store: rosterStore } = useDriverRoster();
   const { opensFor, consumeOpens } = useSpecialty();
   const [duplicate, setDuplicate] = useState<Load | null>(null);
   const [specialtyWarn, setSpecialtyWarn] = useState<{
@@ -55,6 +58,7 @@ export function LogLoadScreen({
   });
 
   const qty = clampLoadQty(quantity);
+  const loggingDriverName = snapshotDriverNameForTruck(rosterStore, form.truck);
 
   const commitTruck = (nextTruck: string) => {
     setTruck(nextTruck);
@@ -86,6 +90,7 @@ export function LogLoadScreen({
         stationId: form.stationId,
         date: targetDate,
         updatedAt: createdAt,
+        driverName: snapshotDriverNameForTruck(rosterStore, candidate.truck),
       });
     }
 
@@ -186,7 +191,10 @@ export function LogLoadScreen({
         </button>
         <BrandMark size="sm" />
         <div>
-          <p className="eyebrow">Truck {form.truck}</p>
+          <p className="eyebrow">
+            Truck {form.truck}
+            {loggingDriverName ? ` · ${loggingDriverName}` : ""}
+          </p>
           <h1 className="overlay-title">Log load</h1>
           <p className="overlay-sub">
             {targetDate === chicagoToday() ? "Today" : targetDate}

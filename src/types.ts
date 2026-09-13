@@ -15,6 +15,12 @@ export type Load = {
   seeded?: boolean;
   createdBy?: string;
   displayName?: string;
+  /**
+   * Full Roster driver name snapshotted at log / truck-edit time.
+   * `string` = name frozen on this load; `null` = logged with no assignee;
+   * omitted = pre-feature / unknown (do not invent from live roster).
+   */
+  driverName?: string | null;
 };
 
 export type TabId = "today" | "trucks" | "analytics" | "driver" | "vacation";

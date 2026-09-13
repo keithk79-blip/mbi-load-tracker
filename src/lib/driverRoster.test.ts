@@ -718,8 +718,8 @@ describe("assigned truck (not EMP #)", () => {
     expect(hits[0].truckNumber).toBe("185");
     expect(fullRosterDriversForTruck(store, "185")).toEqual([]);
     const search = readFileSync(new URL("../screens/SearchScreen.tsx", import.meta.url), "utf8");
-    expect(search).toContain("fullRosterDriversForTruck");
-    expect(search).toContain("Full Roster");
+    expect(search).toContain("loggedDriverNamesForTruck");
+    expect(search).not.toContain("fullRosterDriversForTruck");
   });
 
   it("SQL keeps emp # on truck_number and adds assigned_truck", () => {

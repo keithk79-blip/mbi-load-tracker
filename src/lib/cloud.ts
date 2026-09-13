@@ -1,4 +1,5 @@
 import type { Load } from "../types";
+import { cleanLoggedDriverName } from "./loadDriver";
 
 /** PostgREST default max-rows is 1000; a busy tracker can exceed one page. */
 export const LOAD_FETCH_PAGE_SIZE = 1000;
@@ -47,7 +48,14 @@ export type LoadRow = {
   updated_at: string;
   created_by: string | null;
   display_name: string | null;
+  /** Absent when the column is not on the project yet. */
+  driver_name?: string | null;
 };
+
+export function isMissingDriverNameColumn(error: unknown): boolean {
+  const message = pagedErrorMessage(error) ?? "";
+  return /driver_name/i.test(message);
+}
 
 export function rowToLoad(row: LoadRow): Load {
   return {
@@ -62,6 +70,8 @@ export function rowToLoad(row: LoadRow): Load {
     updatedAt: row.updated_at,
     createdBy: row.created_by ?? undefined,
     displayName: row.display_name ?? undefined,
+    driverName:
+      "driver_name" in row ? cleanLoggedDriverName(row.driver_name) ?? null : undefined,
   };
 }
 
@@ -84,5 +94,6 @@ export function loadToRow(
     updated_at: load.updatedAt,
     created_by: load.createdBy ?? userId,
     display_name: load.displayName ?? null,
+    driver_name: load.driverName ?? null,
   };
 }

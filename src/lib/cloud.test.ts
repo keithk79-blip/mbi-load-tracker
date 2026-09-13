@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { LOAD_FETCH_PAGE_SIZE, fetchAllPaged, pagedErrorMessage } from "./cloud";
+import {
+  LOAD_FETCH_PAGE_SIZE,
+  fetchAllPaged,
+  isMissingDriverNameColumn,
+  loadToRow,
+  pagedErrorMessage,
+  rowToLoad,
+  type LoadRow,
+} from "./cloud";
+import type { Load } from "../types";
 
 describe("fetchAllPaged", () => {
   it("walks PostgREST range pages until a short page", async () => {
@@ -45,5 +54,57 @@ describe("pagedErrorMessage", () => {
     expect(pagedErrorMessage({ message: "range failed" })).toBe("range failed");
     expect(pagedErrorMessage(new Error("boom"))).toBe("boom");
     expect(pagedErrorMessage(null)).toBeUndefined();
+  });
+});
+
+describe("load driver_name mapping", () => {
+  const row: LoadRow = {
+    id: "a",
+    date: "2026-09-13",
+    truck: "418",
+    pickup: "Melrose",
+    commodity: "Trash",
+    destination: "Covanta",
+    station_id: "melrose",
+    created_at: "2026-09-13T12:00:00.000Z",
+    updated_at: "2026-09-13T12:00:00.000Z",
+    created_by: null,
+    display_name: null,
+  };
+
+  const load: Load = {
+    id: "a",
+    truck: "418",
+    pickup: "Melrose",
+    commodity: "Trash",
+    destination: "Covanta",
+    stationId: "melrose",
+    date: "2026-09-13",
+    createdAt: "2026-09-13T12:00:00.000Z",
+    updatedAt: "2026-09-13T12:00:00.000Z",
+    driverName: "Alice Smith",
+  };
+
+  it("maps driver_name when the column is present", () => {
+    expect(rowToLoad({ ...row, driver_name: "Alice Smith" }).driverName).toBe("Alice Smith");
+    expect(rowToLoad({ ...row, driver_name: null }).driverName).toBeNull();
+  });
+
+  it("omits driverName when the column is absent so merge can keep a local snapshot", () => {
+    expect(rowToLoad(row).driverName).toBeUndefined();
+  });
+
+  it("writes driver_name on upsert rows", () => {
+    expect(loadToRow(load, null).driver_name).toBe("Alice Smith");
+    expect(loadToRow({ ...load, driverName: undefined }, null).driver_name).toBeNull();
+  });
+
+  it("detects a missing driver_name column", () => {
+    expect(
+      isMissingDriverNameColumn({
+        message: "Could not find the 'driver_name' column of 'loads' in the schema cache",
+      }),
+    ).toBe(true);
+    expect(isMissingDriverNameColumn({ message: "permission denied" })).toBe(false);
   });
 });
