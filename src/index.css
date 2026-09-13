@@ -1829,6 +1829,9 @@ button.log-load-top {
   align-items: center;
   line-height: 0;
   flex-shrink: 0;
+  width: max-content;
+  max-width: 100%;
+  align-self: flex-start;
 }
 
 .brand-plate img {
@@ -1942,6 +1945,10 @@ body.app-ready .splash {
   align-items: stretch;
   gap: 20px;
   padding-top: 28px;
+}
+
+.login-screen .brand-plate {
+  align-self: flex-start;
 }
 
 .login-screen .text-input {
