@@ -1,5 +1,6 @@
 -- Specialty open loads + station call hour grid + manual call-offs + vacation
--- calendar + daily EOD totals + driver rosters + Gone archive (shared across devices).
+-- calendar + daily EOD totals + driver rosters + Gone archive + loads.driver_name
+-- (shared across devices).
 -- Paste into Supabase SQL Editor and Run.
 -- Manual call-offs are also in Load-Tracker-manual-call-offs.sql (one-shot paste).
 -- Daily EOD totals are also in Load-Tracker-daily-eod-totals.sql (one-shot paste).
@@ -578,5 +579,13 @@ begin
   alter publication supabase_realtime add table public.driver_gone_entries;
 exception when duplicate_object then null;
 end $$;
+
+-- Day-locked truck ↔ driver on logged loads. public.loads already exists
+-- from the original loads migration. Safe to re-run. Does not backfill.
+alter table public.loads
+  add column if not exists driver_name text;
+
+comment on column public.loads.driver_name is
+  'Full Roster driver name snapshotted at log / truck-edit time. Null when the truck was unassigned. Not a live roster link. Not EMP #.';
 
 notify pgrst, 'reload schema';

@@ -4,8 +4,7 @@ import { DayPicker } from "../components/DayPicker";
 import { LoadRow } from "../components/LoadRow";
 import { TruckEntry } from "../components/TruckEntry";
 import { chicagoToday, formatShortDate } from "../lib/chicagoDate";
-import { fullRosterDriversForTruck } from "../lib/driverRoster";
-import { useDriverRoster } from "../store/DriverRosterContext";
+import { loggedDriverNamesForTruck } from "../lib/loadDriver";
 import { useLoads } from "../store/LoadsContext";
 
 type SearchScreenProps = {
@@ -21,7 +20,6 @@ export function SearchScreen({
 }: SearchScreenProps) {
   const today = chicagoToday();
   const { loadsOn } = useLoads();
-  const { store: rosterStore } = useDriverRoster();
   const [digits, setDigits] = useState("");
   const [truck, setTruck] = useState<string | null>(null);
   const [date, setDate] = useState(today);
@@ -31,9 +29,9 @@ export function SearchScreen({
     if (!truck) return [];
     return loadsOn(date).filter((load) => load.truck === truck);
   }, [date, loadsOn, truck]);
-  const rosterDrivers = useMemo(
-    () => (truck ? fullRosterDriversForTruck(rosterStore, truck) : []),
-    [rosterStore, truck],
+  const loggedDrivers = useMemo(
+    () => (truck ? loggedDriverNamesForTruck(loads, truck) : []),
+    [loads, truck],
   );
 
   const find = () => {
@@ -85,22 +83,11 @@ export function SearchScreen({
                 {loads.length} {loads.length === 1 ? "load" : "loads"} ·{" "}
                 {formatShortDate(date)}
               </p>
-              {rosterDrivers.length ? (
+              {loggedDrivers.length ? (
                 <p className="truck-roster-driver">
-                  Full Roster ·{" "}
-                  {rosterDrivers
-                    .map((entry) =>
-                      entry.truckNumber
-                        ? `${entry.name} (emp #${entry.truckNumber})`
-                        : entry.name,
-                    )
-                    .join(" · ")}
+                  Logged · {loggedDrivers.join(" · ")}
                 </p>
-              ) : (
-                <p className="truck-roster-driver muted">
-                  No Full Roster driver assigned to this truck
-                </p>
-              )}
+              ) : null}
             </div>
           </section>
 

@@ -1,4 +1,5 @@
 import type { Load } from "../types";
+import { keepLoadDriverName } from "./loadDriver";
 import {
   isExplicitDeleteOp,
   warnNonExplicitRemoteDelete,
@@ -13,7 +14,9 @@ import {
 } from "./storage";
 
 function newerWins(a: Load, b: Load): Load {
-  return a.updatedAt >= b.updatedAt ? a : b;
+  const winner = a.updatedAt >= b.updatedAt ? a : b;
+  const loser = winner === a ? b : a;
+  return keepLoadDriverName(winner, loser);
 }
 
 function putUnseeded(map: Map<string, Load>, loads: Load[]): void {

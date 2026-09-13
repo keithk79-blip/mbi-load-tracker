@@ -19,6 +19,8 @@ import {
 import { findNearDuplicate } from "../lib/duplicates";
 import { resolveSpecialtyBoardMatch } from "../lib/specialtyBoard";
 import { useSpecialty } from "../store/SpecialtyContext";
+import { loadTruckEquals, snapshotDriverNameForTruck } from "../lib/loadDriver";
+import { useDriverRoster } from "../store/DriverRosterContext";
 import { useLoads } from "../store/LoadsContext";
 import type { Load } from "../types";
 
@@ -46,6 +48,7 @@ export function EditLoadScreen({
   onDeleted,
 }: EditLoadScreenProps) {
   const { saveLoad, deleteLoad, loads } = useLoads();
+  const { store: rosterStore } = useDriverRoster();
   const { opensFor, consumeOpens } = useSpecialty();
   const original = useMemo(() => loadToForm(load), [load]);
   const [form, setForm] = useState<FormState>(original);
@@ -64,14 +67,19 @@ export function EditLoadScreen({
 
   const dirty = !sameForm(form, original) || date !== load.date;
   const canSave = formComplete(form) && dirty;
+  const truckChanged = !loadTruckEquals(form.truck, load.truck);
+  const editDriverName = truckChanged
+    ? snapshotDriverNameForTruck(rosterStore, form.truck)
+    : load.driverName;
 
     const finishSave = async () => {
     const pickup = pickupLabel(form.stationId, form.pickup);
     const destination = form.destination.trim();
     const now = new Date().toISOString();
+    const nextTruck = form.truck.trim();
     saveLoad({
       ...load,
-      truck: form.truck.trim(),
+      truck: nextTruck,
       pickup,
       commodity: form.commodity.trim(),
       destination,
@@ -79,6 +87,9 @@ export function EditLoadScreen({
       date,
       updatedAt: now,
       seeded: false,
+      driverName: !loadTruckEquals(nextTruck, load.truck)
+        ? snapshotDriverNameForTruck(rosterStore, nextTruck)
+        : load.driverName,
     });
 
     const lane = resolveSpecialtyBoardMatch(
@@ -199,7 +210,10 @@ export function EditLoadScreen({
         </button>
         <BrandMark size="sm" />
         <div>
-          <p className="eyebrow">Truck {form.truck}</p>
+          <p className="eyebrow">
+            Truck {form.truck}
+            {editDriverName ? ` · ${editDriverName}` : ""}
+          </p>
           <h1 className="overlay-title">Edit load</h1>
           {pickingDate ? (
             <input

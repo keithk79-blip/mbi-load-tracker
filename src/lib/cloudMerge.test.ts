@@ -40,6 +40,7 @@ function load(
     seeded: extra.seeded,
     createdBy: extra.createdBy,
     displayName: extra.displayName,
+    driverName: extra.driverName,
   };
 }
 
@@ -147,6 +148,26 @@ describe("mergeCloudLoads", () => {
       "qty-0",
       "qty-1",
     ]);
+  });
+
+  it("keeps a device driverName snapshot when a newer remote row omitted the field", () => {
+    const device = load("snap", "2026-09-13", {
+      driverName: "Alice Smith",
+      updatedAt: "2026-09-13T10:00:00.000Z",
+    });
+    const remote = load("snap", "2026-09-13", {
+      updatedAt: "2026-09-13T12:00:00.000Z",
+    });
+
+    const { merged } = mergeCloudLoads({
+      remote: [remote],
+      cache: store([device]),
+      local: store([]),
+      pending: [],
+    });
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].driverName).toBe("Alice Smith");
   });
 
   it("drops stale cache-only rows that are not in the pending queue when remote is complete", () => {

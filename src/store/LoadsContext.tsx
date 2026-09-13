@@ -9,7 +9,13 @@ import {
   type ReactNode,
 } from "react";
 import type { Load } from "../types";
-import { fetchAllPaged, loadToRow, rowToLoad, type LoadRow } from "../lib/cloud";
+import {
+  fetchAllPaged,
+  isMissingDriverNameColumn,
+  loadToRow,
+  rowToLoad,
+  type LoadRow,
+} from "../lib/cloud";
 import {
   deletedLoadIds,
   enqueueRemoteDeletesFromRefresh,
@@ -233,9 +239,13 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
           for (;;) {
             try {
               if (op.kind === "upsert") {
-                const { error } = await supabase
-                  .from("loads")
-                  .upsert(loadToRow(op.load, user?.id ?? null));
+                const row = loadToRow(op.load, user?.id ?? null);
+                let { error } = await supabase.from("loads").upsert(row);
+                if (error && isMissingDriverNameColumn(error)) {
+                  const { driver_name: _name, ...fallback } = row;
+                  const retry = await supabase.from("loads").upsert(fallback);
+                  error = retry.error;
+                }
                 if (error) throw error;
               } else {
                 if (!isExplicitDeleteOp(op)) {

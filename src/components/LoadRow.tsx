@@ -16,7 +16,12 @@ export function LoadRow({ load, onEdit, highlight = null }: LoadRowProps) {
     >
       <div className="load-row-main">
         <div className="load-row-top">
-          <span className="load-truck">{load.truck}</span>
+          <span className="load-truck">
+            {load.truck}
+            {load.driverName ? (
+              <span className="load-driver"> {load.driverName}</span>
+            ) : null}
+          </span>
           <span className="load-route">
             {load.pickup} <span className="arrow">→</span> {load.destination}
           </span>

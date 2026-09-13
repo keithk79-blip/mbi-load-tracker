@@ -105,7 +105,7 @@ With env vars set, dispatchers sign in and share one Postgres table. Today, Tota
 
 #### 2. Run the migration
 
-In the dashboard: **SQL Editor → New query**. Paste `supabase/migrations/20260904120000_loads.sql` and `supabase/migrations/20260905003000_driver_availability.sql` and run them. That creates `public.loads` (Realtime CRUD for the crew), `public.driver_availability` (locked daily driver snapshots), and RLS (any **authenticated** user can use both — this is a trusted crew of ~4).
+In the dashboard: **SQL Editor → New query**. Paste `supabase/migrations/20260904120000_loads.sql` and `supabase/migrations/20260905003000_driver_availability.sql` and run them. That creates `public.loads` (Realtime CRUD for the crew), `public.driver_availability` (locked daily driver snapshots), and RLS (any **authenticated** user can use both — this is a trusted crew of ~4). If `public.loads` already exists, also paste and Run **`Load-Tracker-loads-driver-name.sql`** once (same DDL is in `supabase/migrations/20260913180000_loads_driver_name.sql` and `Load-Tracker-sync-tables.sql`). That adds optional `driver_name` — the Full Roster name snapshotted onto each load at log / truck-edit time. Safe to re-run. Does **not** backfill old rows from the current roster. Sync never deletes remote loads; upserts fall back if the column is not there yet.
 
 For the **Vacation** tab, also paste and Run **`Load-Tracker-vacation.sql`** once (same DDL is in `supabase/migrations/20260912040000_vacation_calendar.sql` and `Load-Tracker-sync-tables.sql`). That creates `public.vacation_weeks` and `public.vacation_entries` with the same authenticated-crew RLS + Realtime. Then open a signed-in client so the 2025–2026 seed can upload; other devices pick it up on refresh. If those tables are missing, the board still works in localStorage on that device only.
 
@@ -222,10 +222,10 @@ truck,pickup,commodity,destination
 
 | Tab / screen | What it does |
 | --- | --- |
-| **Today** | Running feed, commodity tallies, **+ Log load**. On desktop this sits beside Day Totals. **Chicago traffic** (SigAlert hot corridors) shows on web, phone, and the Windows app. |
+| **Today** | Running feed, commodity tallies, **+ Log load**. On desktop this sits beside Day Totals. **Chicago traffic** (SigAlert hot corridors) shows on web, phone, and the Windows app. **Day loads** show truck + the driver name snapshotted when that load was logged (or when its truck was edited) — not a live Full Roster link. |
 | **Log load** | Truck # (keyboard or numpad), 17 stations or Custom, cascading commodity + destination |
 | **Custom** | Free-text pickup / commodity / destination, with leachate tanker suggestions (CID, Kankakee, Reworld) |
-| **Trucks** | Search a unit, pick any calendar day, list that day’s loads |
+| **Trucks** | Search a unit, pick any calendar day, list that day’s loads and the driver name(s) snapshotted on those loads |
 | **Edit load** | Change any of the four fields (cascade still applies). Delete duplicates. Totals recalculate. |
 | **Totals** | Day totals for any Chicago calendar day. **End of day** bubbles (TRASH / LEACHATE / WF / LOADS / SUBS) use a `daily_eod_totals` snapshot when one exists for that date — even if some truck rows exist — otherwise they sum logged loads. Collapsible groups: **Transfer station** (pickup), **Landfill** (destination), **Commodity**. Transfer station starts open; tap a section header to expand or collapse. Tap a bar to list those loads. Export CSV and **Clear sample loads** (local mode) are unchanged. |
 | **Analytics** | Running view of whatever is already in the store (localStorage or the Supabase cache). **Year to date** grand total, **available drivers** (Full Roster minus status / Vacation VAC / leftover full-day offs), a **transfer-station donut**, **day-to-day** bars + list (loads, available drivers, loads/driver) for the last 21 days, then YTD breakdowns by transfer station, landfill, and commodity. |
