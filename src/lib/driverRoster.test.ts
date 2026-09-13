@@ -7,9 +7,11 @@ import {
   DRIVER_ROSTER_STORE_KEY,
   emptyDriverRosterStore,
   entriesForRoster,
+  fullRosterHiredNames,
   formatRosterCopyList,
   formatRosterLine,
   fullRosterTally,
+  matchDriverNameSuggestions,
   importEntryId,
   rosterStatusLabel,
   rosterStatusRemovesFromAvailable,
@@ -227,6 +229,54 @@ describe("full roster unavailability tally", () => {
   });
 });
 
+describe("full roster name typeahead", () => {
+  it("lists unique hired names from every yard and ignores Sat-only rows", () => {
+    let store = emptyDriverRosterStore();
+    store = addRosterEntry(store, {
+      kind: "full",
+      yard: "burnham",
+      name: "Dave Vanderbilt",
+    }).store;
+    store = addRosterEntry(store, {
+      kind: "full",
+      yard: "zion",
+      name: "dave vanderbilt",
+    }).store;
+    store = addRosterEntry(store, {
+      kind: "full",
+      yard: "pontiac",
+      name: "Frank Ragano",
+    }).store;
+    store = addRosterEntry(store, {
+      kind: "sat",
+      yard: "burnham",
+      name: "Sat Only Person",
+    }).store;
+    store = addRosterEntry(store, {
+      kind: "full",
+      yard: "arc",
+      name: "  ",
+    }).store;
+
+    expect(fullRosterHiredNames(store)).toEqual(["Dave Vanderbilt", "Frank Ragano"]);
+  });
+
+  it("filters names the same way Vacation typeahead does", () => {
+    const names = ["Dave Vanderbilt", "Dan Kasprzycki", "Frank Ragano", "Marcelo Aldana"];
+    expect(matchDriverNameSuggestions(names, "")).toEqual([]);
+    expect(matchDriverNameSuggestions(names, "  da")).toEqual([
+      "Dave Vanderbilt",
+      "Dan Kasprzycki",
+      "Marcelo Aldana",
+    ]);
+    expect(matchDriverNameSuggestions(names, "rag")).toEqual(["Frank Ragano"]);
+    expect(matchDriverNameSuggestions(names, "a", 2)).toEqual([
+      "Dave Vanderbilt",
+      "Dan Kasprzycki",
+    ]);
+  });
+});
+
 describe("roster add/remove helpers", () => {
   it("adds, counts, copies, and removes a yard list", () => {
     let store = emptyDriverRosterStore();
@@ -253,6 +303,11 @@ describe("roster add/remove helpers", () => {
 
     expect(rosterEntryCount(store, "full", "burnham")).toBe(2);
     expect(rosterEntryCount(store, "full", "rockford")).toBe(1);
+    expect(fullRosterHiredNames(store)).toEqual([
+      "Christopher Oleson",
+      "Dan Kasprzycki -T",
+      "Dave Vanderbilt",
+    ]);
     const burnham = entriesForRoster(store, "full", "burnham");
     expect(formatRosterLine(burnham[0])).toBe("56 Dave Vanderbilt");
     expect(formatRosterCopyList(burnham)).toBe("56 Dave Vanderbilt\n102 Dan Kasprzycki -T");

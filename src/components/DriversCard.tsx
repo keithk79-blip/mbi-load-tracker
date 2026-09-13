@@ -10,6 +10,7 @@ import {
   CALL_OFF_KIND_OPTIONS,
   type CallOffKind,
 } from "../lib/driverAvailability";
+import { DriverNameInput } from "./DriverNameInput";
 import { useDrivers } from "../store/DriversContext";
 
 function pulledLabel(iso: string | null): string {
@@ -223,17 +224,17 @@ export function DriversCard({
               <label className="field-label calloff-name-label" htmlFor={`calloff-name-${viewed}`}>
                 Driver name
               </label>
-              <input
+              <DriverNameInput
                 id={`calloff-name-${viewed}`}
                 className="text-input calloff-name-input"
                 value={draftName}
-                onChange={(event) => {
-                  setDraftName(event.target.value);
+                onChange={(next) => {
+                  setDraftName(next);
                   if (addError) setAddError(null);
                 }}
                 placeholder="Name"
-                autoComplete="off"
                 autoFocus
+                aria-label="Driver name"
               />
               <p className="field-label calloff-type-label">Type</p>
               <div className="calloff-kind-row" role="group" aria-label="Call-off type">

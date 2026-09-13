@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandMark } from "../components/BrandMark";
+import { DriverNameInput } from "../components/DriverNameInput";
 import { chicagoToday, yearOfISO } from "../lib/chicagoDate";
 import {
   VACATION_YARDS,
@@ -8,7 +9,6 @@ import {
   holidayLabelForWeek,
   monthKeyForWeek,
   monthLabelForKey,
-  rosterNamesFromStore,
   sundaysForVacationYear,
   vacationStatusLabel,
   vacationWeekKey,
@@ -24,7 +24,6 @@ import {
   type VacationWeek,
   type VacationWeekKind,
 } from "../lib/vacationBoard";
-import { useDrivers } from "../store/DriversContext";
 import { useVacation } from "../store/VacationContext";
 
 const STATUS_OPTIONS: { id: VacationStatus; label: string }[] = [
@@ -81,11 +80,9 @@ function DriverPill({
 }
 
 function AddDriverForm({
-  suggestions,
   onCancel,
   onSave,
 }: {
-  suggestions: string[];
   onCancel: () => void;
   onSave: (name: string, status: VacationStatus, note: string) => void;
 }) {
@@ -93,10 +90,6 @@ function AddDriverForm({
   const [note, setNote] = useState("");
   const [status, setStatus] = useState<VacationStatus>("approved");
   const inputRef = useRef<HTMLInputElement>(null);
-  const query = name.trim().toLowerCase();
-  const matches = query
-    ? suggestions.filter((item) => item.toLowerCase().includes(query)).slice(0, 8)
-    : [];
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -111,28 +104,14 @@ function AddDriverForm({
         onSave(name.trim(), status, note.trim());
       }}
     >
-      <input
-        ref={inputRef}
+      <DriverNameInput
+        inputRef={inputRef}
         className="text-input vac-add-name"
         value={name}
-        onChange={(event) => setName(event.target.value)}
+        onChange={setName}
         placeholder="Driver name"
-        autoComplete="off"
+        aria-label="Driver name"
       />
-      {matches.length ? (
-        <div className="vac-suggest">
-          {matches.map((item) => (
-            <button
-              key={item}
-              type="button"
-              className="vac-suggest-btn"
-              onClick={() => setName(item)}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-      ) : null}
       <input
         className="text-input vac-add-note"
         value={note}
@@ -272,7 +251,6 @@ export function VacationScreen() {
   const currentYear = yearOfISO(today);
   const { store, yard, setYard, addDriver, cycleDriverStatus, removeDriver, editWeek, createYear } =
     useVacation();
-  const { ootNames } = useDrivers();
   const [year, setYear] = useState(currentYear);
   const [addingWeek, setAddingWeek] = useState<string | null>(null);
   const [editingWeek, setEditingWeek] = useState<string | null>(null);
@@ -298,10 +276,6 @@ export function VacationScreen() {
     [store, currentYear, year, yard],
   );
   const yearExists = yearHasWeeks(store, year, yard);
-  const suggestions = useMemo(
-    () => rosterNamesFromStore(store, ootNames, yard),
-    [store, ootNames, yard],
-  );
 
   const rows = useMemo(() => {
     const sundays = sundaysForVacationYear(year);
@@ -527,7 +501,6 @@ export function VacationScreen() {
                         ))}
                         {adding ? (
                           <AddDriverForm
-                            suggestions={suggestions}
                             onCancel={() => setAddingWeek(null)}
                             onSave={(name, status, note) => {
                               void addDriver(week.weekOf, name, { status, note });
