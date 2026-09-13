@@ -1,4 +1,4 @@
-import logo from "../assets/mbi-logo.png";
+import logo from "../assets/klt-logo.png";
 
 type BrandMarkProps = {
   size?: "sm" | "md" | "lg";
@@ -7,7 +7,7 @@ type BrandMarkProps = {
 export function BrandMark({ size = "md" }: BrandMarkProps) {
   return (
     <div className={`brand-plate brand-plate-${size}`}>
-      <img src={logo} alt="Mr. Bult's, Inc." />
+      <img src={logo} alt="Keith's Load Tracker" />
     </div>
   );
 }
@@ -15,7 +15,7 @@ export function BrandMark({ size = "md" }: BrandMarkProps) {
 export function BrandFooter() {
   return (
     <div className="brand-footer">
-      <p>Mr. Bult&apos;s, Inc.</p>
+      <p>Keith&apos;s Load Tracker</p>
       <p>Created by Keith Lawson</p>
     </div>
   );

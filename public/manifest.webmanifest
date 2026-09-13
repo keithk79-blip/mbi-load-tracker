@@ -1,7 +1,7 @@
 {
-  "name": "Load Tracker",
+  "name": "Keith's Load Tracker",
   "short_name": "Load Tracker",
-  "description": "Mr. Bult's, Inc. load log — truck, pickup, commodity, destination.",
+  "description": "Keith's Load Tracker — truck, pickup, commodity, destination.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#14161b",

@@ -1834,7 +1834,9 @@ button.log-load-top {
 .brand-plate img {
   display: block;
   width: auto;
-  height: 36px;
+  height: 40px;
+  max-width: 118px;
+  object-fit: contain;
 }
 
 .brand-plate-sm {
@@ -1842,7 +1844,8 @@ button.log-load-top {
 }
 
 .brand-plate-sm img {
-  height: 26px;
+  height: 28px;
+  max-width: 84px;
 }
 
 .brand-plate-lg {
@@ -1850,7 +1853,8 @@ button.log-load-top {
 }
 
 .brand-plate-lg img {
-  height: 52px;
+  height: 72px;
+  max-width: 210px;
 }
 
 .page-header-brand {
@@ -1909,8 +1913,10 @@ button.log-load-top {
 }
 
 .splash img {
-  height: 72px;
+  height: 96px;
   width: auto;
+  max-width: min(280px, 80vw);
+  object-fit: contain;
   background: #ffffff;
   padding: 14px 18px;
   border-radius: 12px;
