@@ -130,7 +130,7 @@ export function DriversCard({
             <p className="drivers-avail">No Sunday tally</p>
           ) : dayAvail ? (
             <p className="drivers-avail">
-              {dayAvail.available} available {whenLabel}
+              {dayAvail.available} out of {dayAvail.base} · {whenLabel}
             </p>
           ) : viewingToday ? (
             <p className="drivers-avail">Roster not loaded</p>
@@ -152,21 +152,11 @@ export function DriversCard({
             </p>
           ) : null}
         </div>
-        <span className="grand-value">{dayAvail ? dayAvail.available : "—"}</span>
       </div>
 
       {showOot ? (
         <div className="oot-block">
           <p className="oot-label">Out of town</p>
-          <p className="oot-yards">
-            {viewingToday
-              ? "From Full Roster · Burnham · Rockford · Pontiac · Arc · Zion"
-              : viewingFuture
-                ? "Current roster OOT"
-                : dayAvail?.locked
-                  ? "Locked for this Chicago day"
-                  : "Saved with this day’s snapshot"}
-          </p>
           {displayedOot.length ? (
             <ul className="oot-list">
               {displayedOot.map((name) => (
@@ -192,11 +182,6 @@ export function DriversCard({
           <div className="calloff-head">
             <div>
               <p className="oot-label">Call offs</p>
-              <p className="oot-yards">
-                {viewingToday || viewingFuture
-                  ? "Full-day Off."
-                  : "Saved for this Chicago day"}
-              </p>
             </div>
             {canEditCallOffs ? (
               <button
@@ -305,11 +290,6 @@ export function DriversCard({
       {!sunday ? (
         <div className="oot-block">
           <p className="oot-label">Vacation</p>
-          <p className="oot-yards">
-            {viewingToday || viewingFuture
-              ? "Vacation tab · this week"
-              : "Vacation tab · that week"}
-          </p>
           {vacationNames.length ? (
             <ul className="oot-list">
               {vacationNames.map((name) => (
