@@ -20,7 +20,9 @@ import {
   resetSatRosterFromFull,
   rosterEntryCount,
   satEntryIdFromFull,
+  satRosterColumnCount,
   satRosterMatchesFull,
+  satRosterRowCount,
   seedEmptySatRostersFromFull,
   setSatDateForYard,
   yardFromSheetTab,
@@ -476,6 +478,21 @@ describe("sat roster seeds and resets from full", () => {
     expect(src).toContain("value={copyTextValue}");
     expect(src).toContain("drv-sat-grid");
     expect(src).toContain("Reset to full roster");
+    expect(src).toContain("Delete selected");
+    expect(src).toContain("--drv-sat-rows");
+    expect(src).toContain("toggleSelected");
+    const css = readFileSync(new URL("../index.css", import.meta.url), "utf8");
+    expect(css).toContain("grid-auto-flow: column");
+  });
+
+  it("Sat Roster columns are top-to-bottom then next column", () => {
+    expect(satRosterColumnCount(1400)).toBe(3);
+    expect(satRosterColumnCount(1199)).toBe(2);
+    expect(satRosterColumnCount(800)).toBe(2);
+    expect(satRosterColumnCount(639)).toBe(1);
+    expect(satRosterRowCount(7, 3)).toBe(3);
+    expect(satRosterRowCount(6, 3)).toBe(2);
+    expect(satRosterRowCount(0, 3)).toBe(1);
   });
 });
 

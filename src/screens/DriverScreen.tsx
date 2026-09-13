@@ -15,7 +15,9 @@ import {
   rosterStatusLabel,
   rosterStatusRemovesFromAvailable,
   satDateForYard,
+  satRosterColumnCount,
   satRosterMatchesFull,
+  satRosterRowCount,
   type DriverRosterEntry,
   type DriverRosterKind,
   type DriverTabGroup,
@@ -32,6 +34,18 @@ import { useVacation } from "../store/VacationContext";
 function upcomingSaturday(today: string): string {
   const dow = weekdayOfISO(today);
   return dow === 6 ? today : addDays(today, 6 - dow);
+}
+
+function useSatRosterColumnCount(): number {
+  const [width, setWidth] = useState(() =>
+    typeof window === "undefined" ? 1400 : window.innerWidth,
+  );
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  return satRosterColumnCount(width);
 }
 
 async function copyText(text: string): Promise<boolean> {
@@ -272,8 +286,10 @@ export function DriverScreen() {
   const [removeDialog, setRemoveDialog] = useState<FullRemoveDialog>(null);
   const [goneDelete, setGoneDelete] = useState<DriverGoneEntry | null>(null);
   const [asOf, setAsOf] = useState(() => chicagoToday());
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const today = chicagoToday();
   const onGone = group === "gone";
+  const satCols = useSatRosterColumnCount();
 
   const entries = useMemo(() => entriesForRoster(store, kind, yard), [store, kind, yard]);
   const goneEntries = useMemo(() => entriesForGone(gone.store), [gone.store]);
@@ -297,10 +313,28 @@ export function DriverScreen() {
   const vacationWeekOf = kind === "full" ? sundayOnOrBefore(asOf) : null;
   const fullCount = rosterEntryCount(store, "full", yard);
   const satMatchesFull = kind === "sat" && satRosterMatchesFull(store, yard);
+  const satRows = satRosterRowCount(entries.length, satCols);
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedCount = selectedIds.length;
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
+  }
+
+  async function deleteSelected() {
+    const ids = selectedIds.filter((id) => entries.some((entry) => entry.id === id));
+    setSelectedIds([]);
+    for (const id of ids) {
+      await removeDriver(id);
+    }
+  }
 
   async function runResetToFull() {
     setResetting(true);
     setResetConfirm(false);
+    setSelectedIds([]);
     try {
       await resetSatToFullRoster();
     } finally {
@@ -367,6 +401,7 @@ export function DriverScreen() {
                 setAdding(false);
                 setResetConfirm(false);
                 setRemoveDialog(null);
+                setSelectedIds([]);
               }}
             >
               {tabGroupLabel(item)}
@@ -458,6 +493,7 @@ export function DriverScreen() {
                 setYard(item);
                 setAdding(false);
                 setResetConfirm(false);
+                setSelectedIds([]);
               }}
             >
               {driverRosterYardLabel(item)}
@@ -723,16 +759,58 @@ export function DriverScreen() {
         </div>
       ) : kind === "sat" ? (
         <div className="drv-sat-board">
-          <div className="drv-sat-grid" role="list" aria-label={`${yardLabel} Saturday roster`}>
-            {entries.map((entry, index) => (
-              <div key={entry.id} className="drv-sat-cell" role="listitem">
+          <div className="drv-sat-select-bar">
+            {selectedCount ? (
+              <>
+                <p className="drv-sat-select-count">
+                  {selectedCount} selected
+                </p>
+                <button
+                  type="button"
+                  className="text-btn amber"
+                  onClick={() => void deleteSelected()}
+                >
+                  Delete selected
+                </button>
+                <button
+                  type="button"
+                  className="text-btn"
+                  onClick={() => setSelectedIds([])}
+                >
+                  Clear
+                </button>
+              </>
+            ) : (
+              <p className="drv-sat-select-hint">Tap names to select · × removes one</p>
+            )}
+          </div>
+          <div
+            className="drv-sat-grid"
+            role="list"
+            aria-label={`${yardLabel} Saturday roster`}
+            aria-multiselectable="true"
+            style={{ ["--drv-sat-rows" as string]: String(satRows) }}
+          >
+            {entries.map((entry, index) => {
+              const selected = selectedSet.has(entry.id);
+              return (
+              <div
+                key={entry.id}
+                className={selected ? "drv-sat-cell is-selected" : "drv-sat-cell"}
+                role="listitem"
+                aria-selected={selected}
+                onClick={() => toggleSelected(entry.id)}
+              >
                 <div className="drv-move drv-sat-cell-move">
                   <button
                     type="button"
                     className="drv-move-btn"
                     aria-label={`Move ${entry.name} up`}
                     disabled={index === 0}
-                    onClick={() => void moveDriver(entry.id, -1)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void moveDriver(entry.id, -1);
+                    }}
                   >
                     ↑
                   </button>
@@ -741,7 +819,10 @@ export function DriverScreen() {
                     className="drv-move-btn"
                     aria-label={`Move ${entry.name} down`}
                     disabled={index === entries.length - 1}
-                    onClick={() => void moveDriver(entry.id, 1)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void moveDriver(entry.id, 1);
+                    }}
                   >
                     ↓
                   </button>
@@ -754,12 +835,17 @@ export function DriverScreen() {
                   type="button"
                   className="vac-pill-x drv-remove"
                   aria-label={`Remove ${entry.name}`}
-                  onClick={() => void removeDriver(entry.id)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSelectedIds((prev) => prev.filter((id) => id !== entry.id));
+                    void removeDriver(entry.id);
+                  }}
                 >
                   ×
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
           <button type="button" className="vac-add-link drv-sat-add" onClick={() => setAdding(true)}>
             + Add

@@ -941,23 +941,26 @@ export type VacationCloudReconcileResult = {
 };
 
 /**
- * One successful cloud refresh. Remote absence of a previously seen row is a
- * local hide (do not re-upload). Never-seen local rows still upload. Tombstones
- * strip both sides. Empty remote + no prior pull keeps local (no wipe).
+ * One successful cloud refresh. Cloud vacation is the crew source of truth
+ * on pull. Stale/empty local must not merge back or re-upsert over cloud.
  *
- * Never schedule remote vacation_weeks DELETEs. A stale/empty client (or week
- * tombstones written after a prior wipe while entries remained) must not prune
- * the cloud week grid. Local tombstones still hide weeks on this device.
+ * - Non-empty remote weeks/entries REPLACE the matching local table.
+ * - Sync never schedules remote DELETEs (weeks or entries). Individual
+ *   logged-in UI x still deletes via VacationContext.removeDriver.
+ * - Empty remote + no prior pull keeps local and may first-seed upload.
+ * - Empty remote after a prior pull does not re-upload (do not refill a wipe).
+ * - Empty remote weeks with leftover entries keep local weeks (week-grid
+ *   wipe must not hide the calendar) but take cloud entries.
  */
 export function reconcileVacationCloud(
   input: VacationCloudReconcileInput,
 ): VacationCloudReconcileResult {
-  const deletedWeeks = new Set(
+  const incomingDeletedWeeks = new Set(
     [...input.deletedWeekOfs]
       .filter((id) => typeof id === "string" && id.length > 0)
       .map(normalizeDeletedWeekKey),
   );
-  const deletedEntries = new Set(
+  const incomingDeletedEntries = new Set(
     [...input.deletedEntryIds].filter((id) => typeof id === "string" && id.length > 0),
   );
   const seenWeeks = new Set(
@@ -972,54 +975,61 @@ export function reconcileVacationCloud(
     Object.values(input.remote.weeks).map((week) => vacationWeekKey(week.yard, week.weekOf)),
   );
   const remoteEntries = new Set(Object.keys(input.remote.entries));
+  const remoteHasWeeks = remoteWeeks.size > 0;
+  const remoteHasEntries = remoteEntries.size > 0;
+  const everSeen = seenWeeks.size > 0 || seenEntries.size > 0;
 
-  // Infer local hides per table. Leftover entries after a week-grid wipe must
-  // not tombstone every previously seen Sunday (that re-nuked restored weeks).
-  if (remoteWeeks.size > 0) {
-    for (const id of seenWeeks) {
-      if (!remoteWeeks.has(id)) deletedWeeks.add(id);
-    }
+  // Forget tombstones for ids that are live on remote. A stale client x list
+  // must not hide cloud vacation or feed a mass DELETE.
+  const deletedWeeks = new Set<string>();
+  for (const id of incomingDeletedWeeks) {
+    if (!remoteWeeks.has(id)) deletedWeeks.add(id);
   }
-  if (remoteEntries.size > 0) {
-    for (const id of seenEntries) {
-      if (!remoteEntries.has(id)) deletedEntries.add(id);
-    }
+  const deletedEntries = new Set<string>();
+  for (const id of incomingDeletedEntries) {
+    if (!remoteEntries.has(id)) deletedEntries.add(id);
   }
-
-  const next = mergeVacationStores(input.local, input.remote, deletedWeeks, deletedEntries);
 
   const toDeleteRemoteWeeks: string[] = [];
-  const toDeleteRemoteEntries = [...deletedEntries].filter((id) => remoteEntries.has(id));
+  const toDeleteRemoteEntries: string[] = [];
+  let next: VacationStore;
+  let toUploadWeeks: VacationWeek[] = [];
+  let toUploadEntries: VacationEntry[] = [];
 
-  const toUploadWeeks: VacationWeek[] = [];
-  for (const week of Object.values(next.weeks)) {
-    const key = vacationWeekKey(week.yard, week.weekOf);
-    if (deletedWeeks.has(key)) continue;
-    const remote = input.remote.weeks[key];
-    if (!remote) {
-      if (!seenWeeks.has(key)) toUploadWeeks.push(week);
-      continue;
+  if (remoteHasWeeks && remoteHasEntries) {
+    next = {
+      weeks: { ...input.remote.weeks },
+      entries: { ...input.remote.entries },
+    };
+  } else if (remoteHasWeeks) {
+    // Cloud week grid exists; names on cloud are empty. Replace entries so
+    // a stale local set cannot re-push.
+    next = { weeks: { ...input.remote.weeks }, entries: {} };
+  } else if (remoteHasEntries) {
+    // Week-grid wipe leftover: keep local weeks, adopt cloud entries.
+    next = {
+      weeks: { ...input.local.weeks },
+      entries: { ...input.remote.entries },
+    };
+    if (!everSeen) {
+      toUploadWeeks = Object.values(next.weeks).filter((week) => {
+        const key = vacationWeekKey(week.yard, week.weekOf);
+        return !seenWeeks.has(key) && !remoteWeeks.has(key);
+      });
     }
-    if (week.updatedAt > remote.updatedAt) toUploadWeeks.push(week);
-  }
-
-  const toUploadEntries: VacationEntry[] = [];
-  for (const entry of Object.values(next.entries)) {
-    if (deletedEntries.has(entry.id) || entryWeekIsTombstoned(entry, deletedWeeks)) continue;
-    const remote = input.remote.entries[entry.id];
-    if (!remote) {
-      if (!seenEntries.has(entry.id)) toUploadEntries.push(entry);
-      continue;
-    }
-    if (entry.updatedAt > remote.updatedAt) toUploadEntries.push(entry);
+  } else if (!everSeen) {
+    next = mergeVacationStores(input.local, input.remote, deletedWeeks, deletedEntries);
+    toUploadWeeks = Object.values(next.weeks);
+    toUploadEntries = Object.values(next.entries);
+  } else {
+    // Prior pull saw cloud; this pull is empty. Keep local UI, do not refill.
+    next = mergeVacationStores(input.local, emptyVacationStore(), deletedWeeks, deletedEntries);
   }
 
   const nextSeenWeeks = new Set(seenWeeks);
   for (const id of remoteWeeks) nextSeenWeeks.add(id);
-  for (const id of deletedWeeks) nextSeenWeeks.add(id);
   const nextSeenEntries = new Set(seenEntries);
   for (const id of remoteEntries) nextSeenEntries.add(id);
-  for (const id of deletedEntries) nextSeenEntries.add(id);
 
   return {
     next,
