@@ -889,7 +889,24 @@ export function rosterStoreIsEmpty(store: DriverRosterStore): boolean {
   return Object.keys(store.entries).length === 0;
 }
 
+/** Match .drv-sat-grid breakpoints: 3 cols default, 2 at <=1199, 1 at <=639. */
+export const SAT_ROSTER_WIDE_MAX = 1199;
+export const SAT_ROSTER_MID_MAX = 639;
+
+export function satRosterColumnCount(viewportWidth: number): number {
+  if (viewportWidth <= SAT_ROSTER_MID_MAX) return 1;
+  if (viewportWidth <= SAT_ROSTER_WIDE_MAX) return 2;
+  return 3;
+}
+
+/** Rows needed so CSS grid-auto-flow:column fills top-to-bottom, then next column. */
+export function satRosterRowCount(entryCount: number, columnCount: number): number {
+  if (entryCount <= 0) return 1;
+  return Math.max(1, Math.ceil(entryCount / Math.max(1, columnCount)));
+}
+
 export type DriverRosterCloudReconcileInput = {
+
   local: DriverRosterStore;
   remote: DriverRosterStore;
   deletedEntryIds: Iterable<string>;

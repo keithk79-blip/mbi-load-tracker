@@ -3302,8 +3302,25 @@ body.app-ready .splash {
 
 .drv-sat-grid {
   display: grid;
+  grid-auto-flow: column;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(var(--drv-sat-rows, 1), auto);
   gap: 8px;
+}
+
+.drv-sat-select-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.drv-sat-select-hint,
+.drv-sat-select-count {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .drv-sat-cell {
@@ -3315,6 +3332,13 @@ body.app-ready .splash {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface);
+  cursor: pointer;
+}
+
+.drv-sat-cell.is-selected {
+  border-color: var(--brand);
+  background: #2a1718;
+  box-shadow: 0 0 0 2px rgba(216, 40, 44, 0.35);
 }
 
 .drv-sat-cell-move {

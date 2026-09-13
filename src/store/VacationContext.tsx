@@ -336,11 +336,6 @@ export function VacationProvider({ children }: { children: ReactNode }) {
       seenRemoteEntryIds: seenEntriesRef.current,
     });
 
-    if (result.toDeleteRemoteEntries.length) {
-      await cloudDeleteEntries(result.toDeleteRemoteEntries);
-    }
-    if (epoch !== epochRef.current) return;
-
     if (
       (result.toUploadWeeks.length || result.toUploadEntries.length) &&
       !uploadingRef.current
@@ -359,7 +354,7 @@ export function VacationProvider({ children }: { children: ReactNode }) {
     seenWeeksRef.current = new Set(result.seenRemoteWeekOfs);
     seenEntriesRef.current = new Set(result.seenRemoteEntryIds);
     persistLocal(result.next);
-  }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, pullRemote]);
+  }, [cloud, cloudUpsert, persistLocal, pullRemote]);
 
   const refresh = useCallback(() => {
     const run = refreshTailRef.current.then(refreshInner, refreshInner);

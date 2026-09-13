@@ -322,10 +322,10 @@ describe("cloud merge", () => {
     });
     expect(result.next.entries[greg.id]).toBeUndefined();
     expect(result.toUploadEntries.some((e) => e.id === greg.id)).toBe(false);
-    expect(result.deletedEntryIds).toContain(greg.id);
+    expect(result.toDeleteRemoteEntries).toEqual([]);
   });
 
-  it("uploads a never-seen local add and pushes a newer local edit", () => {
+  it("does not re-push never-seen local leftovers when remote already has vacation", () => {
     const remote = seeded2026();
     let local = addVacationEntry(remote, "2026-04-05", "New Driver", {
       id: "new-1",
@@ -342,14 +342,13 @@ describe("cloud merge", () => {
       seenRemoteWeekOfs: Object.keys(remote.weeks),
       seenRemoteEntryIds: Object.keys(remote.entries),
     });
-    expect(result.toUploadEntries.some((e) => e.id === "new-1")).toBe(true);
-    expect(result.toUploadEntries.some((e) => e.id === greg.id && e.status === "paid")).toBe(
-      true,
-    );
-    expect(result.next.entries["new-1"]?.name).toBe("New Driver");
+    expect(result.toUploadEntries).toEqual([]);
+    expect(result.toUploadWeeks).toEqual([]);
+    expect(result.next.entries["new-1"]).toBeUndefined();
+    expect(result.next.entries[greg.id]?.status).toBe(remote.entries[greg.id]?.status);
   });
 
-  it("deletes a tombstoned row still present on remote", () => {
+  it("stale tombstones never mass-delete remote vacation rows", () => {
     const remote = seeded2026();
     const greg = entriesForWeek(remote, "2026-01-04")[0];
     const local = removeVacationEntry(remote, greg.id).store;
@@ -361,8 +360,9 @@ describe("cloud merge", () => {
       seenRemoteWeekOfs: Object.keys(remote.weeks),
       seenRemoteEntryIds: Object.keys(remote.entries),
     });
-    expect(result.toDeleteRemoteEntries).toContain(greg.id);
-    expect(result.next.entries[greg.id]).toBeUndefined();
+    expect(result.toDeleteRemoteEntries).toEqual([]);
+    expect(result.toDeleteRemoteWeeks).toEqual([]);
+    expect(result.next.entries[greg.id]).toEqual(remote.entries[greg.id]);
   });
 
   it("empty local must not delete remote weeks", () => {
@@ -377,7 +377,7 @@ describe("cloud merge", () => {
     expect(weeksForYear(result.next, 2026).length).toBe(53);
   });
 
-  it("stale week tombstones hide locally but never delete remote weeks", () => {
+  it("stale week tombstones do not hide or delete remote weeks", () => {
     const remote = seeded2026();
     const weekKeys = Object.keys(remote.weeks);
     const result = reconcileVacationCloud({
@@ -389,7 +389,7 @@ describe("cloud merge", () => {
       seenRemoteEntryIds: Object.keys(remote.entries),
     });
     expect(result.toDeleteRemoteWeeks).toEqual([]);
-    expect(weeksForYear(result.next, 2026).length).toBe(0);
+    expect(weeksForYear(result.next, 2026).length).toBe(53);
   });
 
   it("does not tombstone weeks when remote weeks are empty but entries remain", () => {
@@ -520,5 +520,45 @@ describe("vacation cloud delete posture", () => {
     expect(src).not.toMatch(/\.from\(["']vacation_weeks["']\)\s*\.delete\(\)\s*\.in\(["']week_of["']\)/);
     expect(src).not.toContain("cloudDeleteWeeks");
     expect(src).not.toContain("toDeleteRemoteWeeks");
+    expect(src).not.toContain("toDeleteRemoteEntries");
+    expect(src).toContain("cloudDeleteEntries");
+    expect(src).toContain("if (cloud) await cloudDeleteEntries([id])");
+  });
+
+  it("cloud vacation replaces stale local and never re-pushes an empty set", () => {
+    const remote = seeded2026();
+    const local = addVacationEntry(emptyVacationStore(), "2026-01-04", "Stale Only", {
+      id: "stale-1",
+      at: LATER,
+    }).store;
+    const result = reconcileVacationCloud({
+      local,
+      remote,
+      deletedWeekOfs: [],
+      deletedEntryIds: [],
+    });
+    expect(result.next.entries["stale-1"]).toBeUndefined();
+    expect(entriesForWeek(result.next, "2026-01-04")[0]?.name).toBe("Greg Cellarius");
+    expect(result.toUploadEntries).toEqual([]);
+    expect(result.toUploadWeeks).toEqual([]);
+    expect(result.toDeleteRemoteEntries).toEqual([]);
+    expect(result.toDeleteRemoteWeeks).toEqual([]);
+  });
+
+  it("does not refill an empty cloud after a prior successful pull", () => {
+    const local = seeded2026();
+    const result = reconcileVacationCloud({
+      local,
+      remote: emptyVacationStore(),
+      deletedWeekOfs: [],
+      deletedEntryIds: [],
+      seenRemoteWeekOfs: Object.keys(local.weeks),
+      seenRemoteEntryIds: Object.keys(local.entries),
+    });
+    expect(result.toUploadWeeks).toEqual([]);
+    expect(result.toUploadEntries).toEqual([]);
+    expect(result.toDeleteRemoteWeeks).toEqual([]);
+    expect(result.toDeleteRemoteEntries).toEqual([]);
+    expect(weeksForYear(result.next, 2026).length).toBe(53);
   });
 });
