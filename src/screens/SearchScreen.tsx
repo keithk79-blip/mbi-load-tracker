@@ -4,6 +4,8 @@ import { DayPicker } from "../components/DayPicker";
 import { LoadRow } from "../components/LoadRow";
 import { TruckEntry } from "../components/TruckEntry";
 import { chicagoToday, formatShortDate } from "../lib/chicagoDate";
+import { fullRosterDriversForTruck } from "../lib/driverRoster";
+import { useDriverRoster } from "../store/DriverRosterContext";
 import { useLoads } from "../store/LoadsContext";
 
 type SearchScreenProps = {
@@ -19,6 +21,7 @@ export function SearchScreen({
 }: SearchScreenProps) {
   const today = chicagoToday();
   const { loadsOn } = useLoads();
+  const { store: rosterStore } = useDriverRoster();
   const [digits, setDigits] = useState("");
   const [truck, setTruck] = useState<string | null>(null);
   const [date, setDate] = useState(today);
@@ -28,6 +31,10 @@ export function SearchScreen({
     if (!truck) return [];
     return loadsOn(date).filter((load) => load.truck === truck);
   }, [date, loadsOn, truck]);
+  const rosterDrivers = useMemo(
+    () => (truck ? fullRosterDriversForTruck(rosterStore, truck) : []),
+    [rosterStore, truck],
+  );
 
   const find = () => {
     if (!digits) return;
@@ -73,10 +80,28 @@ export function SearchScreen({
         <>
           <section className="truck-summary">
             <div className="truck-summary-badge">TRUCK {truck}</div>
-            <p className="truck-summary-meta">
-              {loads.length} {loads.length === 1 ? "load" : "loads"} ·{" "}
-              {formatShortDate(date)}
-            </p>
+            <div className="truck-summary-copy">
+              <p className="truck-summary-meta">
+                {loads.length} {loads.length === 1 ? "load" : "loads"} ·{" "}
+                {formatShortDate(date)}
+              </p>
+              {rosterDrivers.length ? (
+                <p className="truck-roster-driver">
+                  Full Roster ·{" "}
+                  {rosterDrivers
+                    .map((entry) =>
+                      entry.truckNumber
+                        ? `${entry.name} (emp #${entry.truckNumber})`
+                        : entry.name,
+                    )
+                    .join(" · ")}
+                </p>
+              ) : (
+                <p className="truck-roster-driver muted">
+                  No Full Roster driver assigned to this truck
+                </p>
+              )}
+            </div>
           </section>
 
           <DayPicker date={date} onChange={setDate} />

@@ -69,6 +69,12 @@ export function weekStartingMonday(iso: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
 }
 
+/** Sunday through Saturday, matching the Vacation week. */
+export function weekStartingSunday(iso: string): string[] {
+  const sunday = addDays(iso, -weekdayOfISO(iso));
+  return Array.from({ length: 7 }, (_, i) => addDays(sunday, i));
+}
+
 export function formatHeaderDate(iso: string): string {
   const { m, d } = parseISODate(iso);
   const wd = WEEKDAY_MED[weekdayOfISO(iso)];

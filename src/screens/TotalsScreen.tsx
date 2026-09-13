@@ -14,7 +14,7 @@ import {
   chicagoToday,
   formatHeaderDate,
   formatShortDate,
-  weekStartingMonday,
+  weekStartingSunday,
 } from "../lib/chicagoDate";
 import {
   boardForDate,
@@ -88,7 +88,7 @@ export function TotalsScreen({
   const dayLoads = loadsOn(date);
   const countByDate = useMemo(() => {
     const map = new Map<string, number>();
-    for (const row of dailyCounts(loads, weekStartingMonday(date))) {
+    for (const row of dailyCounts(loads, weekStartingSunday(date))) {
       map.set(row.date, displayLoadCount(row.count, totalsOn(row.date)));
     }
     return map;

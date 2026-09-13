@@ -9,6 +9,7 @@
 
 import { isValidISODate } from "./chicagoDate";
 import { isFullDayOff } from "./driverAvailability";
+import { sanitizeTruck } from "./truck";
 
 export const DRIVER_ROSTER_STORE_KEY = "chitrader.load-tracker.driver-roster.v1";
 export const DRIVER_ROSTER_UI_KEY = "chitrader.load-tracker.driver-roster-ui.v1";
@@ -52,7 +53,13 @@ export type DriverRosterEntry = {
   id: string;
   kind: DriverRosterKind;
   yard: DriverRosterYard;
+  /** Employee number (EMP #). Column name stays truckNumber / truck_number. */
   truckNumber: string | null;
+  /**
+   * Full Roster only: unit / truck the driver is using. Separate from EMP #.
+   * Sat rows leave this null.
+   */
+  assignedTruck: string | null;
   name: string;
   /** Full Roster only: unavailability abbreviation, or null if working. */
   status: string | null;
@@ -118,6 +125,7 @@ export type DriverRosterInput = {
   kind: DriverRosterKind;
   yard: DriverRosterYard;
   truckNumber?: string | null;
+  assignedTruck?: string | null;
   name: string;
   status?: string | null;
   sortOrder?: number;
@@ -193,6 +201,13 @@ export function cleanTruckNumber(raw: unknown): string | null {
   if (!trimmed) return null;
   if (!/^\d{1,8}$/.test(trimmed)) return null;
   return trimmed.replace(/^0+(?=\d)/, "") || "0";
+}
+
+/** Unit / truck assignment (digits or broker code). Not the employee number. */
+export function cleanAssignedTruck(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const cleaned = sanitizeTruck(raw);
+  return cleaned || null;
 }
 
 export function cleanDriverName(raw: unknown): string {
@@ -359,6 +374,10 @@ export function cleanDriverRosterEntry(raw: unknown): DriverRosterEntry | null {
     kind,
     yard,
     truckNumber: cleanTruckNumber(rec.truckNumber),
+    assignedTruck:
+      kind === "full"
+        ? cleanAssignedTruck(rec.assignedTruck ?? rec.assigned_truck)
+        : null,
     name,
     status: kind === "full" ? cleanDriverStatus(rec.status) : null,
     sortOrder,
@@ -747,6 +766,7 @@ export function addRosterEntry(
     kind,
     yard,
     truckNumber: cleanTruckNumber(input.truckNumber ?? null),
+    assignedTruck: kind === "full" ? cleanAssignedTruck(input.assignedTruck ?? null) : null,
     name,
     status: kind === "full" ? cleanDriverStatus(input.status ?? null) : null,
     sortOrder:
@@ -763,7 +783,9 @@ export function addRosterEntry(
 export function updateRosterEntry(
   store: DriverRosterStore,
   id: string,
-  patch: Partial<Pick<DriverRosterEntry, "truckNumber" | "name" | "status" | "sortOrder" | "forDate">>,
+  patch: Partial<
+    Pick<DriverRosterEntry, "truckNumber" | "assignedTruck" | "name" | "status" | "sortOrder" | "forDate">
+  >,
   at?: string,
 ): DriverRosterStore {
   const prev = store.entries[id];
@@ -774,6 +796,12 @@ export function updateRosterEntry(
     ...prev,
     truckNumber:
       patch.truckNumber !== undefined ? cleanTruckNumber(patch.truckNumber) : prev.truckNumber,
+    assignedTruck:
+      prev.kind === "full"
+        ? patch.assignedTruck !== undefined
+          ? cleanAssignedTruck(patch.assignedTruck)
+          : prev.assignedTruck
+        : null,
     name,
     status:
       prev.kind === "full"
@@ -852,6 +880,7 @@ export type ImportedRosterRow = {
   kind: DriverRosterKind;
   yard: DriverRosterYard;
   truckNumber: string | null;
+  assignedTruck?: string | null;
   name: string;
   status: string | null;
   forDate: string | null;
@@ -894,6 +923,7 @@ export function mergeImportedRows(
         kind: row.kind,
         yard: row.yard,
         truckNumber: row.truckNumber,
+        assignedTruck: row.assignedTruck ?? null,
         name: row.name,
         status: row.status,
         sortOrder: index,
@@ -937,6 +967,32 @@ export function satRosterColumnCount(viewportWidth: number): number {
 export function satRosterRowCount(entryCount: number, columnCount: number): number {
   if (entryCount <= 0) return 1;
   return Math.max(1, Math.ceil(entryCount / Math.max(1, columnCount)));
+}
+
+/** Full Roster uses the same multi-column density as Sat Roster. */
+export const fullRosterColumnCount = satRosterColumnCount;
+export const fullRosterRowCount = satRosterRowCount;
+
+/**
+ * Full Roster drivers assigned to this unit / truck (not EMP #).
+ * Day/truck search uses this to show who is using the truck.
+ */
+export function fullRosterDriversForTruck(
+  store: DriverRosterStore,
+  truck: string,
+): DriverRosterEntry[] {
+  const needle = cleanAssignedTruck(truck);
+  if (!needle) return [];
+  return Object.values(store.entries)
+    .filter(
+      (entry) =>
+        entry.kind === "full" && cleanAssignedTruck(entry.assignedTruck) === needle,
+    )
+    .sort((a, b) => {
+      const yard = a.yard.localeCompare(b.yard);
+      if (yard !== 0) return yard;
+      return a.name.localeCompare(b.name, "en", { sensitivity: "base" });
+    });
 }
 
 export type DriverRosterCloudReconcileInput = {

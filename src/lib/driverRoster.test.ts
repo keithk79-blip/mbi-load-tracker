@@ -10,8 +10,11 @@ import {
   fullRosterHiredNames,
   formatRosterCopyList,
   formatRosterLine,
+  fullRosterDriversForTruck,
   fullRosterTally,
   matchDriverNameSuggestions,
+  cleanAssignedTruck,
+  cleanTruckNumber,
   importEntryId,
   rosterStatusLabel,
   rosterStatusRemovesFromAvailable,
@@ -27,6 +30,7 @@ import {
   satRosterRowCount,
   seedEmptySatRostersFromFull,
   setSatDateForYard,
+  updateRosterEntry,
   yardFromSheetTab,
 } from "./driverRoster";
 import {
@@ -674,5 +678,66 @@ describe("driver roster cloud delete posture", () => {
     expect(
       entriesForRoster(thinner.store, "full", "burnham").map((row) => row.name),
     ).toEqual(["Dave Vanderbilt", "Dan Kasprzycki"]);
+  });
+});
+
+describe("assigned truck (not EMP #)", () => {
+  it("cleans unit numbers and broker codes without touching emp #", () => {
+    expect(cleanAssignedTruck(" 418 ")).toBe("418");
+    expect(cleanAssignedTruck("vz")).toBe("VZ");
+    expect(cleanAssignedTruck("")).toBeNull();
+    expect(cleanTruckNumber("185")).toBe("185");
+    expect(cleanTruckNumber("VZ")).toBeNull();
+  });
+
+  it("looks up Full Roster drivers by assigned truck, not emp #", () => {
+    let store = emptyDriverRosterStore();
+    store = addRosterEntry(store, {
+      kind: "full",
+      yard: "rockford",
+      truckNumber: "185",
+      assignedTruck: "418",
+      name: "Christopher Oleson",
+    }).store;
+    store = addRosterEntry(store, {
+      kind: "full",
+      yard: "burnham",
+      truckNumber: "418",
+      assignedTruck: null,
+      name: "Emp Looks Like Truck",
+    }).store;
+    store = addRosterEntry(store, {
+      kind: "sat",
+      yard: "rockford",
+      truckNumber: "185",
+      assignedTruck: "418",
+      name: "Christopher Oleson",
+    }).store;
+    const hits = fullRosterDriversForTruck(store, "418");
+    expect(hits.map((row) => row.name)).toEqual(["Christopher Oleson"]);
+    expect(hits[0].truckNumber).toBe("185");
+    expect(fullRosterDriversForTruck(store, "185")).toEqual([]);
+    const search = readFileSync(new URL("../screens/SearchScreen.tsx", import.meta.url), "utf8");
+    expect(search).toContain("fullRosterDriversForTruck");
+    expect(search).toContain("Full Roster");
+  });
+
+  it("SQL keeps emp # on truck_number and adds assigned_truck", () => {
+    const sql = readFileSync(new URL("../../Load-Tracker-driver-roster.sql", import.meta.url), "utf8");
+    expect(sql).toContain("assigned_truck");
+    expect(sql).toContain("Not the unit / truck");
+    expect(sql).toContain("truck_number");
+  });
+
+  it("persists assigned truck on update without rewriting emp #", () => {
+    const added = addRosterEntry(emptyDriverRosterStore(), {
+      kind: "full",
+      yard: "rockford",
+      truckNumber: "185",
+      name: "Christopher Oleson",
+    });
+    const next = updateRosterEntry(added.store, added.entry!.id, { assignedTruck: "55" });
+    expect(next.entries[added.entry!.id].truckNumber).toBe("185");
+    expect(next.entries[added.entry!.id].assignedTruck).toBe("55");
   });
 });

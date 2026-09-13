@@ -4,7 +4,7 @@ import {
   chicagoToday,
   dayNumber,
   formatShortDate,
-  weekStartingMonday,
+  weekStartingSunday,
   weekdayLetter,
 } from "../lib/chicagoDate";
 
@@ -26,7 +26,7 @@ export function DayPicker({
   driverCountFor,
 }: DayPickerProps) {
   const today = chicagoToday();
-  const week = weekStartingMonday(date);
+  const week = weekStartingSunday(date);
   const weekLabel = `${formatShortDate(week[0])} – ${formatShortDate(week[6])}`;
 
   return (

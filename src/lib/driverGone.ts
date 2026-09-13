@@ -7,7 +7,7 @@
  * Contact columns from the sheet are discarded and are never persisted.
  */
 
-import { isValidISODate } from "./chicagoDate";
+import { isValidISODate, yearOfISO } from "./chicagoDate";
 import {
   cleanDriverName,
   cleanTruckNumber,
@@ -234,6 +234,37 @@ export function goneStoreIsEmpty(store: DriverGoneStore): boolean {
 
 export function goneEntryCount(store: DriverGoneStore): number {
   return Object.keys(store.entries).length;
+}
+
+export function goneYearLabel(year: number): string {
+  return `Gone ${year}`;
+}
+
+/** Termination-year bucket. Undated rows land in `fallbackYear` (usually this Chicago year). */
+export function goneYearOf(entry: Pick<DriverGoneEntry, "terminationDate">, fallbackYear: number): number {
+  const term = entry.terminationDate;
+  if (term && isValidISODate(term)) return yearOfISO(term);
+  return fallbackYear;
+}
+
+/**
+ * Years Keith can open on the Driver tab. Always includes the current Chicago
+ * year so a new year creates Gone YYYY even before anyone is terminated.
+ */
+export function goneArchiveYears(store: DriverGoneStore, currentYear: number): number[] {
+  const years = new Set<number>([currentYear]);
+  for (const entry of Object.values(store.entries)) {
+    years.add(goneYearOf(entry, currentYear));
+  }
+  return [...years].sort((a, b) => b - a);
+}
+
+export function entriesForGoneYear(
+  store: DriverGoneStore,
+  year: number,
+  fallbackYear: number,
+): DriverGoneEntry[] {
+  return entriesForGone(store).filter((entry) => goneYearOf(entry, fallbackYear) === year);
 }
 
 export function entriesForGone(store: DriverGoneStore): DriverGoneEntry[] {

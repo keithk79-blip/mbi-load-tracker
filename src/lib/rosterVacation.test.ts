@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   addRosterEntry,
@@ -13,6 +14,7 @@ import {
   rosterNameKey,
   rosterNamesMatch,
   vacationNamesOnDate,
+  vacationNamesOnDateAllYards,
   vacationYardForRosterYard,
   vacationYardsForRosterYard,
 } from "./rosterVacation";
@@ -103,6 +105,21 @@ describe("vacation → Full Roster auto-VAC", () => {
       "Greg Cellarius",
     ]);
     expect(vacationNamesOnDate(vacation, "2026-01-12", "rockford")).toEqual(["Paul Finch"]);
+    expect(vacationNamesOnDateAllYards(vacation, midweek)).toEqual([
+      "Greg Cellarius",
+      "Ryan Lollis",
+    ]);
+  });
+
+  it("Today Available Drivers card lists Vacation and has no Refresh pull", () => {
+    const src = readFileSync(
+      new URL("../components/DriversCard.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(src).toContain("Vacation");
+    expect(src).toContain("vacationNamesOnDateAllYards");
+    expect(src).not.toContain("Refresh");
+    expect(src).not.toContain("RefreshCw");
   });
 
   it("marks a roster row VAC without writing status", () => {

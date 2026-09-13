@@ -111,6 +111,25 @@ export function rosterNamesMatch(a: string, b: string): boolean {
   return lastNamesMatch(ta[ta.length - 1], tb[tb.length - 1]);
 }
 
+/** All Vacation-tab names for the Sunday week that contains `date` (both yards). */
+export function vacationNamesOnDateAllYards(
+  vacation: VacationStore,
+  date: string,
+): string[] {
+  const weekOf = sundayOnOrBefore(date);
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const yard of ["rockford", "chicago"] as const) {
+    for (const entry of entriesForWeek(vacation, weekOf, yard)) {
+      const key = rosterNameKey(entry.name);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      names.push(entry.name);
+    }
+  }
+  return names;
+}
+
 export function vacationNamesOnDate(
   vacation: VacationStore,
   date: string,

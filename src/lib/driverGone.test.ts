@@ -6,7 +6,11 @@ import {
   DRIVER_GONE_STORE_KEY,
   emptyDriverGoneStore,
   entriesForGone,
+  entriesForGoneYear,
+  goneArchiveYears,
   goneEntryCount,
+  goneYearLabel,
+  goneYearOf,
   mergeImportedGoneRows,
   parseGoneDate,
   reconcileDriverGoneCloud,
@@ -233,6 +237,40 @@ describe("Full Roster × dialog paths", () => {
     expect(src).not.toContain("it does not keep reading the workbook");
     expect(src).not.toContain("Starts as this yard");
     expect(src).not.toContain("aria-label=\"Roster help\"");
+    expect(src).toContain("goneYearLabel");
+    expect(src).not.toContain("Import empty lists");
+    expect(src).toContain("drv-full-grid");
+    expect(src).toContain("Truck #");
+  });
+});
+
+describe("Gone YYYY year buckets", () => {
+  it("always includes the current year and groups by termination year", () => {
+    let store = emptyDriverGoneStore();
+    store = addGoneEntry(store, {
+      name: "Left In 2026",
+      terminationDate: "2026-03-01",
+    }).store;
+    store = addGoneEntry(store, {
+      name: "Left In 2025",
+      terminationDate: "2025-12-20",
+    }).store;
+    store = addGoneEntry(store, {
+      name: "No Date Yet",
+    }).store;
+    expect(goneYearLabel(2026)).toBe("Gone 2026");
+    expect(goneArchiveYears(store, 2026)).toEqual([2026, 2025]);
+    expect(goneArchiveYears(store, 2027)).toEqual([2027, 2026, 2025]);
+    expect(goneYearOf({ terminationDate: "2026-09-12" }, 2027)).toBe(2026);
+    expect(goneYearOf({ terminationDate: null }, 2027)).toBe(2027);
+    expect(entriesForGoneYear(store, 2026, 2026).map((row) => row.name)).toEqual([
+      "Left In 2026",
+      "No Date Yet",
+    ]);
+    expect(entriesForGoneYear(store, 2025, 2026).map((row) => row.name)).toEqual([
+      "Left In 2025",
+    ]);
+    expect(entriesForGoneYear(store, 2027, 2026)).toEqual([]);
   });
 });
 

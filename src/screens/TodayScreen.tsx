@@ -9,8 +9,9 @@ import {
 import {
   chicagoToday,
   formatHeaderDate,
-  weekStartingMonday,
+  weekStartingSunday,
 } from "../lib/chicagoDate";
+import { sortLoadsNewestFirst } from "../lib/sortLoads";
 import { daySummaryCards } from "../lib/totals";
 import { useDailyEod } from "../store/DailyEodContext";
 import { useDrivers } from "../store/DriversContext";
@@ -44,7 +45,7 @@ export function TodayScreen({
   const { loads, loadsOn } = useLoads();
   const { totalsOn } = useDailyEod();
   const { availabilityOn } = useDrivers();
-  const dayLoads = loadsOn(date);
+  const dayLoads = useMemo(() => sortLoadsNewestFirst(loadsOn(date)), [date, loadsOn]);
   const snapshot = totalsOn(date);
   const viewingToday = date === today;
   const [loadsOpen, setLoadsOpen] = useState(false);
@@ -55,7 +56,7 @@ export function TodayScreen({
 
   const countByDate = useMemo(() => {
     const map = new Map<string, number>();
-    for (const row of dailyCounts(loads, weekStartingMonday(date))) {
+    for (const row of dailyCounts(loads, weekStartingSunday(date))) {
       map.set(row.date, displayLoadCount(row.count, totalsOn(row.date)));
     }
     return map;

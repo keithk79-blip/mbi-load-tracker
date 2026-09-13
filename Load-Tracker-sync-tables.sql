@@ -455,8 +455,19 @@ create index if not exists driver_roster_entries_sat_date_idx
   on public.driver_roster_entries (for_date)
   where kind = 'sat' and for_date is not null;
 
+alter table public.driver_roster_entries
+  add column if not exists assigned_truck text;
+
 comment on table public.driver_roster_entries is
   'Driver tab Full (hired) + Sat (planning) rosters per Chicago-area yard. Sync is upsert-only. Remote DELETE is explicit UI × only — never import, Vacation VAC, or a thin/empty pull. status = optional Full Roster unavailability (oot/fmla/vac/wc); later tally hired − full-day status − day offs.';
+comment on column public.driver_roster_entries.truck_number is
+  'Employee number as text (leading zeros stripped). Column name stays truck_number. Nullable. Not the unit / truck.';
+comment on column public.driver_roster_entries.assigned_truck is
+  'Full Roster unit / truck assignment (digits or broker code). Separate from EMP #. Sat rows stay null.';
+
+create index if not exists driver_roster_entries_assigned_truck_idx
+  on public.driver_roster_entries (assigned_truck)
+  where assigned_truck is not null;
 
 alter table public.driver_roster_entries enable row level security;
 

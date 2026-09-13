@@ -51,8 +51,17 @@ comment on column public.driver_roster_entries.kind is
   'full = hired master roster at the yard; sat = Saturday planning subset.';
 comment on column public.driver_roster_entries.yard is
   'burnham | rockford | pontiac | arc | zion. Sheet “ARC Drivers” / Sat-Arc map to arc.';
+alter table public.driver_roster_entries
+  add column if not exists assigned_truck text;
+
 comment on column public.driver_roster_entries.truck_number is
-  'Employee number as text (leading zeros stripped). Column name stays truck_number. Nullable.';
+  'Employee number as text (leading zeros stripped). Column name stays truck_number. Nullable. Not the unit / truck.';
+comment on column public.driver_roster_entries.assigned_truck is
+  'Full Roster unit / truck assignment (digits or broker code). Separate from EMP #. Sat rows stay null.';
+
+create index if not exists driver_roster_entries_assigned_truck_idx
+  on public.driver_roster_entries (assigned_truck)
+  where assigned_truck is not null;
 comment on column public.driver_roster_entries.status is
   'Full Roster unavailability abbreviation (oot, fmla, vac, wc, …). Null = working. Driver stays on the hired list. Later tally: hired − full-day status − day offs.';
 comment on column public.driver_roster_entries.for_date is
