@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Load Tracker",
+  "productName": "Keith's Load Tracker",
   "version": "1.0.0",
   "identifier": "com.chitrader.loadtracker",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Load Tracker",
+        "title": "Keith's Load Tracker",
         "width": 1280,
         "height": 840,
         "minWidth": 960,
@@ -36,9 +36,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "publisher": "Mr. Bult's, Inc.",
+    "publisher": "Keith Lawson",
     "shortDescription": "Log and review transfer-station loads",
-    "longDescription": "MBI Load Tracker — truck, pickup, commodity, and destination. Not dispatch software.",
+    "longDescription": "Keith's Load Tracker — truck, pickup, commodity, and destination. Not dispatch software.",
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"

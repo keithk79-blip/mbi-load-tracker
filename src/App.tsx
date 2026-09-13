@@ -107,7 +107,7 @@ function Shell() {
           <div className="desk-topbar-brand">
             <BrandMark size="lg" />
             <div>
-              <p className="eyebrow">Mr. Bult&apos;s, Inc.</p>
+              <p className="eyebrow">Keith&apos;s Load Tracker</p>
               <h1 className="desk-brand">Load Tracker</h1>
             </div>
           </div>

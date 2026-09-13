@@ -1,8 +1,8 @@
-# Load Tracker
+# Keith's Load Tracker
 
-Mobile-first load log for **Mr. Bult's, Inc. (MBI)** / CHItrader dispatch review, plus a **Windows desktop** shell via Tauri 2. This is not dispatch software — it only records and reviews loads.
+Mobile-first load log for **Keith's Load Tracker** / CHItrader dispatch review, plus a **Windows desktop** shell via Tauri 2. This is not dispatch software — it only records and reviews loads.
 
-The official MBI logo (black serif **MBI**, red road ribbon, *Mr. Bult's, inc.*) is stored intact at `public/brand/mbi-logo.png` and `src/assets/mbi-logo.png` (source: `public/brand/mbi-logo-source.png`). It is not recolored or redrawn. Headers show it on a white plate; the same file drives the splash, favicon, PWA icons, and Tauri window icon. UI accents use sampled **MBI red** `#d8282c` on charcoal.
+The brand mark (black **K**/**T**, lime truck, *Keith's Loadtracker*) is stored intact at `public/brand/klt-logo.png` and `src/assets/klt-logo.png` (source: `public/brand/klt-logo-source.png`). Headers, splash, favicon, and PWA icons use that static PNG — not a looping MP4/GIF. UI accents stay `#d8282c` on charcoal.
 
 Each load has exactly four fields:
 
@@ -56,7 +56,7 @@ npm run tauri dev
 
 Equivalent: `npm run tauri:dev` or `npm run tauri -- dev`.
 
-This compiles the Rust shell and starts Vite on port **4521**. The window title is **Load Tracker**. Do not run a second `npm run dev` on the same port at the same time.
+This compiles the Rust shell and starts Vite on port **4521**. The window title is **Keith's Load Tracker**. Do not run a second `npm run dev` on the same port at the same time.
 
 ### Build a Windows installer / .exe
 
@@ -73,9 +73,9 @@ After a successful build you should have:
 
 | Artifact | Typical path |
 | --- | --- |
-| Portable exe | `src-tauri/target/release/Load Tracker.exe` |
-| NSIS installer | `src-tauri/target/release/bundle/nsis/Load Tracker_1.0.0_x64-setup.exe` |
-| MSI | `src-tauri/target/release/bundle/msi/Load Tracker_1.0.0_x64_en-US.msi` |
+| Portable exe | `src-tauri/target/release/Keith's Load Tracker.exe` |
+| NSIS installer | `src-tauri/target/release/bundle/nsis/Keith's Load Tracker_1.0.0_x64-setup.exe` |
+| MSI | `src-tauri/target/release/bundle/msi/Keith's Load Tracker_1.0.0_x64_en-US.msi` |
 
 This Linux/cloud environment scaffolds the Tauri project and can compile the frontend, but it does **not** produce a Windows installer (no MSVC/WiX/NSIS Windows toolchain here). After merging native-shell changes (including the SigAlert reqwest command used by the Chicago traffic card), run **`npm run tauri:build` on a Windows machine** — a cloud VM typically cannot complete the full Tauri NSIS/MSI bundle.
 
@@ -264,8 +264,8 @@ When pickup changes, invalid commodity and destination values are cleared and sh
 Vite + React + TypeScript UI. Tauri 2 native shell in `src-tauri/`. Optional shared store: Supabase Postgres + Realtime (`supabase/migrations/`). Station master data is embedded in `src/data/stations.ts`. Brand assets: `public/brand/`. To regenerate desktop icons after replacing the logo:
 
 ```bash
-node scripts/process-mbi-brand.mjs
-npx tauri icon public/brand/mbi-icon-1024.png --output src-tauri/icons --ios-color "#ffffff"
+node scripts/process-klt-brand.mjs
+npx tauri icon public/brand/klt-icon-1024.png --output src-tauri/icons --ios-color "#ffffff"
 ```
 
-Replace `public/brand/mbi-logo-source.png` with a new official PNG first if the mark changes. The script copies it intact — it does not recolor the ribbon.
+Replace `public/brand/klt-logo-source.png` with a new static PNG first if the mark changes. The script trims whitespace for the header/splash copies and pads a square icon — it does not animate the mark.
