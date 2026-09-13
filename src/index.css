@@ -3088,6 +3088,18 @@ body.app-ready .splash {
   text-transform: uppercase;
 }
 
+.driver-name-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.drv-add-form .driver-name-field {
+  min-width: 180px;
+  flex: 1;
+}
+
 .vac-suggest {
   display: flex;
   flex-wrap: wrap;

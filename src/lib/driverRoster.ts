@@ -483,6 +483,40 @@ export function entriesForRoster(
     });
 }
 
+/**
+ * Unique hired Full Roster names across every yard (Burnham / Rockford /
+ * Pontiac / Arc / Zion). Sat-only rows are ignored. This is the in-app
+ * system of record for driver-name typeahead — not a live sheet pull.
+ */
+export function fullRosterHiredNames(store: DriverRosterStore): string[] {
+  const map = new Map<string, string>();
+  for (const entry of Object.values(store.entries)) {
+    if (entry.kind !== "full") continue;
+    const name = cleanDriverName(entry.name);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (!map.has(key)) map.set(key, name);
+  }
+  return [...map.values()].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+}
+
+/** Vacation-style typeahead: substring match, first `limit` hits. */
+export function matchDriverNameSuggestions(
+  names: readonly string[],
+  query: string,
+  limit = 8,
+): string[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+  const out: string[] = [];
+  for (const name of names) {
+    if (!name.toLowerCase().includes(needle)) continue;
+    out.push(name);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 export function satDateForYard(store: DriverRosterStore, yard: DriverRosterYard): string | null {
   for (const entry of entriesForRoster(store, "sat", yard)) {
     if (entry.forDate) return entry.forDate;

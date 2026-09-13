@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandMark } from "../components/BrandMark";
+import { DriverNameInput } from "../components/DriverNameInput";
 import { ConfirmOverlay } from "../components/ConfirmOverlay";
 import { addDays, chicagoToday, formatMonthDayYear, isValidISODate, weekdayOfISO } from "../lib/chicagoDate";
 import { entriesForGone, goneEntryCount, type DriverGoneEntry } from "../lib/driverGone";
@@ -109,13 +110,12 @@ function AddRosterForm({
         autoComplete="off"
         aria-label="Employee number"
       />
-      <input
-        ref={nameRef}
+      <DriverNameInput
+        inputRef={nameRef}
         className="text-input drv-add-name"
         value={name}
-        onChange={(event) => setName(event.target.value)}
+        onChange={setName}
         placeholder="Driver name"
-        autoComplete="off"
         aria-label="Driver name"
       />
       {kind === "full" ? (
@@ -199,13 +199,12 @@ function AddGoneForm({
         autoComplete="off"
         aria-label="Employee number"
       />
-      <input
-        ref={nameRef}
+      <DriverNameInput
+        inputRef={nameRef}
         className="text-input drv-add-name"
         value={name}
-        onChange={(event) => setName(event.target.value)}
+        onChange={setName}
         placeholder="Driver name"
-        autoComplete="off"
         aria-label="Driver name"
       />
       <label className="drv-gone-field">
