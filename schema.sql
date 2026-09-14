@@ -1,8 +1,15 @@
-CREATE TABLE IF NOT EXISTS kv_store (
-  key TEXT PRIMARY KEY,
-  value TEXT NOT NULL,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  device_id TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_kv_updated ON kv_store(updated_at);
+{
+  "observability": {
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "invocation_logs": true,
+      "persist": true
+    },
+    "traces": {
+      "enabled": false,
+      "head_sampling_rate": 1,
+      "persist": true
+    }
+  }
+}
