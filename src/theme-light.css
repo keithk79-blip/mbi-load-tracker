@@ -38,6 +38,12 @@ body {
   color: #111111;
 }
 
+input,
+textarea,
+select {
+  color-scheme: light;
+}
+
 .tally-card,
 .load-row,
 .empty,
@@ -271,6 +277,62 @@ body {
 .vac-pill-paid {
   background: #c8f0d8 !important;
   border-color: #3d9a63 !important;
+  color: #14532d !important;
+}
+
+.vac-add-form,
+.vac-week-edit {
+  background: #ffffff !important;
+  border-color: #d0d3d9 !important;
+  color: #111111 !important;
+}
+
+.vac-add-form input,
+.vac-add-name,
+.vac-add-note,
+.vac-cap-input,
+.vac-add-form select {
+  background: #ffffff !important;
+  color: #111111 !important;
+  border-color: #c8ccd3 !important;
+  color-scheme: light;
+}
+
+.vac-suggest-btn {
+  background: #f3f4f6 !important;
+  color: #111111 !important;
+  border-color: #c8ccd3 !important;
+}
+
+.vac-suggest-btn.selected {
+  background: #e8eaee !important;
+}
+
+.vac-status-pending {
+  color: #1e4e8c !important;
+}
+
+.vac-status-approved {
+  color: #333333 !important;
+}
+
+.vac-status-paid {
+  color: #166534 !important;
+}
+
+.vac-status-pending.selected {
+  background: #d6e8fb !important;
+  color: #123152 !important;
+}
+
+.vac-status-approved.selected,
+.vac-status-btn.selected {
+  background: #e6e6e8 !important;
+  color: #222222 !important;
+}
+
+.vac-status-paid.selected {
+  background: #c8f0d8 !important;
   color: #14532d !important;
 }
 
