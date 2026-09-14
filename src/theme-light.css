@@ -188,6 +188,12 @@ body {
   color: #111111;
 }
 
+.drv-copy-block {
+  background: #ffffff !important;
+  color: #111111 !important;
+  border-color: #c8ccd3 !important;
+}
+
 .vac-yard-switch {
   background: #f3f4f6 !important;
   border-color: #d0d3d9 !important;
@@ -244,7 +250,6 @@ body {
   color: #7f1d1d !important;
 }
 
-/* Vacation name colors — pending / approved / paid */
 .vac-pill {
   background: #eef2f7;
   color: #111111;
