@@ -170,7 +170,6 @@ body {
   background: #f7f8fa !important;
 }
 
-/* Driver tab status dropdown */
 .drv-status-select {
   background: #ffffff !important;
   color: #111111 !important;
@@ -189,7 +188,6 @@ body {
   color: #111111;
 }
 
-/* Vacation tab */
 .vac-yard-switch {
   background: #f3f4f6 !important;
   border-color: #d0d3d9 !important;
@@ -227,7 +225,7 @@ body {
 .vac-table th,
 .vac-table td {
   color: #111111;
-  background: #ffffff;
+  background: transparent;
 }
 
 .vac-cap-chip {
@@ -246,10 +244,29 @@ body {
   color: #7f1d1d !important;
 }
 
+/* Vacation name colors — pending / approved / paid */
 .vac-pill {
-  background: #eef2f7 !important;
-  color: #111111 !important;
-  border-color: #c8ccd3 !important;
+  background: #eef2f7;
+  color: #111111;
+  border-color: #c8ccd3;
+}
+
+.vac-pill-pending {
+  background: #d6e8fb !important;
+  border-color: #5b8fc7 !important;
+  color: #123152 !important;
+}
+
+.vac-pill-approved {
+  background: #e6e6e8 !important;
+  border-color: #9a9aa0 !important;
+  color: #222222 !important;
+}
+
+.vac-pill-paid {
+  background: #c8f0d8 !important;
+  border-color: #3d9a63 !important;
+  color: #14532d !important;
 }
 
 .day-chip {
