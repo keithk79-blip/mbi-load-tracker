@@ -1,0 +1,33 @@
+/* Light theme overlay. Loaded after index.css. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --phone: #ffffff;
+  --surface: #f4f5f7;
+  --surface-2: #eceef2;
+  --line: #d0d3d9;
+  --text: #111111;
+  --muted: #444444;
+  --panel: #ffffff;
+}
+
+html,
+body,
+#root {
+  background: #ffffff;
+  color: #111111;
+}
+
+body {
+  background: #ffffff;
+}
+
+.phone,
+.tab-bar,
+.tab-bar-side,
+.desk-topbar,
+.session-bar,
+.splash,
+.modal-card {
+  background: #ffffff;
+}
