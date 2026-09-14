@@ -1,0 +1,2 @@
+# no proxy redirects
+# SPA fallback is handled by wrangler assets.not_found_handling
