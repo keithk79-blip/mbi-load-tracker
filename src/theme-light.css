@@ -14,24 +14,27 @@
 html,
 body,
 #root {
-  background: #ffffff;
-  color: #111111;
+  background: #ffffff !important;
+  color: #111111 !important;
 }
 
 body {
-  background: #ffffff;
+  background: #ffffff !important;
 }
 
+.app-shell,
+.app-shell.is-desktop,
 .phone,
+.phone-body,
+.phone-stack,
+.desk-main,
+.desk-topbar,
 .tab-bar,
 .tab-bar-side,
-.desk-topbar,
 .session-bar,
-.splash,
-.modal-card,
-.overlay-screen,
-.confirm-overlay-card {
-  background: #ffffff;
+.screen,
+.splash {
+  background: #ffffff !important;
   color: #111111;
 }
 
@@ -58,36 +61,71 @@ body {
   color: #111111;
 }
 
-.tally-card-sheet,
-.eod-stat-sheet,
-.sheet-totals-fields {
-  background: #f7f4ee;
-  border-color: #d9d0c0;
+/* Available drivers */
+.drivers-card {
+  background: #eeeeee !important;
+  border-color: #d0d3d9 !important;
+  color: #111111 !important;
 }
 
-.sheet-totals-field input,
-.text-input,
-.overlay-date-input,
-.date-pick input {
-  background: #ffffff;
-  color: #111111;
-  color-scheme: light;
-  border-color: #d0d3d9;
+.oot-label {
+  color: #8a3033 !important;
 }
 
-.sheet-totals-toggle {
-  color: #8a5a20;
+.oot-chip,
+.calloff-add-btn {
+  background: #f3f4f6 !important;
+  border-color: #c8ccd3 !important;
+  color: #111111 !important;
+}
+
+.calloff-add-form {
+  background: #f7f7f8 !important;
+  border-color: #d0d3d9 !important;
+}
+
+.calloff-name-input {
+  background: #ffffff !important;
+  color: #111111 !important;
+  border-color: #d0d3d9 !important;
+}
+
+/* Keep status chips readable on light gray */
+.calloff-chip-call-off {
+  background: #d9e8f8 !important;
+  color: #123152 !important;
+}
+
+.calloff-chip-p-day,
+.vacation-chip {
+  background: #d7f3e3 !important;
+  color: #14532d !important;
+}
+
+.calloff-chip-okd-off {
+  background: #f8ecc8 !important;
+  color: #6b4e00 !important;
+}
+
+.calloff-chip-ncns {
+  background: #f8d4d4 !important;
+  color: #7f1d1d !important;
+}
+
+.calloff-chip-late-early {
+  background: #fde4cc !important;
+  color: #7c2d12 !important;
 }
 
 /* Load Count By Hour */
 .station-calls-scroll {
-  background: #ffffff;
+  background: #ffffff !important;
   border-color: #c8ccd3;
 }
 
 .station-calls-table thead th {
-  background: #e6e8ec;
-  color: #222222;
+  background: #e6e8ec !important;
+  color: #222222 !important;
 }
 
 .station-calls-corner {
@@ -95,51 +133,52 @@ body {
   color: #111111 !important;
 }
 
-.station-calls-table tbody th {
-  background: #f3f4f6;
-  color: #111111;
+.station-calls-table tbody th,
+.station-calls-table tbody tr:nth-child(even) th {
+  background: #f3f4f6 !important;
+  color: #111111 !important;
 }
 
 .station-calls-table tbody td {
-  background: #ffffff;
-  color: #111111;
+  background: #ffffff !important;
+  color: #111111 !important;
 }
 
 .station-calls-table tbody tr:nth-child(even) td {
-  background: #f7f8fa;
+  background: #f7f8fa !important;
 }
 
 .station-call-name {
-  color: #111111;
+  color: #111111 !important;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .station-calls-table tbody th:hover,
   .station-calls-table tbody tr:nth-child(even) th:hover {
-    background: #eceff3;
+    background: #e5e7eb !important;
   }
 }
 
 /* End of day station table */
 .eod-table-wrap {
-  background: #ffffff;
+  background: #ffffff !important;
   border-color: #c8ccd3;
 }
 
 .eod-table thead th {
-  background: #e6e8ec;
-  color: #222222;
+  background: #e6e8ec !important;
+  color: #222222 !important;
 }
 
 .eod-table tbody th,
 .eod-table tbody td {
-  background: #ffffff;
-  color: #111111;
+  background: #ffffff !important;
+  color: #111111 !important;
 }
 
 .eod-table tbody tr:nth-child(even) th,
 .eod-table tbody tr:nth-child(even) td {
-  background: #f7f8fa;
+  background: #f7f8fa !important;
 }
 
 .day-chip {
