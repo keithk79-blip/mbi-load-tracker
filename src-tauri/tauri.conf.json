@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Keith's Load Tracker",
+  "productName": "Keiths Load Tracker",
   "version": "1.0.0",
   "identifier": "com.chitrader.loadtracker",
   "build": {
@@ -38,7 +38,7 @@
     ],
     "publisher": "Keith Lawson",
     "shortDescription": "Log and review transfer-station loads",
-    "longDescription": "Keith's Load Tracker — truck, pickup, commodity, and destination. Not dispatch software.",
+    "longDescription": "Keiths Load Tracker — truck, pickup, commodity, and destination. Not dispatch software.",
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
