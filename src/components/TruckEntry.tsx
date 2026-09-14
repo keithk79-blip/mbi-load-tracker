@@ -1,5 +1,4 @@
 import { sanitizeTruck } from "../lib/truck";
-import { Numpad } from "./Numpad";
 
 type TruckEntryProps = {
   value: string;
@@ -16,7 +15,7 @@ export function TruckEntry({
   onSubmit,
   submitLabel = "Find",
   autoFocus = false,
-  hint = "Type the unit number or broker code, or use the pad.",
+  hint = "Type the unit number or broker code.",
 }: TruckEntryProps) {
   return (
     <div className="truck-entry">
@@ -40,12 +39,14 @@ export function TruckEntry({
         />
       </label>
       <p className="field-hint tight">{hint} Enter to continue.</p>
-      <Numpad
-        value={value}
-        onChange={(next) => onChange(sanitizeTruck(next))}
-        onSubmit={onSubmit}
-        submitLabel={submitLabel}
-      />
+      <button
+        type="button"
+        className="btn-primary"
+        disabled={!value}
+        onClick={onSubmit}
+      >
+        {submitLabel}
+      </button>
     </div>
   );
 }
