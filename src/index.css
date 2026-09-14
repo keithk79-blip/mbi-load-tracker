@@ -41,7 +41,7 @@ body,
 
 body {
   background:
-    radial-gradient(1200px 600px at 50% -10%, #3a1518 0%, transparent 55%),
+    radial-gradient(1200px 600px at 50% -10%, #FFFFFF 0%, transparent 55%),
     var(--bg);
 }
 
