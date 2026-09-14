@@ -7,7 +7,7 @@
   --surface-2: #eceef2;
   --line: #d0d3d9;
   --text: #111111;
-  --muted: #444444;
+  --muted: #4a4a4a;
   --panel: #ffffff;
 }
 
@@ -28,6 +28,141 @@ body {
 .desk-topbar,
 .session-bar,
 .splash,
-.modal-card {
+.modal-card,
+.overlay-screen,
+.confirm-overlay-card {
   background: #ffffff;
+  color: #111111;
+}
+
+.tally-card,
+.load-row,
+.empty,
+.totals-block,
+.eod-block,
+.eod-stat,
+.station-calls-card,
+.change-card,
+.truck-display,
+.truck-summary {
+  background: #f4f5f7;
+  color: #111111;
+  border-color: #d0d3d9;
+}
+
+.tally-loads,
+.eod-stat-loads,
+.grand-total {
+  background: #f3e8e9;
+  border-color: #e0b4b6;
+  color: #111111;
+}
+
+.tally-card-sheet,
+.eod-stat-sheet,
+.sheet-totals-fields {
+  background: #f7f4ee;
+  border-color: #d9d0c0;
+}
+
+.sheet-totals-field input,
+.text-input,
+.overlay-date-input,
+.date-pick input {
+  background: #ffffff;
+  color: #111111;
+  color-scheme: light;
+  border-color: #d0d3d9;
+}
+
+.sheet-totals-toggle {
+  color: #8a5a20;
+}
+
+/* Load Count By Hour */
+.station-calls-scroll {
+  background: #ffffff;
+  border-color: #c8ccd3;
+}
+
+.station-calls-table thead th {
+  background: #e6e8ec;
+  color: #222222;
+}
+
+.station-calls-corner {
+  background: #dfe2e8 !important;
+  color: #111111 !important;
+}
+
+.station-calls-table tbody th {
+  background: #f3f4f6;
+  color: #111111;
+}
+
+.station-calls-table tbody td {
+  background: #ffffff;
+  color: #111111;
+}
+
+.station-calls-table tbody tr:nth-child(even) td {
+  background: #f7f8fa;
+}
+
+.station-call-name {
+  color: #111111;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .station-calls-table tbody th:hover,
+  .station-calls-table tbody tr:nth-child(even) th:hover {
+    background: #eceff3;
+  }
+}
+
+/* End of day station table */
+.eod-table-wrap {
+  background: #ffffff;
+  border-color: #c8ccd3;
+}
+
+.eod-table thead th {
+  background: #e6e8ec;
+  color: #222222;
+}
+
+.eod-table tbody th,
+.eod-table tbody td {
+  background: #ffffff;
+  color: #111111;
+}
+
+.eod-table tbody tr:nth-child(even) th,
+.eod-table tbody tr:nth-child(even) td {
+  background: #f7f8fa;
+}
+
+.day-chip {
+  background: #f4f5f7;
+  color: #333333;
+  border-color: #d0d3d9;
+}
+
+.day-chip-active {
+  background: var(--brand, #d8282c);
+  color: #ffffff;
+  border-color: var(--brand, #d8282c);
+}
+
+.numpad-key,
+.chip,
+.icon-btn {
+  background: #f4f5f7;
+  color: #111111;
+  border-color: #d0d3d9;
+}
+
+.btn-ghost {
+  background: #f4f5f7;
+  color: #111111;
 }
