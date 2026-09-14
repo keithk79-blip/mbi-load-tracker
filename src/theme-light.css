@@ -61,7 +61,6 @@ body {
   color: #111111;
 }
 
-/* Available drivers */
 .drivers-card {
   background: #eeeeee !important;
   border-color: #d0d3d9 !important;
@@ -90,7 +89,6 @@ body {
   border-color: #d0d3d9 !important;
 }
 
-/* Keep status chips readable on light gray */
 .calloff-chip-call-off {
   background: #d9e8f8 !important;
   color: #123152 !important;
@@ -117,7 +115,6 @@ body {
   color: #7c2d12 !important;
 }
 
-/* Load Count By Hour */
 .station-calls-scroll {
   background: #ffffff !important;
   border-color: #c8ccd3;
@@ -152,14 +149,6 @@ body {
   color: #111111 !important;
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .station-calls-table tbody th:hover,
-  .station-calls-table tbody tr:nth-child(even) th:hover {
-    background: #e5e7eb !important;
-  }
-}
-
-/* End of day station table */
 .eod-table-wrap {
   background: #ffffff !important;
   border-color: #c8ccd3;
@@ -179,6 +168,88 @@ body {
 .eod-table tbody tr:nth-child(even) th,
 .eod-table tbody tr:nth-child(even) td {
   background: #f7f8fa !important;
+}
+
+/* Driver tab status dropdown */
+.drv-status-select {
+  background: #ffffff !important;
+  color: #111111 !important;
+  border-color: #c8ccd3 !important;
+  color-scheme: light;
+}
+
+.drv-status-select.is-out {
+  background: #f8e8e8 !important;
+  color: #7f1d1d !important;
+  border-color: #e0b4b6 !important;
+}
+
+.drv-status-select option {
+  background: #ffffff;
+  color: #111111;
+}
+
+/* Vacation tab */
+.vac-yard-switch {
+  background: #f3f4f6 !important;
+  border-color: #d0d3d9 !important;
+}
+
+.vac-yard-btn.is-active {
+  background: #e8eaee !important;
+  color: #111111 !important;
+  box-shadow: inset 0 0 0 1px #c8ccd3;
+}
+
+.vac-table-wrap {
+  background: #ffffff !important;
+  border-color: #d0d3d9 !important;
+}
+
+.vac-table thead th {
+  background: #e6e8ec !important;
+  color: #333333 !important;
+}
+
+.vac-month-row th {
+  background: #eef0f3 !important;
+  color: #333333 !important;
+}
+
+.vac-week-row.is-current {
+  background: #f3e8e9 !important;
+}
+
+.vac-week-row.is-closed {
+  background: #f7f8fa !important;
+}
+
+.vac-table th,
+.vac-table td {
+  color: #111111;
+  background: #ffffff;
+}
+
+.vac-cap-chip {
+  background: #f3f4f6 !important;
+  border-color: #c8ccd3 !important;
+  color: #111111 !important;
+}
+
+.vac-cap-chip.is-holiday {
+  background: #f8ecc8 !important;
+  color: #6b4e00 !important;
+}
+
+.vac-cap-chip.is-over {
+  background: #f8d4d4 !important;
+  color: #7f1d1d !important;
+}
+
+.vac-pill {
+  background: #eef2f7 !important;
+  color: #111111 !important;
+  border-color: #c8ccd3 !important;
 }
 
 .day-chip {
