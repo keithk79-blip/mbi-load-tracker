@@ -41,6 +41,7 @@ import {
   type DriverTabGroup,
 } from "../lib/driverRoster";
 import { describeImportGroup, fetchRosterWorkbook } from "../lib/driverRosterSheet";
+import { assignedTrucksNeedingUpload, preserveAssignedTrucks } from "../lib/rosterAssignedTruck";
 import { getSupabase } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 
@@ -81,11 +82,9 @@ type DriverRosterContextValue = {
   setDriverStatus: (id: string, status: string | null) => Promise<void>;
   setDriverAssignedTruck: (id: string, assignedTruck: string | null) => Promise<void>;
   removeDriver: (id: string) => Promise<void>;
-  /** Explicit Full Roster × — hired row plus matching Sat. */
   removeHiredAndSat: (id: string) => Promise<void>;
   moveDriver: (id: string, delta: -1 | 1) => Promise<void>;
   setSatDate: (forDate: string | null) => Promise<void>;
-  /** User-initiated: replace this yard's Sat list with a copy of Full Roster. */
   resetSatToFullRoster: () => Promise<void>;
 };
 
@@ -216,10 +215,6 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     return rowsToStore(page.data);
   }, [session]);
 
-  /**
-   * Remote DELETE is UI × or Sat Reset only. Refresh / import / Vacation VAC
-   * must never call this — same class of bug as loads and vacation silent wipes.
-   */
   const cloudDeleteEntries = useCallback(async (ids: string[]) => {
     if (!ids.length) return;
     const supabase = getSupabase();
@@ -248,10 +243,6 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     [session, user?.id],
   );
 
-  /**
-   * First-open / never-edited Sat lists copy this yard's Full Roster.
-   * Skips yards Keith already edited (including × everyone). Never deletes.
-   */
   const seedEmptySatFromFull = useCallback(async () => {
     const pendingYards = DRIVER_ROSTER_YARDS.filter((yard) => !satInitializedRef.current.has(yard));
     if (!pendingYards.length) return;
@@ -279,7 +270,6 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     }
   }, [cloud, cloudUpsert, persistLocal]);
 
-  /** First-open only: fill an empty local store. Never a live Today pull. */
   const seedIfEmpty = useCallback(async () => {
     if (seedingRef.current) return;
     if (importedAtRef.current) {
@@ -331,19 +321,23 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     if (epoch !== epochRef.current) return;
 
     if (remote) {
-      // Upsert-only merge. Never delete remote (or local) rows from a pull —
-      // not even when a stale tombstone list is present.
+      const prior = storeRef.current;
       const result = reconcileDriverRosterCloud({
-        local: storeRef.current,
+        local: prior,
         remote,
         deletedEntryIds: deletedRef.current,
         seenRemoteEntryIds: seenRef.current,
       });
       if (epoch !== epochRef.current) return;
-      if (result.toUploadEntries.length && !uploadingRef.current) {
+      const next = preserveAssignedTrucks(prior, result.next);
+      const toUpload = [...result.toUploadEntries];
+      for (const row of assignedTrucksNeedingUpload(next, remote)) {
+        if (!toUpload.some((item) => item.id === row.id)) toUpload.push(row);
+      }
+      if (toUpload.length && !uploadingRef.current) {
         uploadingRef.current = true;
         try {
-          await cloudUpsert(result.toUploadEntries);
+          await cloudUpsert(toUpload);
         } finally {
           uploadingRef.current = false;
         }
@@ -351,7 +345,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       if (epoch !== epochRef.current) return;
       deletedRef.current = new Set(result.deletedEntryIds);
       seenRef.current = new Set(result.seenRemoteEntryIds);
-      persistLocal(result.next);
+      persistLocal(next);
     }
 
     await seedIfEmpty();
@@ -390,14 +384,14 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     };
   }, [cloud, refresh]);
 
-  /** Explicit user import into empty kind+yard groups only. Does not refresh Today from L13. */
   const importFromSheet = useCallback(async (): Promise<DriverRosterImportResult> => {
     setImporting(true);
     try {
       const { rows } = await fetchRosterWorkbook();
-      const result = mergeImportedRows(storeRef.current, rows);
+      const prior = storeRef.current;
+      const result = mergeImportedRows(prior, rows);
       importedAtRef.current = new Date().toISOString();
-      persistLocal(result.store);
+      persistLocal(preserveAssignedTrucks(prior, result.store));
       if (cloud && result.added) {
         const uploaded = Object.values(result.store.entries).filter((entry) =>
           result.store.entries[entry.id],
@@ -483,7 +477,6 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       epochRef.current += 1;
       const result = removeRosterEntry(storeRef.current, id);
       if (!result.removed) return;
-      // Explicit UI × — one of the only paths that may DELETE a cloud roster row.
       deletedRef.current.add(id);
       if (result.removed.kind === "sat") {
         satInitializedRef.current.add(result.removed.yard);
@@ -539,10 +532,6 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     [cloud, cloudUpsert, persistLocal, ui.yard],
   );
 
-  /**
-   * Explicit Sat Reset — the only paths that may DELETE a cloud roster row
-   * are this Reset (this yard's Sat rows) and removeDriver (×).
-   */
   const resetSatToFullRoster = useCallback(async () => {
     epochRef.current += 1;
     const yard = ui.yard;
