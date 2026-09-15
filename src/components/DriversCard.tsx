@@ -14,6 +14,7 @@ import { vacationNamesOnDateAllYards } from "../lib/rosterVacation";
 import { DriverNameInput } from "./DriverNameInput";
 import { useDrivers } from "../store/DriversContext";
 import { useVacation } from "../store/VacationContext";
+import "./drivers-card.css";
 
 function pulledLabel(iso: string | null): string {
   if (!iso) return "Not pulled yet";
