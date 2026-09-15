@@ -7,6 +7,7 @@ type TruckEntryProps = {
   submitLabel?: string;
   autoFocus?: boolean;
   hint?: string;
+  driverPreview?: string;
 };
 
 export function TruckEntry({
@@ -16,6 +17,7 @@ export function TruckEntry({
   submitLabel = "Find",
   autoFocus = false,
   hint = "Type the unit number or broker code.",
+  driverPreview,
 }: TruckEntryProps) {
   return (
     <div className="truck-entry">
@@ -38,7 +40,13 @@ export function TruckEntry({
           }}
         />
       </label>
-      <p className="field-hint tight">{hint} Enter to continue.</p>
+      {driverPreview ? (
+        <p className="truck-driver-preview" aria-live="polite">
+          {driverPreview}
+        </p>
+      ) : (
+        <p className="field-hint tight">{hint} Enter to continue.</p>
+      )}
       <button
         type="button"
         className="btn-primary"
