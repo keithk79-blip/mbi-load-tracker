@@ -96,94 +96,69 @@ select {
 }
 
 .calloff-kind-btn {
-  background: #e8edf3 !important;
-  font-weight: 800;
+  font-weight: 800 !important;
+  opacity: 1 !important;
 }
 
-.calloff-kind-call-off {
-  background: #6ea4d8 !important;
-  border: 1px solid #1d4f91 !important;
-  color: #06213f !important;
-}
-
+.calloff-kind-call-off,
 .calloff-kind-call-off.selected {
   background: #1d4f91 !important;
-  border-color: #163e73 !important;
+  border: 1px solid #163e73 !important;
   color: #ffffff !important;
 }
 
-.calloff-kind-p-day {
-  background: #4caf77 !important;
-  border: 1px solid #166534 !important;
-  color: #052e16 !important;
-}
-
+.calloff-kind-p-day,
 .calloff-kind-p-day.selected {
   background: #166534 !important;
-  border-color: #14532d !important;
+  border: 1px solid #14532d !important;
   color: #ffffff !important;
 }
 
-.calloff-kind-okd-off {
-  background: #d4a017 !important;
-  border: 1px solid #854d0e !important;
-  color: #422006 !important;
-}
-
+.calloff-kind-okd-off,
 .calloff-kind-okd-off.selected {
   background: #a16207 !important;
-  border-color: #854d0e !important;
+  border: 1px solid #854d0e !important;
   color: #ffffff !important;
 }
 
-.calloff-kind-ncns {
-  background: #d46a6a !important;
-  border: 1px solid #991b1b !important;
-  color: #450a0a !important;
-}
-
+.calloff-kind-ncns,
 .calloff-kind-ncns.selected {
   background: #b91c1c !important;
-  border-color: #991b1b !important;
+  border: 1px solid #7f1d1d !important;
   color: #ffffff !important;
 }
 
-.calloff-kind-late-early {
-  background: #e08a3c !important;
-  border: 1px solid #9a3412 !important;
-  color: #431407 !important;
-}
-
+.calloff-kind-late-early,
 .calloff-kind-late-early.selected {
   background: #c2410c !important;
-  border-color: #9a3412 !important;
+  border: 1px solid #9a3412 !important;
   color: #ffffff !important;
 }
 
 .calloff-chip-call-off {
-  background: #6ea4d8 !important;
-  color: #06213f !important;
+  background: #1d4f91 !important;
+  color: #ffffff !important;
 }
 
 .calloff-chip-p-day,
 .vacation-chip {
-  background: #4caf77 !important;
-  color: #052e16 !important;
+  background: #166534 !important;
+  color: #ffffff !important;
 }
 
 .calloff-chip-okd-off {
-  background: #d4a017 !important;
-  color: #422006 !important;
+  background: #a16207 !important;
+  color: #ffffff !important;
 }
 
 .calloff-chip-ncns {
-  background: #d46a6a !important;
-  color: #450a0a !important;
+  background: #b91c1c !important;
+  color: #ffffff !important;
 }
 
 .calloff-chip-late-early {
-  background: #e08a3c !important;
-  color: #431407 !important;
+  background: #c2410c !important;
+  color: #ffffff !important;
 }
 
 .station-calls-scroll {
