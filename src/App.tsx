@@ -6,6 +6,7 @@ import { TabBar } from "./components/TabBar";
 import { chicagoToday } from "./lib/chicagoDate";
 import { useDesktopLayout } from "./lib/layout";
 import { replaceRetiredTotalsLocation, replaceTabLocation, tabFromLocation } from "./lib/tabRoute";
+import { CallOffsScreen } from "./screens/CallOffsScreen";
 import { DriverScreen } from "./screens/DriverScreen";
 import { EditLoadScreen } from "./screens/EditLoadScreen";
 import { LogLoadScreen } from "./screens/LogLoadScreen";
@@ -16,6 +17,7 @@ import { TodayScreen } from "./screens/TodayScreen";
 import { TotalsScreen } from "./screens/TotalsScreen";
 import { VacationScreen } from "./screens/VacationScreen";
 import { AuthProvider, useAuth } from "./store/AuthContext";
+import { CallOffLogProvider } from "./store/CallOffLogContext";
 import { DailyEodProvider } from "./store/DailyEodContext";
 import { DriverGoneProvider } from "./store/DriverGoneContext";
 import { DriverRosterProvider } from "./store/DriverRosterContext";
@@ -73,7 +75,7 @@ function Shell() {
     setJustEditedId(id);
     setOverlay(null);
     if (date) setFeedDate(date);
-    if (tab === "analytics" || tab === "vacation" || tab === "driver") return;
+    if (tab === "analytics" || tab === "vacation" || tab === "driver" || tab === "calloffs") return;
     setTab("today");
   };
 
@@ -107,7 +109,7 @@ function Shell() {
           <div className="desk-topbar-brand">
             <BrandMark size="lg" />
             <div>
-              <p className="eyebrow">Keith&apos;s Load Tracker</p>
+              <p className="eyebrow">Keith's Load Tracker</p>
               <h1 className="desk-brand">Load Tracker</h1>
             </div>
           </div>
@@ -168,6 +170,8 @@ function Shell() {
 
           {tab === "driver" ? <DriverScreen /> : null}
 
+          {tab === "calloffs" ? <CallOffsScreen /> : null}
+
           {tab === "vacation" ? <VacationScreen /> : null}
         </div>
       </div>
@@ -220,13 +224,15 @@ export default function App() {
           <VacationProvider>
             <DriverRosterProvider>
               <DriverGoneProvider>
-                <DriversProvider>
-                  <DailyEodProvider>
-                    <Gate>
-                      <Shell />
-                    </Gate>
-                  </DailyEodProvider>
-                </DriversProvider>
+                <CallOffLogProvider>
+                  <DriversProvider>
+                    <DailyEodProvider>
+                      <Gate>
+                        <Shell />
+                      </Gate>
+                    </DailyEodProvider>
+                  </DriversProvider>
+                </CallOffLogProvider>
               </DriverGoneProvider>
             </DriverRosterProvider>
           </VacationProvider>
