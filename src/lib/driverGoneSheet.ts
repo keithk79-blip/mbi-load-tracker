@@ -1,5 +1,5 @@
-/** One-time Gone 2026 seed. Import emp #, name, hire, termination, notes only.
- * Sheet contact columns (C/D) are never read, stored, or displayed.
+/** Offline CSV parser only. Gone rows live in the app / Supabase.
+ * No Google fetch.
  */
 
 import { parseCsv } from "./driverAvailability";
@@ -10,9 +10,7 @@ import {
   type ImportedGoneRow,
 } from "./driverGone";
 import { cleanDriverName } from "./driverRoster";
-import { rosterGoneFetchUrl } from "./sheets";
 
-/** A emp #, B name, E hire, F termination, G notes. Never C or D. */
 const COL_EMP = 0;
 const COL_NAME = 1;
 const COL_HIRE = 4;
@@ -27,10 +25,6 @@ function isGoneHeaderRow(empRaw: string, nameRaw: string): boolean {
   return false;
 }
 
-/**
- * Parse the Gone 2026 grid. Only columns A, B, E, F, G are read.
- * Contact columns are ignored even if present in the CSV.
- */
 export function parseGoneSheetCsv(csv: string): ImportedGoneRow[] {
   const table = parseCsv(csv);
   const rows: ImportedGoneRow[] = [];
@@ -62,22 +56,6 @@ export function parseGoneSheetCsv(csv: string): ImportedGoneRow[] {
   return rows;
 }
 
-async function fetchText(url: string): Promise<string> {
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Sheets HTTP ${res.status}`);
-  const text = await res.text();
-  const trimmed = text.trimStart();
-  if (trimmed.startsWith("<!") || trimmed.toLowerCase().startsWith("<html")) {
-    throw new Error("Sheets proxy returned HTML instead of CSV");
-  }
-  return text;
-}
-
-/** One-time seed / explicit Import when Gone is empty. */
-export async function fetchGoneWorkbook(opts?: {
-  fetchText?: (url: string) => Promise<string>;
-}): Promise<{ rows: ImportedGoneRow[] }> {
-  const load = opts?.fetchText ?? fetchText;
-  const csv = await load(rosterGoneFetchUrl());
-  return { rows: parseGoneSheetCsv(csv) };
+export async function fetchGoneWorkbook(): Promise<{ rows: ImportedGoneRow[] }> {
+  return { rows: [] };
 }
