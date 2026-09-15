@@ -1,5 +1,6 @@
 import { useAuth } from "../store/AuthContext";
 import { useLoads } from "../store/LoadsContext";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function SessionBar() {
   const { configured, user, displayName, signOut } = useAuth();
@@ -15,6 +16,9 @@ export function SessionBar() {
     return (
       <div className="session-bar">
         <span>This device only · set Supabase env to share</span>
+        <span className="session-actions">
+          <ThemeToggle />
+        </span>
       </div>
     );
   }
@@ -44,6 +48,7 @@ export function SessionBar() {
         {user?.email ? ` · ${user.email}` : ""} · {statusLabel}
       </span>
       <span className="session-actions">
+        <ThemeToggle />
         {localPendingCount > 0 ? (
           <button
             type="button"
