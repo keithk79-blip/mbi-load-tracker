@@ -4,6 +4,7 @@ import { BrandFooter, BrandMark } from "./BrandMark";
 const TABS: { id: TabId; label: string }[] = [
   { id: "today", label: "Today" },
   { id: "driver", label: "Drivers" },
+  { id: "calloffs", label: "Call-Off's" },
   { id: "vacation", label: "Vacation" },
   { id: "trucks", label: "Trucks" },
   { id: "analytics", label: "Analytics" },

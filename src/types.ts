@@ -23,4 +23,10 @@ export type Load = {
   driverName?: string | null;
 };
 
-export type TabId = "today" | "trucks" | "analytics" | "driver" | "vacation";
+export type TabId =
+  | "today"
+  | "trucks"
+  | "analytics"
+  | "driver"
+  | "vacation"
+  | "calloffs";

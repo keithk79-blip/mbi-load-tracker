@@ -8,6 +8,7 @@ const TAB_SLUGS: Record<Exclude<TabId, "today">, string> = {
   analytics: "analytics",
   driver: "driver",
   vacation: "vacation",
+  calloffs: "calloffs",
 };
 
 const SLUG_TO_TAB: Record<string, TabId> = {
@@ -15,6 +16,7 @@ const SLUG_TO_TAB: Record<string, TabId> = {
   analytics: "analytics",
   driver: "driver",
   vacation: "vacation",
+  calloffs: "calloffs",
 };
 
 type LocationBits = {
@@ -73,7 +75,7 @@ export function replaceRetiredTotalsLocation(
   const next = rewriteRetiredTotalsHref(loc);
   if (!next) return false;
   const current = `${loc.pathname}${loc.search}${loc.hash}`;
-  if (next !== current)   historyApi.replaceState(null, "", next);
+  if (next !== current) historyApi.replaceState(null, "", next);
   return true;
 }
 
