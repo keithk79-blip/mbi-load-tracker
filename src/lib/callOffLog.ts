@@ -266,10 +266,13 @@ export function reconcileCallOffLogCloud(input: {
   seenIds: readonly string[];
 }): CallOffLogReconcileResult {
   const deleted = new Set(input.deletedIds);
-  const seen = new Set(input.seenIds);
+  const localIds = new Set(input.local.map((row) => row.id));
   const remoteIds = new Set(input.remote.map((row) => row.id));
-  for (const id of seen) {
-    if (!remoteIds.has(id)) deleted.add(id);
+  // Only tombstone a previously-seen id when it vanished from the cloud AND
+  // is not still sitting locally. An empty table after a failed upsert used
+  // to wipe the seeded sheet on the next refresh.
+  for (const id of input.seenIds) {
+    if (!remoteIds.has(id) && !localIds.has(id)) deleted.add(id);
   }
   const next = mergeCallOffLog(input.local, input.remote, [...deleted]);
   const nextIds = new Set(next.map((row) => row.id));
@@ -280,9 +283,8 @@ export function reconcileCallOffLogCloud(input: {
     if (!remoteRow) return true;
     return row.updatedAt > remoteRow.updatedAt;
   });
-  const seenNext = new Set(seen);
+  const seenNext = new Set<string>();
   for (const id of remoteIds) seenNext.add(id);
-  for (const id of nextIds) seenNext.add(id);
   for (const id of deleted) seenNext.add(id);
   return {
     next,
