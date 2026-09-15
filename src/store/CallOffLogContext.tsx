@@ -14,6 +14,7 @@ import {
   addCallOffLogEntry,
   cleanCallOffLogRows,
   logEntriesToRows,
+  mergeCallOffLog,
   readCallOffLogPersisted,
   reconcileCallOffLogCloud,
   removeCallOffLogEntry,
@@ -42,6 +43,7 @@ type CallOffLogContextValue = {
   cloud: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+  loadSheet: () => Promise<number>;
   addRow: (input: {
     name: string;
     start: string;
@@ -86,10 +88,14 @@ function entryToRemote(row: CallOffLogEntry, userId: string | null) {
 }
 
 function bootstrap(persisted: CallOffLogPersisted): CallOffLogPersisted {
-  if (persisted.seeded || persisted.rows.length) return persisted;
+  if (persisted.rows.length) {
+    return { ...persisted, seeded: true };
+  }
+  if (persisted.deletedIds.length) return persisted;
+  const seeded = callOffLogSeedRows();
   return {
     ...persisted,
-    rows: callOffLogSeedRows(),
+    rows: seeded,
     seeded: true,
   };
 }
@@ -107,7 +113,7 @@ export function CallOffLogProvider({ children }: { children: ReactNode }) {
   rowsRef.current = rows;
   const deletedRef = useRef<Set<string>>(new Set(readCallOffLogPersisted().deletedIds));
   const seenRef = useRef<Set<string>>(new Set(readCallOffLogPersisted().seenIds));
-  const seededRef = useRef(readCallOffLogPersisted().seeded);
+  const seededRef = useRef(true);
   const epochRef = useRef(0);
 
   const persistLocal = useCallback((nextRows: CallOffLogEntry[]) => {
@@ -116,7 +122,7 @@ export function CallOffLogProvider({ children }: { children: ReactNode }) {
       rows: nextRows,
       deletedIds: [...deletedRef.current],
       seenIds: [...seenRef.current],
-      seeded: seededRef.current,
+      seeded: true,
     };
     writeCallOffLogPersisted(snapshot);
     rowsRef.current = snapshot.rows;
@@ -228,6 +234,15 @@ export function CallOffLogProvider({ children }: { children: ReactNode }) {
     };
   }, [cloud, refresh]);
 
+  const loadSheet = useCallback(async () => {
+    epochRef.current += 1;
+    const seeded = callOffLogSeedRows();
+    const next = mergeCallOffLog(rowsRef.current, seeded, [...deletedRef.current]);
+    persistLocal(next);
+    if (cloud) await cloudUpsert(seeded.filter((row) => next.some((item) => item.id === row.id)));
+    return next.length;
+  }, [cloud, cloudUpsert, persistLocal]);
+
   const addRow = useCallback(
     async (input: { name: string; start: string; end?: string | null; reason: string }) => {
       epochRef.current += 1;
@@ -273,11 +288,12 @@ export function CallOffLogProvider({ children }: { children: ReactNode }) {
       cloud,
       error,
       refresh,
+      loadSheet,
       addRow,
       editRow,
       removeRow,
     }),
-    [rows, cloud, error, refresh, addRow, editRow, removeRow],
+    [rows, cloud, error, refresh, loadSheet, addRow, editRow, removeRow],
   );
 
   return <CallOffLogContext.Provider value={value}>{children}</CallOffLogContext.Provider>;
