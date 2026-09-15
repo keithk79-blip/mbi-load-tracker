@@ -1,4 +1,3 @@
-import { isTauriRuntime } from "./layout";
 import {
   BURNHAM_OOT_PAIRS,
   ROCKFORD_OOT_PAIRS,
@@ -7,12 +6,6 @@ import {
   type OotPair,
 } from "./driverAvailability";
 
-export const DEFAULT_ROSTER_SHEET_ID = "1mdNWIsz7LZauHCccQBB7QzjR-Wo9pukGn8HrmODnPpw";
-export const DEFAULT_CALLOFF_SHEET_ID = "1FnKGIuWfKCPvcaSwchnIpQjdezHKWC5O23jECPcJzyM";
-/** Gone 2026 archive tab — one-time seed only. Contact columns are not fetched for storage. */
-export const DEFAULT_GONE_SHEET_ID = "1azaww09ttC1p571RzB_NDkeBqAFkRBhpTboODpk4z40";
-export const GONE_SHEET_TAB = "Gone 2026";
-export const GONE_SHEET_GID = "544546254";
 export const ROSTER_TAB = "Burnham";
 export const ROSTER_CELL = "L13";
 export const ROSTER_GRID_RANGE = "A:I";
@@ -134,45 +127,6 @@ type Cached = {
   fetchedAt: string;
 };
 
-function rosterId(): string {
-  return import.meta.env.VITE_ROSTER_SHEET_ID || DEFAULT_ROSTER_SHEET_ID;
-}
-
-function googleCsvUrl(sheetId: string, query: string): string {
-  return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&${query}`;
-}
-/** Vite `/sheets/*` proxy only exists in `vite dev` / `vite preview`. */
-function useSheetProxy(): boolean {
-  return !isTauriRuntime() && import.meta.env.DEV;
-}
-
-/** One-time Driver-tab seed only. Not used for Today’s available count. */
-export function rosterFullFetchUrl(slug: string): string {
-  const sheet = FULL_ROSTER_SHEETS.find((row) => row.slug === slug);
-  const tab = sheet?.tab ?? "Burnham";
-  if (useSheetProxy()) return `/sheets/roster-full/${slug}`;
-  return googleCsvUrl(
-    rosterId(),
-    `sheet=${encodeURIComponent(tab)}&range=${encodeURIComponent(ROSTER_FULL_GRID_RANGE)}`,
-  );
-}
-
-export function rosterSatGridFetchUrl(slug: string): string {
-  const sheet = SAT_ROSTER_SHEETS.find((row) => row.slug === slug);
-  const tab = sheet?.tab ?? "Sat-Burnham";
-  if (useSheetProxy()) return `/sheets/roster-sat/${slug}`;
-  return googleCsvUrl(
-    rosterId(),
-    `sheet=${encodeURIComponent(tab)}&range=${encodeURIComponent(ROSTER_SAT_GRID_RANGE)}`,
-  );
-}
-
-/** One-time Gone archive seed. Parser keeps emp # / name / hire / term / notes only. */
-export function rosterGoneFetchUrl(): string {
-  if (useSheetProxy()) return "/sheets/roster-gone";
-  return googleCsvUrl(DEFAULT_GONE_SHEET_ID, `gid=${GONE_SHEET_GID}`);
-}
-
 export function readDriverCache(): DriverSnapshot | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
@@ -197,7 +151,7 @@ export function readDriverCache(): DriverSnapshot | null {
 
 /**
  * @deprecated Live Today tally must not call this. Full Roster + manuals only.
- * Kept so old caches can still be read; it never hits Google.
+ * Kept so old caches can still be read; it never hits the network.
  */
 export async function fetchDriverSnapshot(): Promise<DriverSnapshot> {
   const snap: DriverSnapshot = {
