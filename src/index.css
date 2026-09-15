@@ -918,7 +918,7 @@ button.log-load-top {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(6, 7, 10, 0.72);
+  background: rgba(0, 0, 0, 0.12);
 }
 
 .confirm-overlay-card {
