@@ -141,14 +141,14 @@ export function CallOffLogProvider({ children }: { children: ReactNode }) {
       return { data: result.data as RemoteRow[] | null, error: result.error };
     });
     if (page.error) {
-      const message = pagedErrorMessage(page.error);
+      const message = pagedErrorMessage(page.error) ?? "";
       const missing =
         /schema cache/i.test(message) ||
         (/call_off_log/i.test(message) && /does not exist|could not find/i.test(message));
       setError(
         missing
           ? "Call-Off's did not reach the cloud — run Load-Tracker-call-off-log.sql in Supabase once."
-          : `Call-Off's did not reach the cloud — ${message}`,
+          : `Call-Off's did not reach the cloud — ${message || "unknown error"}`,
       );
       return null;
     }
