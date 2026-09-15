@@ -42,6 +42,7 @@ import {
 } from "../lib/driverRoster";
 import { describeImportGroup, fetchRosterWorkbook } from "../lib/driverRosterSheet";
 import { assignedTrucksNeedingUpload, preserveAssignedTrucks } from "../lib/rosterAssignedTruck";
+import { enforceOneYardPerDriver } from "../lib/rosterYardOwnership";
 import { getSupabase } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 
@@ -145,10 +146,13 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
   const [ui, setUi] = useState(readDriverRosterUi);
   const [store, setStore] = useState<DriverRosterStore>(() => {
     const persisted = readDriverRosterPersisted();
-    return applyRosterTombstones(
-      { entries: persisted.entries },
-      persisted.deletedEntryIds,
-    );
+    const owned = enforceOneYardPerDriver({
+      entries: persisted.entries,
+    });
+    return applyRosterTombstones(owned.store, [
+      ...persisted.deletedEntryIds,
+      ...owned.removed.map((row) => row.id),
+    ]);
   });
   const [importing, setImporting] = useState(false);
   const [lastImport, setLastImport] = useState<DriverRosterImportResult | null>(null);
@@ -166,9 +170,11 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
   const seedingRef = useRef(false);
 
   const persistLocal = useCallback((next: DriverRosterStore) => {
+    const owned = enforceOneYardPerDriver(next);
+    for (const row of owned.removed) deletedRef.current.add(row.id);
     const snapshot: DriverRosterPersisted = {
       version: 1,
-      entries: next.entries,
+      entries: owned.store.entries,
       deletedEntryIds: [...deletedRef.current],
       seenRemoteEntryIds: [...seenRef.current],
       importedAt: importedAtRef.current,
@@ -177,6 +183,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     const stripped = persistSnapshot(snapshot);
     storeRef.current = stripped;
     setStore(stripped);
+    return owned.removed;
   }, []);
 
   const pullRemote = useCallback(async (): Promise<DriverRosterStore | null> => {
@@ -259,16 +266,17 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       if (flagsChanged) persistLocal(storeRef.current);
       return;
     }
-    persistLocal(result.store);
+    const removed = persistLocal(result.store);
+    if (cloud && removed.length) await cloudDeleteEntries(removed.map((row) => row.id));
     if (cloud && result.added) {
       const seeded = new Set(result.seededYards);
       await cloudUpsert(
-        Object.values(result.store.entries).filter(
+        Object.values(storeRef.current.entries).filter(
           (entry) => entry.kind === "sat" && seeded.has(entry.yard),
         ),
       );
     }
-  }, [cloud, cloudUpsert, persistLocal]);
+  }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal]);
 
   const seedIfEmpty = useCallback(async () => {
     if (seedingRef.current) return;
@@ -288,9 +296,10 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       const { rows } = await fetchRosterWorkbook();
       const result = mergeImportedRows(storeRef.current, rows);
       importedAtRef.current = new Date().toISOString();
-      persistLocal(result.store);
+      const removed = persistLocal(result.store);
+      if (cloud && removed.length) await cloudDeleteEntries(removed.map((row) => row.id));
       if (cloud && result.added) {
-        await cloudUpsert(Object.values(result.store.entries));
+        await cloudUpsert(Object.values(storeRef.current.entries));
       }
       setLastImport({
         added: result.added,
@@ -308,7 +317,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       seedingRef.current = false;
       setImporting(false);
     }
-  }, [cloud, cloudUpsert, persistLocal, seedEmptySatFromFull]);
+  }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, seedEmptySatFromFull]);
 
   const refreshInner = useCallback(async () => {
     if (!cloud) {
@@ -345,12 +354,13 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       if (epoch !== epochRef.current) return;
       deletedRef.current = new Set(result.deletedEntryIds);
       seenRef.current = new Set(result.seenRemoteEntryIds);
-      persistLocal(next);
+      const removed = persistLocal(next);
+      if (removed.length) await cloudDeleteEntries(removed.map((row) => row.id));
     }
 
     await seedIfEmpty();
     await seedEmptySatFromFull();
-  }, [cloud, cloudUpsert, persistLocal, pullRemote, seedEmptySatFromFull, seedIfEmpty]);
+  }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, pullRemote, seedEmptySatFromFull, seedIfEmpty]);
 
   const refresh = useCallback(() => {
     const run = refreshTailRef.current.then(refreshInner, refreshInner);
@@ -391,17 +401,15 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       const prior = storeRef.current;
       const result = mergeImportedRows(prior, rows);
       importedAtRef.current = new Date().toISOString();
-      persistLocal(preserveAssignedTrucks(prior, result.store));
+      const removed = persistLocal(preserveAssignedTrucks(prior, result.store));
+      if (cloud && removed.length) await cloudDeleteEntries(removed.map((row) => row.id));
       if (cloud && result.added) {
-        const uploaded = Object.values(result.store.entries).filter((entry) =>
-          result.store.entries[entry.id],
-        );
         const newIds = new Set(
-          Object.values(result.store.entries)
+          Object.values(storeRef.current.entries)
             .filter((entry) => !seenRef.current.has(entry.id))
             .map((entry) => entry.id),
         );
-        await cloudUpsert(uploaded.filter((entry) => newIds.has(entry.id)));
+        await cloudUpsert(Object.values(storeRef.current.entries).filter((entry) => newIds.has(entry.id)));
       }
       const summary: DriverRosterImportResult = {
         added: result.added,
@@ -422,7 +430,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     } finally {
       setImporting(false);
     }
-  }, [cloud, cloudUpsert, persistLocal, seedEmptySatFromFull]);
+  }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, seedEmptySatFromFull]);
 
   const addDriver = useCallback(
     async (input: Omit<DriverRosterInput, "kind" | "yard">) => {
@@ -443,11 +451,13 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       });
       if (!result.entry) return null;
       if (result.entry.kind === "sat") satInitializedRef.current.add(result.entry.yard);
-      persistLocal(result.store);
-      if (cloud) await cloudUpsert([result.entry]);
-      return result.entry;
+      const removed = persistLocal(result.store);
+      if (cloud && removed.length) await cloudDeleteEntries(removed.map((row) => row.id));
+      const kept = storeRef.current.entries[result.entry.id];
+      if (cloud && kept) await cloudUpsert([kept]);
+      return kept ?? result.entry;
     },
-    [cloud, cloudUpsert, persistLocal, ui.kind, ui.yard],
+    [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, ui.kind, ui.yard],
   );
 
   const setDriverStatus = useCallback(
@@ -542,7 +552,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     persistLocal(result.store);
     if (!cloud) return;
     if (result.removedIds.length) await cloudDeleteEntries(result.removedIds);
-    const satRows = Object.values(result.store.entries).filter(
+    const satRows = Object.values(storeRef.current.entries).filter(
       (entry) => entry.kind === "sat" && entry.yard === yard,
     );
     if (satRows.length) await cloudUpsert(satRows);
