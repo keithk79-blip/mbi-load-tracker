@@ -2,6 +2,15 @@ import { useMemo, useState } from "react";
 import { ChevronDown, Minus, Plus } from "lucide-react";
 import { formatHeaderDate } from "../lib/chicagoDate";
 import {
+  CUSTOM_SPECIALTY_LOAD_TYPES,
+  customSpecialtyDisplayName,
+  formatCustomSpecialtyChip,
+  isCustomSpecialtyId,
+  writeCustomSpecialtyName,
+  type CustomSpecialtyId,
+  type CustomSpecialtyLoadType,
+} from "../lib/customSpecialty";
+import {
   SPECIALTY_STATIONS,
   destSummary,
   slotsForStation,
@@ -15,9 +24,11 @@ export function SpecialtyBoardCard({ date }: { date: string }) {
   const { boardOn, addOpen, removeOpen, cloud } = useSpecialty();
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
+  const [namesTick, setNamesTick] = useState(0);
 
   const board = useMemo(() => boardOn(date), [boardOn, date]);
   const totalOpen = board.length;
+  void namesTick;
 
   return (
     <article className={`specialty-card${open ? "" : " specialty-card-collapsed"}`}>
@@ -53,10 +64,28 @@ export function SpecialtyBoardCard({ date }: { date: string }) {
               const summary = destSummary(slots);
               const count = slots.length;
               const picking = addingFor === station.id;
+              const custom = isCustomSpecialtyId(station.id);
+              const label = custom ? customSpecialtyDisplayName(station.id) : station.name;
               return (
                 <li key={station.id} className="specialty-row">
                   <div className="specialty-row-main">
-                    <span className="specialty-station">{station.name}</span>
+                    {custom ? (
+                      <input
+                        className="text-input specialty-name-input"
+                        value={label}
+                        onChange={(event) => {
+                          writeCustomSpecialtyName(
+                            station.id as CustomSpecialtyId,
+                            event.target.value,
+                          );
+                          setNamesTick((n) => n + 1);
+                        }}
+                        placeholder="Name this pickup"
+                        aria-label={`Odd-ball pickup name for ${station.id}`}
+                      />
+                    ) : (
+                      <span className="specialty-station">{station.name}</span>
+                    )}
                     <span className={`specialty-count${count ? " has-open" : ""}`}>
                       {count}
                     </span>
@@ -64,7 +93,7 @@ export function SpecialtyBoardCard({ date }: { date: string }) {
                       <button
                         type="button"
                         className="specialty-btn"
-                        aria-label={`Remove specialty load at ${station.name}`}
+                        aria-label={`Remove specialty load at ${label}`}
                         disabled={count === 0}
                         onClick={() => void removeOpen(date, station.id)}
                       >
@@ -73,7 +102,7 @@ export function SpecialtyBoardCard({ date }: { date: string }) {
                       <button
                         type="button"
                         className="specialty-btn"
-                        aria-label={`Add specialty load at ${station.name}`}
+                        aria-label={`Add specialty load at ${label}`}
                         onClick={() =>
                           setAddingFor((prev) =>
                             prev === station.id ? null : station.id,
@@ -102,7 +131,16 @@ export function SpecialtyBoardCard({ date }: { date: string }) {
                     </div>
                   ) : null}
 
-                  {picking ? (
+                  {picking && custom ? (
+                    <CustomSpecialtyPicker
+                      stationId={station.id as CustomSpecialtyId}
+                      onCancel={() => setAddingFor(null)}
+                      onAdd={(chip) => {
+                        void addOpen(date, station.id, chip);
+                        setAddingFor(null);
+                      }}
+                    />
+                  ) : picking ? (
                     <div className="specialty-picker">
                       <p className="field-hint tight">{specialtyDestHint(station.id)}</p>
                       <div className="chip-row">
@@ -133,5 +171,53 @@ export function SpecialtyBoardCard({ date }: { date: string }) {
         </div>
       ) : null}
     </article>
+  );
+}
+
+function CustomSpecialtyPicker({
+  stationId,
+  onCancel,
+  onAdd,
+}: {
+  stationId: CustomSpecialtyId;
+  onCancel: () => void;
+  onAdd: (chip: string) => void;
+}) {
+  const [loadType, setLoadType] = useState<CustomSpecialtyLoadType>("Walking-floor");
+  const [dest, setDest] = useState("");
+  return (
+    <div className="specialty-picker">
+      <p className="field-hint tight">{specialtyDestHint(stationId)}</p>
+      <div className="chip-row">
+        {CUSTOM_SPECIALTY_LOAD_TYPES.map((item) => (
+          <Chip
+            key={item}
+            label={item}
+            selected={loadType === item}
+            onClick={() => setLoadType(item)}
+          />
+        ))}
+      </div>
+      <input
+        className="text-input specialty-dest-input"
+        value={dest}
+        onChange={(event) => setDest(event.target.value)}
+        placeholder="Delivery destination"
+        aria-label="Custom delivery destination"
+      />
+      <div className="vac-add-actions">
+        <button
+          type="button"
+          className="text-btn amber"
+          disabled={!dest.trim()}
+          onClick={() => onAdd(formatCustomSpecialtyChip(loadType, dest))}
+        >
+          Add open
+        </button>
+        <button type="button" className="text-btn" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
