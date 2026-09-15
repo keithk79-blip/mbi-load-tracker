@@ -236,7 +236,7 @@ export function rosterStatusLabel(status: string | null | undefined): string {
 
 /**
  * True when this hired-roster mark should drop the driver from an available
- * tally. Same idea as Today’s `isFullDayOff`: full-day reasons subtract;
+ * tally. Same idea as Today's `isFullDayOff`: full-day reasons subtract;
  * Late/Early and operational notes do not. Known sheet abbreviations
  * (oot / fmla / vac / wc / …) are full-day. Unknown short status-column
  * tokens also subtract — that column is only used for out marks.
@@ -490,16 +490,28 @@ export function entriesForRoster(
   kind: DriverRosterKind,
   yard: DriverRosterYard,
 ): DriverRosterEntry[] {
-  return Object.values(store.entries)
-    .filter((entry) => entry.kind === kind && entry.yard === yard)
-    .sort((a, b) => {
-      if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
-      const truck = (a.truckNumber ?? "").localeCompare(b.truckNumber ?? "", "en", {
-        numeric: true,
-      });
-      if (truck !== 0) return truck;
-      return a.name.localeCompare(b.name, "en", { sensitivity: "base" });
+  const seen = new Map<string, DriverRosterEntry>();
+  
+  // First pass: build a map of (truck, name) → entry, keeping the oldest by createdAt
+  for (const entry of Object.values(store.entries)) {
+    if (entry.kind !== kind || entry.yard !== yard) continue;
+    const key = `${entry.truckNumber ?? ""}\u0000${cleanDriverName(entry.name).toLowerCase()}`;
+    const existing = seen.get(key);
+    
+    // Keep the entry with the earlier createdAt (original entry)
+    if (!existing || entry.createdAt < existing.createdAt) {
+      seen.set(key, entry);
+    }
+  }
+  
+  return [...seen.values()].sort((a, b) => {
+    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+    const truck = (a.truckNumber ?? "").localeCompare(b.truckNumber ?? "", "en", {
+      numeric: true,
     });
+    if (truck !== 0) return truck;
+    return a.name.localeCompare(b.name, "en", { sensitivity: "base" });
+  });
 }
 
 /**
