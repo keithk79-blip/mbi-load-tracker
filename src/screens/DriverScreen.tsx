@@ -917,7 +917,7 @@ export function DriverScreen() {
             aria-label={`${yardLabel} hired roster`}
             style={{ ["--drv-sat-rows" as string]: String(fullRows) }}
           >
-            {entries.map((entry) => {
+            {entries.map((entry, index) => {
               const effective = effectiveRosterStatus(entry, vacationNames);
               const out =
                 rosterStatusRemovesFromAvailable(effective.status) ||
@@ -930,6 +930,26 @@ export function DriverScreen() {
                   role="listitem"
                 >
                   <div className="drv-full-cell-top">
+                    <div className="drv-move drv-full-cell-move">
+                      <button
+                        type="button"
+                        className="drv-move-btn"
+                        aria-label={`Move ${entry.name} up`}
+                        disabled={index === 0}
+                        onClick={() => void moveDriver(entry.id, -1)}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="drv-move-btn"
+                        aria-label={`Move ${entry.name} down`}
+                        disabled={index === entries.length - 1}
+                        onClick={() => void moveDriver(entry.id, 1)}
+                      >
+                        ↓
+                      </button>
+                    </div>
                     <span className="drv-sat-emp" title="Employee number">
                       {entry.truckNumber ?? "—"}
                     </span>
