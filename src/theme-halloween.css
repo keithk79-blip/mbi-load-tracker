@@ -14,28 +14,29 @@ html[data-theme="halloween"] {
   --amber: #f4a261;
   --amber-ink: #1a0c08;
   --danger: #ef6b5b;
+  --halloween-bg: url("/brand/halloween-bg.png");
 }
 
 html[data-theme="halloween"],
 html[data-theme="halloween"] body,
 html[data-theme="halloween"] #root {
-  background:
-    radial-gradient(900px 420px at 12% -8%, rgba(232, 93, 4, 0.22), transparent 55%),
-    radial-gradient(700px 380px at 110% 8%, rgba(88, 28, 12, 0.45), transparent 50%),
-    #12080c !important;
+  background-color: #12080c !important;
+  background-image:
+    linear-gradient(180deg, rgba(12, 6, 8, 0.28), rgba(12, 6, 8, 0.55)),
+    var(--halloween-bg) !important;
+  background-size: cover !important;
+  background-position: center 40% !important;
+  background-repeat: no-repeat !important;
+  background-attachment: fixed !important;
   color: #f7ead6 !important;
 }
 
 html[data-theme="halloween"] .app-shell,
 html[data-theme="halloween"] .app-shell.is-desktop,
-html[data-theme="halloween"] .phone,
 html[data-theme="halloween"] .phone-body,
 html[data-theme="halloween"] .phone-stack,
 html[data-theme="halloween"] .desk-main,
 html[data-theme="halloween"] .desk-topbar,
-html[data-theme="halloween"] .tab-bar,
-html[data-theme="halloween"] .tab-bar-side,
-html[data-theme="halloween"] .session-bar,
 html[data-theme="halloween"] .screen,
 html[data-theme="halloween"] .splash,
 html[data-theme="halloween"] .overlay-screen {
@@ -44,19 +45,21 @@ html[data-theme="halloween"] .overlay-screen {
 }
 
 html[data-theme="halloween"] .phone {
-  background: rgba(22, 10, 16, 0.92) !important;
+  background: rgba(16, 8, 12, 0.55) !important;
   border-color: #6b3a22 !important;
   box-shadow: 0 24px 80px rgba(80, 20, 8, 0.45);
+  backdrop-filter: blur(6px);
 }
 
 html[data-theme="halloween"] .session-bar {
-  background: #1c1014 !important;
+  background: rgba(28, 16, 20, 0.78) !important;
   border-color: #6b3a22 !important;
   color: #c4a07a;
 }
 
-html[data-theme="halloween"] .tab-bar {
-  background: #1c1014 !important;
+html[data-theme="halloween"] .tab-bar,
+html[data-theme="halloween"] .tab-bar-side {
+  background: rgba(28, 16, 20, 0.82) !important;
   border-color: #6b3a22 !important;
 }
 
@@ -80,7 +83,7 @@ html[data-theme="halloween"] .change-card,
 html[data-theme="halloween"] .truck-display,
 html[data-theme="halloween"] .truck-summary,
 html[data-theme="halloween"] .drivers-card {
-  background: #24141a !important;
+  background: rgba(36, 20, 26, 0.82) !important;
   color: #f7ead6 !important;
   border-color: #6b3a22 !important;
 }
@@ -88,7 +91,7 @@ html[data-theme="halloween"] .drivers-card {
 html[data-theme="halloween"] .tally-loads,
 html[data-theme="halloween"] .eod-stat-loads,
 html[data-theme="halloween"] .grand-total {
-  background: #3a1814 !important;
+  background: rgba(58, 24, 20, 0.88) !important;
   border-color: #e85d04 !important;
   color: #f7ead6 !important;
 }
@@ -100,7 +103,7 @@ html[data-theme="halloween"] .btn-ghost,
 html[data-theme="halloween"] .day-chip,
 html[data-theme="halloween"] .oot-chip,
 html[data-theme="halloween"] .calloff-add-btn {
-  background: #2e1a22 !important;
+  background: rgba(46, 26, 34, 0.88) !important;
   color: #f7ead6 !important;
   border-color: #6b3a22 !important;
 }
@@ -133,7 +136,7 @@ html[data-theme="halloween"] .vac-add-name,
 html[data-theme="halloween"] .vac-add-note,
 html[data-theme="halloween"] .vac-cap-input,
 html[data-theme="halloween"] .vac-add-form select {
-  background: #1c1014 !important;
+  background: rgba(28, 16, 20, 0.9) !important;
   color: #f7ead6 !important;
   border-color: #6b3a22 !important;
   color-scheme: dark;
@@ -142,7 +145,7 @@ html[data-theme="halloween"] .vac-add-form select {
 html[data-theme="halloween"] .vac-table-wrap,
 html[data-theme="halloween"] .eod-table-wrap,
 html[data-theme="halloween"] .station-calls-scroll {
-  background: #1c1014 !important;
+  background: rgba(28, 16, 20, 0.88) !important;
   border-color: #6b3a22 !important;
 }
 
@@ -159,7 +162,7 @@ html[data-theme="halloween"] .eod-table tbody th,
 html[data-theme="halloween"] .eod-table tbody td,
 html[data-theme="halloween"] .station-calls-table tbody td,
 html[data-theme="halloween"] .station-calls-table tbody th {
-  background: #1c1014 !important;
+  background: rgba(28, 16, 20, 0.9) !important;
   color: #f7ead6 !important;
 }
 
