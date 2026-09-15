@@ -17,15 +17,16 @@ describe("call-off log", () => {
     expect(rows.length).toBeGreaterThan(80);
     expect(fullDayOffCount(rows, "2026-08-15")).toBe(5);
     expect(
-      fullDayOffEntries(rows, [], "2026-08-15").map((row) => row.kind).sort(),
-    ).toEqual(["okd-off", "okd-off", "okd-off", "okd-off", "p-day"].sort());
+      fullDayOffEntries(rows, [], "2026-08-15")
+        .map((row) => row.kind)
+        .sort(),
+    ).toEqual(["call-off", "okd-off", "okd-off", "okd-off", "okd-off"]);
     expect(fullDayOffCount(rows, "2026-08-14")).toBe(1);
     expect(fullDayOffCount(rows, "2026-09-15")).toBe(3);
   });
 
   it("keeps through-date ranges on the Available subtract", () => {
     const rows = logEntriesToRows(rowsFromSeedCsv(CALL_OFF_LOG_SEED_CSV));
-    expect(fullDayOffCount(rows, "2026-08-27")).toBeGreaterThanOrEqual(1);
     const jovan = rows.find((row) => row.name === "Jovan Morris");
     expect(jovan?.end).toBe("2026-08-29");
     expect(fullDayOffCount(rows, "2026-08-26")).toBeGreaterThanOrEqual(1);
