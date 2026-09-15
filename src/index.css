@@ -1604,63 +1604,78 @@ button.log-load-top {
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 700;
-  background: transparent;
+  font-weight: 800;
+  background: #dbe3ee;
 }
 
+.calloff-add-form .calloff-kind-call-off,
 .calloff-kind-call-off {
-  border: 1px solid #5b8fc7;
-  color: #cfe4ff;
+  border: 1px solid #1d4f91;
+  background: #6ea4d8;
+  color: #06213f;
 }
 
+.calloff-add-form .calloff-kind-p-day,
 .calloff-kind-p-day {
-  border: 1px solid #3d9a63;
-  color: #c8f5d6;
+  border: 1px solid #14532d;
+  background: #4caf77;
+  color: #052e16;
 }
 
+.calloff-add-form .calloff-kind-okd-off,
 .calloff-kind-okd-off {
-  border: 1px solid #b99020;
-  color: #ffe9a3;
+  border: 1px solid #854d0e;
+  background: #d4a017;
+  color: #3b2a04;
 }
 
+.calloff-add-form .calloff-kind-ncns,
 .calloff-kind-ncns {
-  border: 1px solid #c44545;
-  color: #ffd0d0;
+  border: 1px solid #7f1d1d;
+  background: #d46a6a;
+  color: #3f0a0a;
 }
 
+.calloff-add-form .calloff-kind-late-early,
 .calloff-kind-late-early {
-  border: 1px solid #d66a1f;
-  color: #ffd2a8;
+  border: 1px solid #9a3412;
+  background: #e08a3c;
+  color: #3b1406;
 }
 
+.calloff-add-form .calloff-kind-call-off.selected,
 .calloff-kind-call-off.selected {
-  background: #d6e8fb;
-  border-color: #7eb6ff;
-  color: #eaf3ff;
+  background: #1d4f91;
+  border-color: #163e73;
+  color: #ffffff;
 }
 
+.calloff-add-form .calloff-kind-p-day.selected,
 .calloff-kind-p-day.selected {
-  background: #c8f0d8;
-  border-color: #6ee7a0;
-  color: #e8ffef;
+  background: #166534;
+  border-color: #14532d;
+  color: #ffffff;
 }
 
+.calloff-add-form .calloff-kind-okd-off.selected,
 .calloff-kind-okd-off.selected {
-  background: #4a3a10;
-  border-color: #f5d76e;
-  color: #fff6d4;
+  background: #a16207;
+  border-color: #854d0e;
+  color: #ffffff;
 }
 
+.calloff-add-form .calloff-kind-ncns.selected,
 .calloff-kind-ncns.selected {
-  background: #5a1c1c;
-  border-color: #ff8a8a;
-  color: #ffe8e8;
+  background: #b91c1c;
+  border-color: #7f1d1d;
+  color: #ffffff;
 }
 
+.calloff-add-form .calloff-kind-late-early.selected,
 .calloff-kind-late-early.selected {
-  background: #4a240c;
-  border-color: #f08a3a;
-  color: #ffe8d0;
+  background: #c2410c;
+  border-color: #9a3412;
+  color: #ffffff;
 }
 
 .calloff-add-error {

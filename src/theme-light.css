@@ -101,9 +101,9 @@ select {
 }
 
 .calloff-kind-call-off {
-  background: #9ec5ea !important;
+  background: #6ea4d8 !important;
   border: 1px solid #1d4f91 !important;
-  color: #0b2f5c !important;
+  color: #06213f !important;
 }
 
 .calloff-kind-call-off.selected {
@@ -113,7 +113,7 @@ select {
 }
 
 .calloff-kind-p-day {
-  background: #8fd6ad !important;
+  background: #4caf77 !important;
   border: 1px solid #166534 !important;
   color: #052e16 !important;
 }
@@ -125,7 +125,7 @@ select {
 }
 
 .calloff-kind-okd-off {
-  background: #e8c547 !important;
+  background: #d4a017 !important;
   border: 1px solid #854d0e !important;
   color: #422006 !important;
 }
@@ -137,7 +137,7 @@ select {
 }
 
 .calloff-kind-ncns {
-  background: #e7a0a0 !important;
+  background: #d46a6a !important;
   border: 1px solid #991b1b !important;
   color: #450a0a !important;
 }
@@ -149,7 +149,7 @@ select {
 }
 
 .calloff-kind-late-early {
-  background: #f0b27a !important;
+  background: #e08a3c !important;
   border: 1px solid #9a3412 !important;
   color: #431407 !important;
 }
@@ -161,28 +161,28 @@ select {
 }
 
 .calloff-chip-call-off {
-  background: #9ec5ea !important;
-  color: #0b2f5c !important;
+  background: #6ea4d8 !important;
+  color: #06213f !important;
 }
 
 .calloff-chip-p-day,
 .vacation-chip {
-  background: #8fd6ad !important;
+  background: #4caf77 !important;
   color: #052e16 !important;
 }
 
 .calloff-chip-okd-off {
-  background: #e8c547 !important;
+  background: #d4a017 !important;
   color: #422006 !important;
 }
 
 .calloff-chip-ncns {
-  background: #e7a0a0 !important;
+  background: #d46a6a !important;
   color: #450a0a !important;
 }
 
 .calloff-chip-late-early {
-  background: #f0b27a !important;
+  background: #e08a3c !important;
   color: #431407 !important;
 }
 
