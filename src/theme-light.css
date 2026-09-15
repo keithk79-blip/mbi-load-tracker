@@ -95,30 +95,95 @@ select {
   border-color: #d0d3d9 !important;
 }
 
+.calloff-kind-btn {
+  background: #e8edf3 !important;
+  font-weight: 800;
+}
+
+.calloff-kind-call-off {
+  background: #9ec5ea !important;
+  border: 1px solid #1d4f91 !important;
+  color: #0b2f5c !important;
+}
+
+.calloff-kind-call-off.selected {
+  background: #1d4f91 !important;
+  border-color: #163e73 !important;
+  color: #ffffff !important;
+}
+
+.calloff-kind-p-day {
+  background: #8fd6ad !important;
+  border: 1px solid #166534 !important;
+  color: #052e16 !important;
+}
+
+.calloff-kind-p-day.selected {
+  background: #166534 !important;
+  border-color: #14532d !important;
+  color: #ffffff !important;
+}
+
+.calloff-kind-okd-off {
+  background: #e8c547 !important;
+  border: 1px solid #854d0e !important;
+  color: #422006 !important;
+}
+
+.calloff-kind-okd-off.selected {
+  background: #a16207 !important;
+  border-color: #854d0e !important;
+  color: #ffffff !important;
+}
+
+.calloff-kind-ncns {
+  background: #e7a0a0 !important;
+  border: 1px solid #991b1b !important;
+  color: #450a0a !important;
+}
+
+.calloff-kind-ncns.selected {
+  background: #b91c1c !important;
+  border-color: #991b1b !important;
+  color: #ffffff !important;
+}
+
+.calloff-kind-late-early {
+  background: #f0b27a !important;
+  border: 1px solid #9a3412 !important;
+  color: #431407 !important;
+}
+
+.calloff-kind-late-early.selected {
+  background: #c2410c !important;
+  border-color: #9a3412 !important;
+  color: #ffffff !important;
+}
+
 .calloff-chip-call-off {
-  background: #d9e8f8 !important;
-  color: #123152 !important;
+  background: #9ec5ea !important;
+  color: #0b2f5c !important;
 }
 
 .calloff-chip-p-day,
 .vacation-chip {
-  background: #d7f3e3 !important;
-  color: #14532d !important;
+  background: #8fd6ad !important;
+  color: #052e16 !important;
 }
 
 .calloff-chip-okd-off {
-  background: #f8ecc8 !important;
-  color: #6b4e00 !important;
+  background: #e8c547 !important;
+  color: #422006 !important;
 }
 
 .calloff-chip-ncns {
-  background: #f8d4d4 !important;
-  color: #7f1d1d !important;
+  background: #e7a0a0 !important;
+  color: #450a0a !important;
 }
 
 .calloff-chip-late-early {
-  background: #fde4cc !important;
-  color: #7c2d12 !important;
+  background: #f0b27a !important;
+  color: #431407 !important;
 }
 
 .station-calls-scroll {

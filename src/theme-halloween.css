@@ -188,3 +188,63 @@ html[data-theme="halloween"] .theme-toggle.is-on {
   color: #1a0c08;
   border-color: #f4a261;
 }
+
+html[data-theme="halloween"] .calloff-kind-btn {
+  font-weight: 800;
+  background: #3a2018 !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-call-off {
+  background: #1e3a5f !important;
+  border: 1px solid #7eb6ff !important;
+  color: #d6e8fb !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-call-off.selected {
+  background: #2f6fb3 !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-p-day {
+  background: #14532d !important;
+  border: 1px solid #6ee7a0 !important;
+  color: #dcfce7 !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-p-day.selected {
+  background: #166534 !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-okd-off {
+  background: #5c4300 !important;
+  border: 1px solid #f5d76e !important;
+  color: #fef9c3 !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-okd-off.selected {
+  background: #a16207 !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-ncns {
+  background: #7f1d1d !important;
+  border: 1px solid #ff8a8a !important;
+  color: #fee2e2 !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-ncns.selected {
+  background: #b91c1c !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-late-early {
+  background: #7c2d12 !important;
+  border: 1px solid #f08a3a !important;
+  color: #ffedd5 !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-late-early.selected {
+  background: #c2410c !important;
+  color: #ffffff !important;
+}
