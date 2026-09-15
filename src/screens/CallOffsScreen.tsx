@@ -20,86 +20,10 @@ function kindLabel(reason: string): string {
   return CALL_OFF_KIND_OPTIONS.find((row) => row.kind === kind)?.label ?? "Note";
 }
 
-function RowEditor({
-  row,
-  today,
-  onSave,
-  onRemove,
-}: {
-  row: CallOffLogEntry;
-  today: string;
-  onSave: (patch: Partial<Pick<CallOffLogEntry, "name" | "start" | "end" | "reason">>) => void;
-  onRemove: () => void;
-}) {
-  const [name, setName] = useState(row.name);
-  const [start, setStart] = useState(row.start);
-  const [end, setEnd] = useState(row.end ?? "");
-  const [reason, setReason] = useState(row.reason);
-  const past = (row.end ?? row.start) < today;
-  const current = row.start <= today && (row.end ?? row.start) >= today;
-
-  function commit() {
-    const nextName = name.trim() || row.name;
-    const nextStart = start || row.start;
-    const nextEnd = end && end !== nextStart ? end : null;
-    if (
-      nextName === row.name &&
-      nextStart === row.start &&
-      nextEnd === row.end &&
-      reason.trim() === row.reason
-    ) {
-      return;
-    }
-    onSave({ name: nextName, start: nextStart, end: nextEnd, reason });
-  }
-
-  return (
-    <tr className={current ? "is-today" : past ? "is-past" : undefined}>
-      <td>
-        <DriverNameInput value={name} onChange={setName} aria-label={`${row.name} name`} />
-      </td>
-      <td>
-        <input
-          type="date"
-          value={start}
-          aria-label={`${row.name} call off date`}
-          onChange={(event) => setStart(event.target.value)}
-          onBlur={commit}
-        />
-      </td>
-      <td>
-        <input
-          type="date"
-          value={end}
-          aria-label={`${row.name} through date`}
-          onChange={(event) => setEnd(event.target.value)}
-          onBlur={commit}
-        />
-      </td>
-      <td>
-        <input
-          value={reason}
-          aria-label={`${row.name} reason`}
-          onChange={(event) => setReason(event.target.value)}
-          onBlur={commit}
-        />
-        <span className={`calloffs-kind calloff-chip calloff-chip-${kindForLogEntry(row)}`}>
-          {logEntrySubtracts(row) ? kindLabel(row.reason) : "Note"}
-        </span>
-      </td>
-      <td className="calloffs-actions">
-        <button type="button" className="text-btn" onClick={onRemove} aria-label={`Remove ${row.name}`}>
-          ×
-        </button>
-      </td>
-    </tr>
-  );
-}
-
 export function CallOffsScreen() {
   const today = chicagoToday();
-  const { rows, cloud, error, addRow, editRow, removeRow } = useCallOffLog();
-  const [filter, setFilter] = useState<FilterId>("upcoming");
+  const { rows, cloud, error, addRow, removeRow, loadSheet } = useCallOffLog();
+  const [filter, setFilter] = useState<FilterId>("all");
   const [name, setName] = useState("");
   const [start, setStart] = useState(today);
   const [end, setEnd] = useState("");
@@ -152,33 +76,19 @@ export function CallOffsScreen() {
           <BrandMark />
           <div>
             <p className="eyebrow">Dispatcher log</p>
-            <h1 className="page-title">Call-Off&apos;s</h1>
+            <h1 className="page-title">Call-Off's</h1>
           </div>
         </div>
         <p className="field-hint tight">
-          {todayCount} full-day off{todayCount === 1 ? "" : "s"} on {formatSheetStyleDate(today)}
+          {rows.length} row{rows.length === 1 ? "" : "s"} · {todayCount} off today
           {cloud ? " · synced" : " · this device"}
         </p>
       </header>
 
       <p className="field-hint">
-        Full Roster is the hired count. P-Day, Call Off, Ok&apos;d Off, vacation, FMLA,
-        court, bereavement, and last day mark that name on Available and subtract the tally.
-        Late start / park-by notes stay on the roster.
+        Same sheet as before: Name, Call Off, Through Date, Reason. P-Day / Call Off /
+        Ok'd Off subtract from Available. Park-by and late notes do not.
       </p>
-
-      <div className="calloffs-legend" aria-label="How rows hit Available">
-        <span className="calloffs-legend-item">
-          <i className="calloff-chip calloff-chip-p-day calloffs-kind">P-Day</i> subtracts
-        </span>
-        <span className="calloffs-legend-item">
-          <i className="calloff-chip calloff-chip-okd-off calloffs-kind">Ok&apos;d Off</i> subtracts
-        </span>
-        <span className="calloffs-legend-item">
-          <i className="calloff-chip calloff-chip-call-off calloffs-kind">Call Off</i> subtracts
-        </span>
-        <span className="calloffs-legend-item">Park / late notes do not</span>
-      </div>
 
       <form
         className="calloffs-add"
@@ -228,15 +138,22 @@ export function CallOffsScreen() {
           <button type="submit" className="text-btn amber">
             Add row
           </button>
+          <button
+            type="button"
+            className="text-btn"
+            onClick={() => void loadSheet()}
+          >
+            Load original sheet
+          </button>
         </div>
       </form>
 
       <div className="vac-year-row" role="tablist" aria-label="Call-off filter">
         {(
           [
+            ["all", `All (${rows.length})`],
             ["upcoming", "Upcoming"],
-            ["today", "Today"],
-            ["all", "All"],
+            ["today", `Today (${formatSheetStyleDate(today)})`],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -265,18 +182,19 @@ export function CallOffsScreen() {
           </thead>
           <tbody>
             {visible.map((row) => (
-              <RowEditor
+              <SheetRow
                 key={row.id}
                 row={row}
                 today={today}
-                onSave={(patch) => void editRow(row.id, patch)}
                 onRemove={() => void removeRow(row.id)}
               />
             ))}
             {!visible.length ? (
               <tr>
                 <td colSpan={5}>
-                  <p className="oot-empty">No rows in this view.</p>
+                  <p className="oot-empty">
+                    No rows yet. Hit Load original sheet to pull in the current log.
+                  </p>
                 </td>
               </tr>
             ) : null}
@@ -284,5 +202,37 @@ export function CallOffsScreen() {
         </table>
       </div>
     </div>
+  );
+}
+
+function SheetRow({
+  row,
+  today,
+  onRemove,
+}: {
+  row: CallOffLogEntry;
+  today: string;
+  onRemove: () => void;
+}) {
+  const last = row.end ?? row.start;
+  const current = row.start <= today && last >= today;
+  const past = last < today;
+  return (
+    <tr className={current ? "is-today" : past ? "is-past" : undefined}>
+      <td>{row.name}</td>
+      <td>{formatSheetStyleDate(row.start)}</td>
+      <td>{row.end ? formatSheetStyleDate(row.end) : ""}</td>
+      <td>
+        {row.reason}
+        <span className={`calloffs-kind calloff-chip calloff-chip-${kindForLogEntry(row)}`}>
+          {logEntrySubtracts(row) ? kindLabel(row.reason) : "Note"}
+        </span>
+      </td>
+      <td className="calloffs-actions">
+        <button type="button" className="text-btn" onClick={onRemove} aria-label={`Remove ${row.name}`}>
+          ×
+        </button>
+      </td>
+    </tr>
   );
 }
