@@ -82,7 +82,8 @@ html[data-theme="halloween"] .station-calls-card,
 html[data-theme="halloween"] .change-card,
 html[data-theme="halloween"] .truck-display,
 html[data-theme="halloween"] .truck-summary,
-html[data-theme="halloween"] .drivers-card {
+html[data-theme="halloween"] .drivers-card,
+html[data-theme="halloween"] .calloffs-add {
   background: rgba(36, 20, 26, 0.76) !important;
   color: #f7ead6 !important;
   border-color: #6b3a22 !important;
@@ -135,7 +136,8 @@ html[data-theme="halloween"] .vac-add-form input,
 html[data-theme="halloween"] .vac-add-name,
 html[data-theme="halloween"] .vac-add-note,
 html[data-theme="halloween"] .vac-cap-input,
-html[data-theme="halloween"] .vac-add-form select {
+html[data-theme="halloween"] .vac-add-form select,
+html[data-theme="halloween"] .calloffs-table input {
   background: rgba(28, 16, 20, 0.88) !important;
   color: #f7ead6 !important;
   border-color: #6b3a22 !important;
@@ -144,14 +146,16 @@ html[data-theme="halloween"] .vac-add-form select {
 
 html[data-theme="halloween"] .vac-table-wrap,
 html[data-theme="halloween"] .eod-table-wrap,
-html[data-theme="halloween"] .station-calls-scroll {
+html[data-theme="halloween"] .station-calls-scroll,
+html[data-theme="halloween"] .calloffs-table-wrap {
   background: rgba(28, 16, 20, 0.84) !important;
   border-color: #6b3a22 !important;
 }
 
 html[data-theme="halloween"] .vac-table thead th,
 html[data-theme="halloween"] .eod-table thead th,
-html[data-theme="halloween"] .station-calls-table thead th {
+html[data-theme="halloween"] .station-calls-table thead th,
+html[data-theme="halloween"] .calloffs-table thead th {
   background: #3a2018 !important;
   color: #f4a261 !important;
 }
@@ -161,7 +165,9 @@ html[data-theme="halloween"] .vac-table td,
 html[data-theme="halloween"] .eod-table tbody th,
 html[data-theme="halloween"] .eod-table tbody td,
 html[data-theme="halloween"] .station-calls-table tbody td,
-html[data-theme="halloween"] .station-calls-table tbody th {
+html[data-theme="halloween"] .station-calls-table tbody th,
+html[data-theme="halloween"] .calloffs-table th,
+html[data-theme="halloween"] .calloffs-table td {
   background: rgba(28, 16, 20, 0.88) !important;
   color: #f7ead6 !important;
 }
