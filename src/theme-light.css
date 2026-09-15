@@ -379,3 +379,20 @@ select {
   background: #f4f5f7;
   color: #111111;
 }
+
+.theme-toggle {
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #d0d3d9;
+  background: #f4f5f7;
+  color: #111111;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.theme-toggle.is-on {
+  background: #eddc9a;
+  border-color: #c4a44a;
+  color: #3b2f0b;
+}
