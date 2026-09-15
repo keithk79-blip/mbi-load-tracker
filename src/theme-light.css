@@ -356,6 +356,25 @@ select {
   border-color: #d0d3d9;
 }
 
+/* Selected dispatch chips must beat the generic .chip light-theme fill. */
+.chip.chip-selected,
+.chip[aria-pressed="true"] {
+  background: #eddc9a !important;
+  border-color: #c4a44a !important;
+  color: #3b2f0b !important;
+  font-weight: 700;
+}
+
+.chip.chip-muted {
+  color: #6b6b6b;
+}
+
+.chip.chip-invalid {
+  background: transparent !important;
+  color: #8a8378 !important;
+  border-style: dashed;
+}
+
 .btn-ghost {
   background: #f4f5f7;
   color: #111111;

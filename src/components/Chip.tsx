@@ -23,7 +23,12 @@ export function Chip({
     .join(" ");
 
   return (
-    <button type="button" className={classes} onClick={onClick}>
+    <button
+      type="button"
+      className={classes}
+      aria-pressed={selected}
+      onClick={onClick}
+    >
       {invalid ? <s>{label}</s> : label}
     </button>
   );
