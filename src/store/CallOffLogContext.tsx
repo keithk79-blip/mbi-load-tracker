@@ -91,11 +91,12 @@ function bootstrap(persisted: CallOffLogPersisted): CallOffLogPersisted {
   if (persisted.rows.length) {
     return { ...persisted, seeded: true };
   }
-  if (persisted.deletedIds.length) return persisted;
   const seeded = callOffLogSeedRows();
+  const keepDeleted = persisted.deletedIds.filter((id) => !id.startsWith("seed-"));
   return {
     ...persisted,
     rows: seeded,
+    deletedIds: keepDeleted,
     seeded: true,
   };
 }
@@ -113,7 +114,6 @@ export function CallOffLogProvider({ children }: { children: ReactNode }) {
   rowsRef.current = rows;
   const deletedRef = useRef<Set<string>>(new Set(readCallOffLogPersisted().deletedIds));
   const seenRef = useRef<Set<string>>(new Set(readCallOffLogPersisted().seenIds));
-  const seededRef = useRef(true);
   const epochRef = useRef(0);
 
   const persistLocal = useCallback((nextRows: CallOffLogEntry[]) => {
@@ -185,7 +185,7 @@ export function CallOffLogProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     const local = bootstrap(readCallOffLogPersisted());
-    seededRef.current = local.seeded;
+    deletedRef.current = new Set(local.deletedIds);
     if (!cloud) {
       persistLocal(local.rows);
       return;
@@ -237,9 +237,10 @@ export function CallOffLogProvider({ children }: { children: ReactNode }) {
   const loadSheet = useCallback(async () => {
     epochRef.current += 1;
     const seeded = callOffLogSeedRows();
+    for (const row of seeded) deletedRef.current.delete(row.id);
     const next = mergeCallOffLog(rowsRef.current, seeded, [...deletedRef.current]);
     persistLocal(next);
-    if (cloud) await cloudUpsert(seeded.filter((row) => next.some((item) => item.id === row.id)));
+    if (cloud) await cloudUpsert(seeded);
     return next.length;
   }, [cloud, cloudUpsert, persistLocal]);
 
