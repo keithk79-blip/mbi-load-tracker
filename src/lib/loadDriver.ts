@@ -42,6 +42,58 @@ export function snapshotDriverNameForTruck(
   return names.length ? names.join(" · ") : null;
 }
 
+export type TruckDriverGuess = {
+  truck: string;
+  name: string;
+};
+
+export type TruckDriverPreview = {
+  exact: string | null;
+  guesses: TruckDriverGuess[];
+};
+
+/** Live typeahead against Full Roster assignedTruck. Exact match first. */
+export function previewDriversForTruckInput(
+  store: DriverRosterStore,
+  raw: string,
+  limit = 5,
+): TruckDriverPreview {
+  const needle = normalizeLoadTruck(raw);
+  if (!needle) return { exact: null, guesses: [] };
+  const exact = snapshotDriverNameForTruck(store, needle);
+  if (exact) return { exact, guesses: [] };
+
+  const seen = new Set<string>();
+  const guesses: TruckDriverGuess[] = [];
+  const rows = Object.values(store.entries)
+    .filter((entry) => entry.kind === "full" && entry.assignedTruck)
+    .sort((a, b) =>
+      (a.assignedTruck ?? "").localeCompare(b.assignedTruck ?? "", "en", {
+        numeric: true,
+      }),
+    );
+  for (const entry of rows) {
+    const truck = entry.assignedTruck;
+    const name = cleanDriverName(entry.name);
+    if (!truck || !name) continue;
+    if (!truck.toLowerCase().startsWith(needle.toLowerCase())) continue;
+    const key = `${truck.toLowerCase()}|${name.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    guesses.push({ truck, name });
+    if (guesses.length >= limit) break;
+  }
+  return { exact: null, guesses };
+}
+
+export function formatTruckDriverPreview(preview: TruckDriverPreview): string {
+  if (preview.exact) return preview.exact;
+  if (!preview.guesses.length) return "";
+  return preview.guesses
+    .map((row) => `${row.truck} · ${row.name}`)
+    .join("  ");
+}
+
 /** Distinct snapshotted names on this day's loads for the truck. */
 export function loggedDriverNamesForTruck(
   loads: readonly Pick<Load, "truck" | "driverName">[],
