@@ -1,5 +1,5 @@
-﻿import { useMemo, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ChevronDown, Plus, X } from "lucide-react";
 import {
   chicagoToday,
   formatHeaderDate,
@@ -14,6 +14,7 @@ import { vacationNamesOnDateAllYards } from "../lib/rosterVacation";
 import { DriverNameInput } from "./DriverNameInput";
 import { useDrivers } from "../store/DriversContext";
 import { useVacation } from "../store/VacationContext";
+import "./drivers-card.css";
 
 function pulledLabel(iso: string | null): string {
   if (!iso) return "Not pulled yet";
@@ -32,10 +33,14 @@ function pulledLabel(iso: string | null): string {
 
 export function DriversCard({
   compact = false,
+  collapsible = false,
   date,
+  loadCount = null,
 }: {
   compact?: boolean;
+  collapsible?: boolean;
   date?: string;
+  loadCount?: number | null;
 }) {
   const today = chicagoToday();
   const viewed = date ?? today;
@@ -59,10 +64,10 @@ export function DriversCard({
     () => vacationNamesOnDateAllYards(vacation.store, viewed),
     [vacation.store, viewed],
   );
+  const [open, setOpen] = useState(!collapsible);
   const dayAvail = availabilityOn(viewed);
   const avg = ytdAverage(today);
   const callOffs = callOffsOn(viewed);
-  // Persist, don't freeze: past days keep their pills and stay editable.
   const canEditCallOffs = !sunday;
 
   const [addingFor, setAddingFor] = useState<string | null>(null);
@@ -93,7 +98,6 @@ export function DriversCard({
     closeAdd();
   }
 
-  // Today + future: live roster OOT. Past: locked day ootNames only (never backfill).
   const displayedOot =
     viewingToday || viewingFuture
       ? ootNames
@@ -121,40 +125,75 @@ export function DriversCard({
       : "today"
     : formatHeaderDate(viewed);
 
+  const collapsed = collapsible && !open;
+  const loadsPerDriver =
+    !sunday && dayAvail && dayAvail.available > 0 && loadCount != null
+      ? (loadCount / dayAvail.available).toFixed(2)
+      : null;
+
+  const summaryLine = sunday
+    ? "No Sunday tally"
+    : dayAvail
+      ? collapsed
+        ? `${dayAvail.available} out of ${dayAvail.base} drivers`
+        : `${dayAvail.available} out of ${dayAvail.base} · ${whenLabel}`
+      : viewingToday
+        ? "Roster not loaded"
+        : `No snapshot for ${formatHeaderDate(viewed)}`;
+
   return (
-    <article className={compact ? "drivers-card drivers-card-compact" : "drivers-card"}>
+    <article
+      className={[
+        compact ? "drivers-card drivers-card-compact" : "drivers-card",
+        collapsed ? "drivers-card-collapsed" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <div className="drivers-card-top">
-        <div>
-          <p className="section-title">Available drivers</p>
-          {sunday ? (
-            <p className="drivers-avail">No Sunday tally</p>
-          ) : dayAvail ? (
-            <p className="drivers-avail">
-              {dayAvail.available} out of {dayAvail.base} · {whenLabel}
-            </p>
-          ) : viewingToday ? (
-            <p className="drivers-avail">Roster not loaded</p>
-          ) : (
-            <p className="drivers-avail">No snapshot for {formatHeaderDate(viewed)}</p>
-          )}
-          {sunday ? (
-            <p className="grand-sub">
-              Sundays are not tallied. {formatHeaderDate(viewed)}
-            </p>
-          ) : !dayAvail && viewingToday ? (
-            <p className="grand-sub">
-              Import Full Roster on the Driver tab (one-time seed).
-            </p>
-          ) : !dayAvail ? (
-            <p className="grand-sub">
-              This Chicago day was never snapshotted. Today’s live roster tally is not
-              written back onto past dates.
-            </p>
-          ) : null}
-        </div>
+        {collapsible ? (
+          <button
+            type="button"
+            className="drivers-card-toggle"
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+          >
+            <span className="drivers-card-toggle-copy">
+              <span className="section-title">Available drivers</span>
+              <span className="drivers-avail">{summaryLine}</span>
+              {collapsed && loadsPerDriver ? (
+                <span className="drivers-ratio">{loadsPerDriver} loads/driver</span>
+              ) : null}
+            </span>
+            <ChevronDown
+              size={18}
+              className={open ? "totals-chevron open" : "totals-chevron"}
+              aria-hidden
+            />
+          </button>
+        ) : (
+          <div>
+            <p className="section-title">Available drivers</p>
+            <p className="drivers-avail">{summaryLine}</p>
+            {sunday ? (
+              <p className="grand-sub">
+                Sundays are not tallied. {formatHeaderDate(viewed)}
+              </p>
+            ) : !dayAvail && viewingToday ? (
+              <p className="grand-sub">
+                Import Full Roster on the Driver tab (one-time seed).
+              </p>
+            ) : !dayAvail ? (
+              <p className="grand-sub">
+                This Chicago day was never snapshotted. Today’s live roster tally is not
+                written back onto past dates.
+              </p>
+            ) : null}
+          </div>
+        )}
       </div>
 
-      {showOot ? (
+      {!collapsed && showOot ? (
         <div className="oot-block">
           <p className="oot-label">Out of town</p>
           {displayedOot.length ? (
@@ -177,7 +216,7 @@ export function DriversCard({
         </div>
       ) : null}
 
-      {showCallOffs ? (
+      {!collapsed && showCallOffs ? (
         <div className="oot-block">
           <div className="calloff-head">
             <div>
@@ -250,11 +289,7 @@ export function DriversCard({
                 <button type="submit" className="text-btn amber">
                   Save
                 </button>
-                <button
-                  type="button"
-                  className="text-btn"
-                  onClick={closeAdd}
-                >
+                <button type="button" className="text-btn" onClick={closeAdd}>
                   Cancel
                 </button>
               </div>
@@ -287,7 +322,7 @@ export function DriversCard({
         </div>
       ) : null}
 
-      {!sunday ? (
+      {!collapsed && !sunday ? (
         <div className="oot-block">
           <p className="oot-label">Vacation</p>
           {vacationNames.length ? (
@@ -304,26 +339,30 @@ export function DriversCard({
         </div>
       ) : null}
 
-      {!compact && avg !== null ? (
+      {!collapsed && !compact && avg !== null ? (
         <p className="drivers-avg">
           YTD average {avg.toFixed(0)} available · Mon–Sat (no Sundays)
         </p>
       ) : null}
 
-      <div className="drivers-actions">
-        <span className="field-hint tight">
-          {status === "live"
-            ? `Full Roster · ${pulledLabel(fetchedAt)}`
-            : status === "cached"
-              ? `Full Roster · ${pulledLabel(fetchedAt)}`
-              : status === "error"
-                ? "Could not sync"
-                : status === "loading"
-                  ? "Loading…"
-                  : "Full Roster"}
-        </span>
-      </div>
-      {error ? <p className="field-hint">{error}</p> : null}
+      {!collapsed ? (
+        <>
+          <div className="drivers-actions">
+            <span className="field-hint tight">
+              {status === "live"
+                ? `Full Roster · ${pulledLabel(fetchedAt)}`
+                : status === "cached"
+                  ? `Full Roster · ${pulledLabel(fetchedAt)}`
+                  : status === "error"
+                    ? "Could not sync"
+                    : status === "loading"
+                      ? "Loading…"
+                      : "Full Roster"}
+            </span>
+          </div>
+          {error ? <p className="field-hint">{error}</p> : null}
+        </>
+      ) : null}
     </article>
   );
 }

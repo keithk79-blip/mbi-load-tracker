@@ -119,7 +119,7 @@ export function TodayScreen({
 
       <ChicagoTrafficCard />
 
-      <DriversCard compact date={date} />
+      <DriversCard compact collapsible date={date} loadCount={displayLoadCount(dayLoads.length, snapshot)} />
 
       <StationCallsCard date={date} />
 
