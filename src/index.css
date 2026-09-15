@@ -746,7 +746,7 @@ button.log-load-top {
   min-height: 48px;
   border-radius: 14px;
   border: 1px solid var(--line);
-  background: var(--surface);
+  background: #ffffff;
   padding: 12px 14px;
 }
 
@@ -895,8 +895,8 @@ button.log-load-top {
 }
 
 .delete-confirm {
-  background: #2a1614;
-  border: 1px solid #6a3028;
+  background: #fae6e7;
+  border: 1px solid #d4a9a9;
   border-radius: 16px;
   padding: 14px;
 }
@@ -906,8 +906,8 @@ button.log-load-top {
 }
 
 .warn-confirm {
-  background: #2a2214;
-  border-color: #6a5a28;
+  background: #fef9e7;
+  border-color: #d4a855;
 }
 
 .confirm-overlay {
@@ -1064,7 +1064,7 @@ button.log-load-top {
 .tally-card-sheet,
 .eod-stat-sheet {
   border-color: #5a4a28;
-  background: #221e16;
+  background: #ede9e4;
 }
 
 .sheet-totals-form {
@@ -1577,7 +1577,7 @@ button.log-load-top {
   padding: 8px 10px 10px;
   border-radius: 12px;
   border: 1px solid #d4cfc8;
-  background: #fafaf9;
+  background: #ffffff;
 }
 
 .calloff-name-label,
@@ -2267,7 +2267,7 @@ body.app-ready .splash {
   z-index: 1;
 }
 .station-calls-corner {
-  background: #243044 !important;
+  background: #d4cfc8 !important;
   color: var(--text) !important;
   width: 68px !important;
   text-align: left !important;
@@ -3113,7 +3113,7 @@ body.app-ready .splash {
   padding: 8px 10px;
   border-radius: 12px;
   border: 1px solid #d4cfc8;
-  background: #fafaf9;
+  background: #ffffff;
 }
 
 .vac-add-name,
@@ -3396,7 +3396,7 @@ body.app-ready .splash {
 
 .drv-sat-cell.is-selected {
   border-color: var(--brand);
-  background: #2a1718;
+  background: #fae6e7;
   box-shadow: 0 0 0 2px rgba(216, 40, 44, 0.35);
 }
 
@@ -3569,7 +3569,7 @@ body.app-ready .splash {
   padding: 4px 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fafaf9;
+  background: #ffffff;
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
@@ -3707,6 +3707,10 @@ body.app-ready .splash {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+
+
+
 
 
 
