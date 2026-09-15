@@ -27,6 +27,7 @@ type LoadFormProps = {
   onChange: (next: FormState) => void;
   original?: FormState;
   onChangeTruck: () => void;
+  driverName?: string | null;
 };
 
 export function LoadForm({
@@ -34,6 +35,7 @@ export function LoadForm({
   onChange,
   original,
   onChangeTruck,
+  driverName,
 }: LoadFormProps) {
   const { loads } = useLoads();
   const rankedStations = useMemo(
@@ -104,7 +106,12 @@ export function LoadForm({
       <section className="field">
         <div className="field-label">Truck #</div>
         <div className="truck-field">
-          <div className="truck-value">{value.truck || "—"}</div>
+          <div className="truck-value">
+            {value.truck || "—"}
+            {driverName ? (
+              <span className="truck-driver-inline"> · {driverName}</span>
+            ) : null}
+          </div>
           <button type="button" className="text-btn amber" onClick={onChangeTruck}>
             Change...
           </button>
