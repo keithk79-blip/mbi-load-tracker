@@ -63,6 +63,8 @@ export type DriverRosterEntry = {
   name: string;
   /** Full Roster only: unavailability abbreviation, or null if working. */
   status: string | null;
+  /** Full Roster only: first day on the job (America/Chicago). Null until known. */
+  hireDate: string | null;
   sortOrder: number;
   forDate: string | null;
   createdAt: string;
@@ -128,6 +130,7 @@ export type DriverRosterInput = {
   assignedTruck?: string | null;
   name: string;
   status?: string | null;
+  hireDate?: string | null;
   sortOrder?: number;
   forDate?: string | null;
 };
@@ -380,6 +383,7 @@ export function cleanDriverRosterEntry(raw: unknown): DriverRosterEntry | null {
         : null,
     name,
     status: kind === "full" ? cleanDriverStatus(rec.status) : null,
+    hireDate: kind === "full" ? cleanForDate(rec.hireDate ?? rec.hire_date) : null,
     sortOrder,
     forDate: kind === "sat" ? cleanForDate(rec.forDate) : null,
     createdAt,
@@ -781,6 +785,7 @@ export function addRosterEntry(
     assignedTruck: kind === "full" ? cleanAssignedTruck(input.assignedTruck ?? null) : null,
     name,
     status: kind === "full" ? cleanDriverStatus(input.status ?? null) : null,
+    hireDate: kind === "full" ? cleanForDate(input.hireDate ?? null) : null,
     sortOrder:
       typeof input.sortOrder === "number" && Number.isFinite(input.sortOrder)
         ? Math.floor(input.sortOrder)
@@ -796,7 +801,10 @@ export function updateRosterEntry(
   store: DriverRosterStore,
   id: string,
   patch: Partial<
-    Pick<DriverRosterEntry, "truckNumber" | "assignedTruck" | "name" | "status" | "sortOrder" | "forDate">
+    Pick<
+      DriverRosterEntry,
+      "truckNumber" | "assignedTruck" | "name" | "status" | "hireDate" | "sortOrder" | "forDate"
+    >
   >,
   at?: string,
 ): DriverRosterStore {
@@ -820,6 +828,12 @@ export function updateRosterEntry(
         ? patch.status !== undefined
           ? cleanDriverStatus(patch.status)
           : prev.status
+        : null,
+    hireDate:
+      prev.kind === "full"
+        ? patch.hireDate !== undefined
+          ? cleanForDate(patch.hireDate)
+          : prev.hireDate
         : null,
     sortOrder:
       typeof patch.sortOrder === "number" && Number.isFinite(patch.sortOrder)

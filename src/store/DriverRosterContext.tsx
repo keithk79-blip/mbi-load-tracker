@@ -42,6 +42,11 @@ import {
 } from "../lib/driverRoster";
 import { describeImportGroup, fetchRosterWorkbook } from "../lib/driverRosterSheet";
 import { assignedTrucksNeedingUpload, preserveAssignedTrucks } from "../lib/rosterAssignedTruck";
+import {
+  applyKnownHireDates,
+  hireDatesNeedingUpload,
+  preserveHireDates,
+} from "../lib/rosterHireDate";
 import { enforceOneYardPerDriver } from "../lib/rosterYardOwnership";
 import { getSupabase } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
@@ -54,6 +59,7 @@ type EntryRow = {
   assigned_truck?: string | null;
   name: string;
   status: string | null;
+  hire_date?: string | null;
   sort_order: number;
   for_date: string | null;
   created_at: string;
@@ -105,6 +111,7 @@ function rowsToStore(rows: EntryRow[]): DriverRosterStore {
           : null,
       name: row.name,
       status: row.status,
+      hireDate: cleanDriverRosterKind(row.kind) === "full" ? row.hire_date ?? null : null,
       sortOrder: row.sort_order,
       forDate: row.for_date,
       createdAt: row.created_at,
@@ -123,6 +130,7 @@ function entryToRow(entry: DriverRosterEntry, userId: string | null) {
     assigned_truck: entry.assignedTruck,
     name: entry.name,
     status: entry.status,
+    hire_date: entry.hireDate,
     sort_order: entry.sortOrder,
     for_date: entry.forDate,
     created_at: entry.createdAt,
@@ -190,30 +198,30 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     const supabase = getSupabase();
     if (!supabase || !session) return null;
     const page = await fetchAllPaged<EntryRow>(async (from, to) => {
-      const withTruck = await supabase
-        .from("driver_roster_entries")
-        .select(
-          "id, kind, yard, truck_number, assigned_truck, name, status, sort_order, for_date, created_at, updated_at",
-        )
-        .order("id", { ascending: true })
-        .range(from, to);
-      if (!withTruck.error) {
-        return { data: withTruck.data as EntryRow[] | null, error: withTruck.error };
+      const selects = [
+        "id, kind, yard, truck_number, assigned_truck, name, status, hire_date, sort_order, for_date, created_at, updated_at",
+        "id, kind, yard, truck_number, assigned_truck, name, status, sort_order, for_date, created_at, updated_at",
+        "id, kind, yard, truck_number, name, status, sort_order, for_date, created_at, updated_at",
+      ];
+      let lastError: { message?: string; code?: string } | null = null;
+      for (const columns of selects) {
+        const result = await supabase
+          .from("driver_roster_entries")
+          .select(columns)
+          .order("id", { ascending: true })
+          .range(from, to);
+        if (!result.error) {
+          return { data: (result.data as unknown as EntryRow[] | null) ?? null, error: result.error };
+        }
+        lastError = result.error;
+        const missingCol =
+          result.error.code === "42703" ||
+          /hire_date|assigned_truck/i.test(result.error.message ?? "");
+        if (!missingCol) {
+          return { data: result.data as EntryRow[] | null, error: result.error };
+        }
       }
-      const missingAssigned =
-        /assigned_truck/i.test(withTruck.error.message ?? "") ||
-        withTruck.error.code === "42703";
-      if (!missingAssigned) {
-        return { data: withTruck.data as EntryRow[] | null, error: withTruck.error };
-      }
-      const result = await supabase
-        .from("driver_roster_entries")
-        .select(
-          "id, kind, yard, truck_number, name, status, sort_order, for_date, created_at, updated_at",
-        )
-        .order("id", { ascending: true })
-        .range(from, to);
-      return { data: result.data as EntryRow[] | null, error: result.error };
+      return { data: null, error: lastError };
     });
     if (page.error || !page.data) {
       console.warn("driver_roster_entries pull failed", pagedErrorMessage(page.error));
@@ -226,6 +234,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     if (!ids.length) return;
     const supabase = getSupabase();
     if (!supabase) return;
+    // Explicit × and Sat Reset are the only paths that may DELETE a cloud roster row.
     const { error } = await supabase.from("driver_roster_entries").delete().in("id", ids);
     if (error) console.warn("driver roster delete failed", error.message);
   }, []);
@@ -237,14 +246,21 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       const rows = entries.map((entry) => entryToRow(entry, user?.id ?? null));
       const { error } = await supabase.from("driver_roster_entries").upsert(rows);
       if (!error) return;
-      const missingAssigned =
-        /assigned_truck/i.test(error.message ?? "") || error.code === "42703";
-      if (!missingAssigned) {
+      const msg = error.message ?? "";
+      const missingHire = /hire_date/i.test(msg);
+      const missingAssigned = /assigned_truck/i.test(msg);
+      if (error.code !== "42703" && !missingHire && !missingAssigned) {
         console.warn("driver roster upsert failed", error.message);
         return;
       }
-      const fallback = rows.map(({ assigned_truck: _assigned, ...row }) => row);
-      const retry = await supabase.from("driver_roster_entries").upsert(fallback);
+      let payload: Record<string, unknown>[] = rows;
+      if (missingHire) {
+        payload = payload.map(({ hire_date: _h, ...row }) => row);
+      }
+      if (missingAssigned) {
+        payload = payload.map(({ assigned_truck: _a, ...row }) => row);
+      }
+      const retry = await supabase.from("driver_roster_entries").upsert(payload);
       if (retry.error) console.warn("driver roster upsert failed", retry.error.message);
     },
     [session, user?.id],
@@ -321,7 +337,8 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
 
   const refreshInner = useCallback(async () => {
     if (!cloud) {
-      persistLocal(storeRef.current);
+      const stamped = applyKnownHireDates(storeRef.current);
+      persistLocal(stamped.store);
       await seedIfEmpty();
       return;
     }
@@ -338,9 +355,15 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
         seenRemoteEntryIds: seenRef.current,
       });
       if (epoch !== epochRef.current) return;
-      const next = preserveAssignedTrucks(prior, result.next);
+      const next = preserveHireDates(
+        prior,
+        preserveAssignedTrucks(prior, result.next),
+      );
       const toUpload = [...result.toUploadEntries];
       for (const row of assignedTrucksNeedingUpload(next, remote)) {
+        if (!toUpload.some((item) => item.id === row.id)) toUpload.push(row);
+      }
+      for (const row of hireDatesNeedingUpload(next, remote)) {
         if (!toUpload.some((item) => item.id === row.id)) toUpload.push(row);
       }
       if (toUpload.length && !uploadingRef.current) {
@@ -360,6 +383,11 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
 
     await seedIfEmpty();
     await seedEmptySatFromFull();
+    const stamped = applyKnownHireDates(storeRef.current);
+    if (stamped.updated.length) {
+      persistLocal(stamped.store);
+      if (cloud) await cloudUpsert(stamped.updated);
+    }
   }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, pullRemote, seedEmptySatFromFull, seedIfEmpty]);
 
   const refresh = useCallback(() => {

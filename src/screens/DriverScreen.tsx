@@ -34,6 +34,7 @@ import {
   effectiveRosterStatus,
   vacationNamesOnDate,
 } from "../lib/rosterVacation";
+import { yearsOfService, yearsOfServiceLabel } from "../lib/rosterHireDate";
 import { sundayOnOrBefore } from "../lib/vacationBoard";
 import { useDriverGone } from "../store/DriverGoneContext";
 import { useDriverRoster } from "../store/DriverRosterContext";
@@ -923,6 +924,7 @@ export function DriverScreen() {
                 rosterStatusRemovesFromAvailable(effective.status) ||
                 Boolean(effective.onVacation);
               const storedOut = rosterStatusRemovesFromAvailable(entry.status);
+              const yos = yearsOfService(entry.hireDate, today);
               return (
                 <div
                   key={entry.id}
@@ -959,6 +961,15 @@ export function DriverScreen() {
                       {effective.onVacation ? (
                         <span className="drv-vac-from" title="From the Vacation tab this week">
                           Vac
+                        </span>
+                      ) : null}
+                      {yos !== null ? (
+                        <span
+                          className="drv-yos-tag"
+                          title={`Years of service · started ${entry.hireDate}`}
+                          aria-label={`Years of service: ${yos}`}
+                        >
+                          {yearsOfServiceLabel(yos)}
                         </span>
                       ) : null}
                     </span>
@@ -1041,7 +1052,7 @@ export function DriverScreen() {
                 setRemoveDialog({
                   step: "terminate",
                   entry: removeDialog.entry,
-                  hireDate: "",
+                  hireDate: removeDialog.entry.hireDate ?? "",
                   terminationDate: today,
                   notes: "",
                 })

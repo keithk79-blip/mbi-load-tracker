@@ -727,6 +727,7 @@ describe("assigned truck (not EMP #)", () => {
     expect(sql).toContain("assigned_truck");
     expect(sql).toContain("Not the unit / truck");
     expect(sql).toContain("truck_number");
+    expect(sql).toContain("hire_date");
   });
 
   it("persists assigned truck on update without rewriting emp #", () => {

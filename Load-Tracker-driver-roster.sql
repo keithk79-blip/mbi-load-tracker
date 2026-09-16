@@ -62,6 +62,13 @@ comment on column public.driver_roster_entries.assigned_truck is
 create index if not exists driver_roster_entries_assigned_truck_idx
   on public.driver_roster_entries (assigned_truck)
   where assigned_truck is not null;
+
+alter table public.driver_roster_entries
+  add column if not exists hire_date date;
+
+comment on column public.driver_roster_entries.hire_date is
+  'Full Roster start date (America/Chicago). Null until known. Sat rows stay null.';
+
 comment on column public.driver_roster_entries.status is
   'Full Roster unavailability abbreviation (oot, fmla, vac, wc, …). Null = working. Driver stays on the hired list. Later tally: hired − full-day status − day offs.';
 comment on column public.driver_roster_entries.for_date is
