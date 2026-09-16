@@ -87,10 +87,8 @@ export const SAT_ROSTER_SHEETS = [
 ] as const;
 
 /**
- * Footer holiday notes sit a few rows below each Sat yard list. gviz drops
- * those isolated cells when a range starts inside the driver table (so A1:I2
- * and a full-tab export both miss “full mandatory work day”). Two bands that
- * start after typical list lengths catch the existing Labor Day note.
+ * Footer holiday notes sit a few rows below each Sat yard list.
+ * Two bands after typical list lengths catch a “full mandatory work day” note.
  */
 export const SATURDAY_BODY_SCANS = [
   { key: "upper", range: "A14:Z35" },

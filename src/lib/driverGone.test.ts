@@ -242,6 +242,8 @@ describe("Full Roster × dialog paths", () => {
     expect(src).not.toContain("aria-label=\"Roster help\"");
     expect(src).toContain("goneYearLabel");
     expect(src).not.toContain("Import empty lists");
+    expect(src).not.toContain("Import Gone 2026");
+    expect(src).not.toContain("importFromSheet");
     expect(src).toContain("drv-full-grid");
     expect(src).toContain("drv-yos-tag");
     expect(src).toContain("drv-allot-tag");

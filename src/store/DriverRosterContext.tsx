@@ -17,7 +17,6 @@ import {
   cleanDriverRosterYard,
   DRIVER_ROSTER_YARDS,
   cleanDriverTabGroup,
-  mergeImportedRows,
   moveRosterEntry,
   collapseDuplicateRosterEntries,
   readDriverRosterPersisted,
@@ -41,7 +40,6 @@ import {
   type DriverRosterYard,
   type DriverTabGroup,
 } from "../lib/driverRoster";
-import { describeImportGroup, fetchRosterWorkbook } from "../lib/driverRosterSheet";
 import { assignedTrucksNeedingUpload, preserveAssignedTrucks } from "../lib/rosterAssignedTruck";
 import {
   applyKnownHireDates,
@@ -67,12 +65,6 @@ type EntryRow = {
   updated_at: string;
 };
 
-export type DriverRosterImportResult = {
-  added: number;
-  skippedGroups: string[];
-  error: string | null;
-};
-
 type DriverRosterContextValue = {
   store: DriverRosterStore;
   kind: DriverRosterKind;
@@ -82,10 +74,7 @@ type DriverRosterContextValue = {
   setGroup: (group: DriverTabGroup) => void;
   setYard: (yard: DriverRosterYard) => void;
   cloud: boolean;
-  importing: boolean;
-  lastImport: DriverRosterImportResult | null;
   refresh: () => Promise<void>;
-  importFromSheet: () => Promise<DriverRosterImportResult>;
   addDriver: (input: Omit<DriverRosterInput, "kind" | "yard">) => Promise<DriverRosterEntry | null>;
   setDriverStatus: (id: string, status: string | null) => Promise<void>;
   setDriverAssignedTruck: (id: string, assignedTruck: string | null) => Promise<void>;
@@ -163,8 +152,6 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       ...owned.removed.map((row) => row.id),
     ]);
   });
-  const [importing, setImporting] = useState(false);
-  const [lastImport, setLastImport] = useState<DriverRosterImportResult | null>(null);
   const storeRef = useRef(store);
   storeRef.current = store;
   const deletedRef = useRef<Set<string>>(new Set(readDriverRosterPersisted().deletedEntryIds));
@@ -315,33 +302,14 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       return;
     }
     seedingRef.current = true;
-    setImporting(true);
     try {
-      const { rows } = await fetchRosterWorkbook();
-      const result = mergeImportedRows(storeRef.current, rows);
-      importedAtRef.current = new Date().toISOString();
-      const removed = persistLocal(result.store);
-      if (cloud && removed.length) await cloudDeleteEntries(removed.map((row) => row.id));
-      if (cloud && result.added) {
-        await cloudUpsert(Object.values(storeRef.current.entries));
-      }
-      setLastImport({
-        added: result.added,
-        skippedGroups: result.skippedGroups.map(describeImportGroup),
-        error: null,
-      });
-      await seedEmptySatFromFull();
-    } catch (err) {
       importedAtRef.current = new Date().toISOString();
       persistLocal(storeRef.current);
-      const message = err instanceof Error ? err.message : "Sheet import failed";
-      setLastImport({ added: 0, skippedGroups: [], error: message });
       await seedEmptySatFromFull();
     } finally {
       seedingRef.current = false;
-      setImporting(false);
     }
-  }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, seedEmptySatFromFull]);
+  }, [persistLocal, seedEmptySatFromFull]);
 
   const refreshInner = useCallback(async () => {
     if (!cloud) {
@@ -432,44 +400,6 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       void supabase.removeChannel(channel);
     };
   }, [cloud, refresh]);
-
-  const importFromSheet = useCallback(async (): Promise<DriverRosterImportResult> => {
-    setImporting(true);
-    try {
-      const { rows } = await fetchRosterWorkbook();
-      const prior = storeRef.current;
-      const result = mergeImportedRows(prior, rows);
-      importedAtRef.current = new Date().toISOString();
-      const removed = persistLocal(preserveAssignedTrucks(prior, result.store));
-      if (cloud && removed.length) await cloudDeleteEntries(removed.map((row) => row.id));
-      if (cloud && result.added) {
-        const newIds = new Set(
-          Object.values(storeRef.current.entries)
-            .filter((entry) => !seenRef.current.has(entry.id))
-            .map((entry) => entry.id),
-        );
-        await cloudUpsert(Object.values(storeRef.current.entries).filter((entry) => newIds.has(entry.id)));
-      }
-      const summary: DriverRosterImportResult = {
-        added: result.added,
-        skippedGroups: result.skippedGroups.map(describeImportGroup),
-        error: null,
-      };
-      setLastImport(summary);
-      await seedEmptySatFromFull();
-      return summary;
-    } catch (err) {
-      const summary: DriverRosterImportResult = {
-        added: 0,
-        skippedGroups: [],
-        error: err instanceof Error ? err.message : "Sheet import failed",
-      };
-      setLastImport(summary);
-      return summary;
-    } finally {
-      setImporting(false);
-    }
-  }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, seedEmptySatFromFull]);
 
   const addDriver = useCallback(
     async (input: Omit<DriverRosterInput, "kind" | "yard">) => {
@@ -643,10 +573,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       setGroup,
       setYard,
       cloud,
-      importing,
-      lastImport,
       refresh,
-      importFromSheet,
       addDriver,
       setDriverStatus,
       setDriverAssignedTruck,
@@ -665,10 +592,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       setGroup,
       setYard,
       cloud,
-      importing,
-      lastImport,
       refresh,
-      importFromSheet,
       addDriver,
       setDriverStatus,
       setDriverAssignedTruck,

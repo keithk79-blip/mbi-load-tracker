@@ -209,7 +209,7 @@ export function stampDailyEod(
     walkingFloor: input.walkingFloor,
     loads: input.loads,
     subs: input.subs,
-    source: input.source ?? prev?.source ?? "sheet-import",
+    source: input.source ?? prev?.source ?? "manual",
     createdAt: prev?.createdAt ?? now,
     updatedAt: now,
   });

@@ -1,10 +1,5 @@
 import { parseSheetDate } from "./chicagoDate.ts";
 
-export const DISPATCH_BOARD_URL_KEY = "chitrader.load-tracker.dispatch-board-url.v1";
-export const DISPATCH_BOARD_PAGES_PATH = "/api/dispatch-board";
-
-const SPREADSHEET_ID_RE = /^[a-zA-Z0-9_-]{20,80}$/;
-
 export type DispatchBoardTotals = {
   date: string | null;
   trash: number;
@@ -13,37 +8,6 @@ export type DispatchBoardTotals = {
   loads: number;
   subs: number;
 };
-
-/** Spreadsheet id from a full Docs URL or a bare id. */
-export function extractSpreadsheetId(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  const fromUrl = trimmed.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/i);
-  const id = fromUrl?.[1] ?? trimmed;
-  return SPREADSHEET_ID_RE.test(id) ? id : null;
-}
-
-export function dispatchBoardLoadsCsvUrl(id: string): string {
-  return `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&sheet=Loads`;
-}
-
-export function readDispatchBoardUrl(): string {
-  try {
-    return localStorage.getItem(DISPATCH_BOARD_URL_KEY)?.trim() ?? "";
-  } catch {
-    return "";
-  }
-}
-
-export function writeDispatchBoardUrl(url: string): void {
-  try {
-    const trimmed = url.trim();
-    if (trimmed) localStorage.setItem(DISPATCH_BOARD_URL_KEY, trimmed);
-    else localStorage.removeItem(DISPATCH_BOARD_URL_KEY);
-  } catch {
-    /* private mode */
-  }
-}
 
 export function parseCsvRows(text: string): string[][] {
   const rows: string[][] = [];
@@ -107,8 +71,8 @@ function labelKey(raw: string): string {
 }
 
 /**
- * Loads-tab footer: Total MSW + Total Tank + Total Walking-Floor = Total Loads.
- * Total Loads is always that sum so the app matches the Dispatch Board formula.
+ * Loads footer: Total MSW + Total Tank + Total Walking-Floor = Total Loads.
+ * Total Loads is always that sum.
  */
 export function parseDispatchBoardLoadsCsv(csv: string): DispatchBoardTotals {
   const rows = parseCsvRows(csv);
@@ -128,7 +92,7 @@ export function parseDispatchBoardLoadsCsv(csv: string): DispatchBoardTotals {
     } else if (label === "total sub loads") subs = firstNumber(row);
   }
   if (trash === null || leachate === null || walkingFloor === null) {
-    throw new Error("Loads tab is missing Total MSW / Tank / Walking-Floor.");
+    throw new Error("Loads footer is missing Total MSW / Tank / Walking-Floor.");
   }
   return {
     date,
@@ -137,28 +101,5 @@ export function parseDispatchBoardLoadsCsv(csv: string): DispatchBoardTotals {
     walkingFloor,
     loads: trash + leachate + walkingFloor,
     subs: subs ?? 0,
-  };
-}
-
-export function dispatchBoardToEodInput(
-  date: string,
-  totals: DispatchBoardTotals,
-): {
-  date: string;
-  trash: number;
-  leachate: number;
-  walkingFloor: number;
-  loads: number;
-  subs: number;
-  source: "sheet-import";
-} {
-  return {
-    date,
-    trash: totals.trash,
-    leachate: totals.leachate,
-    walkingFloor: totals.walkingFloor,
-    loads: totals.loads,
-    subs: totals.subs,
-    source: "sheet-import",
   };
 }

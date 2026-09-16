@@ -22,9 +22,6 @@
   },
   "include": [
     "vite.config.ts",
-    "src/lib/sigalertHttp.ts",
-    "src/lib/dispatchBoard.ts",
-    "src/lib/dispatchBoardHttp.ts",
-    "src/lib/chicagoDate.ts"
+    "src/lib/sigalertHttp.ts"
   ]
 }

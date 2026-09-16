@@ -1,12 +1,5 @@
 import { useState } from "react";
 import type { DailyEodInput, DailyEodTotals } from "../lib/dailyEod";
-import {
-  dispatchBoardToEodInput,
-  extractSpreadsheetId,
-  readDispatchBoardUrl,
-  writeDispatchBoardUrl,
-} from "../lib/dispatchBoard";
-import { fetchDispatchBoardTotals } from "../lib/dispatchBoardClient";
 
 type SheetTotalsFormProps = {
   date: string;
@@ -28,7 +21,6 @@ function parseField(raw: string): number | null {
 
 export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps) {
   const [open, setOpen] = useState(false);
-  const [boardUrl, setBoardUrl] = useState(readDispatchBoardUrl);
   const [trash, setTrash] = useState(asField(existing?.trash ?? null));
   const [leachate, setLeachate] = useState(asField(existing?.leachate ?? null));
   const [walkingFloor, setWalkingFloor] = useState(
@@ -37,7 +29,6 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
   const [subs, setSubs] = useState(asField(existing?.subs ?? null));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [pulling, setPulling] = useState(false);
 
   const nextTrash = parseField(trash);
   const nextLeachate = parseField(leachate);
@@ -48,19 +39,6 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
       ? nextTrash + nextLeachate + nextWalking
       : null;
 
-  const saveValues = async (input: DailyEodInput) => {
-    setSaving(true);
-    setError(null);
-    const message = await onSave(input);
-    setSaving(false);
-    if (message) {
-      setError(message);
-      return false;
-    }
-    setOpen(false);
-    return true;
-  };
-
   const save = async () => {
     if (
       nextTrash === null ||
@@ -69,51 +47,26 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
       totalLoads === null ||
       nextSubs === null
     ) {
-      setError("Enter MSW, tank, walking-floor, and subs from the Loads footer.");
+      setError("Enter MSW, tank, walking-floor, and subs.");
       return;
     }
-    await saveValues({
+    setSaving(true);
+    setError(null);
+    const message = await onSave({
       date,
       trash: nextTrash,
       leachate: nextLeachate,
       walkingFloor: nextWalking,
       loads: totalLoads,
       subs: nextSubs,
-      source: "sheet-import",
+      source: "manual",
     });
-  };
-
-  const pullBoard = async () => {
-    const url = boardUrl.trim();
-    if (!extractSpreadsheetId(url)) {
-      setError("Paste today’s Dispatch Board Google Sheets link.");
-      setOpen(true);
+    setSaving(false);
+    if (message) {
+      setError(message);
       return;
     }
-    writeDispatchBoardUrl(url);
-    setPulling(true);
-    setError(null);
-    try {
-      const totals = await fetchDispatchBoardTotals(url);
-      if (totals.date && totals.date !== date) {
-        setError(
-          `That board is ${totals.date}. Switch the day picker to that date, or paste that day’s board.`,
-        );
-        setOpen(true);
-        return;
-      }
-      setTrash(String(totals.trash));
-      setLeachate(String(totals.leachate));
-      setWalkingFloor(String(totals.walkingFloor));
-      setSubs(String(totals.subs));
-      setOpen(true);
-      await saveValues(dispatchBoardToEodInput(date, totals));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setOpen(true);
-    } finally {
-      setPulling(false);
-    }
+    setOpen(false);
   };
 
   return (
@@ -125,15 +78,7 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
           aria-expanded={open}
           onClick={() => setOpen((value) => !value)}
         >
-          {existing ? "Edit sheet totals" : "Enter sheet totals"}
-        </button>
-        <button
-          type="button"
-          className="sheet-totals-toggle"
-          onClick={() => void pullBoard()}
-          disabled={pulling || saving}
-        >
-          {pulling ? "Pulling board…" : "Pull Dispatch Board"}
+          {existing ? "Edit day totals" : "Enter day totals"}
         </button>
       </div>
       {open ? (
@@ -145,21 +90,9 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
           }}
         >
           <p className="sheet-totals-hint">
-            Loads tab footer: Total MSW + Tank + Walking-Floor = Total Loads.
-            Pull the board to match that total. Does not create truck rows.
+            Loads footer: Total MSW + Tank + Walking-Floor = Total Loads.
+            Type the four counts. Does not create truck rows.
           </p>
-          <label className="sheet-totals-field sheet-totals-url">
-            <span>Dispatch Board link</span>
-            <input
-              type="text"
-              inputMode="url"
-              autoComplete="off"
-              spellCheck={false}
-              value={boardUrl}
-              placeholder="https://docs.google.com/spreadsheets/d/…"
-              onChange={(event) => setBoardUrl(event.target.value)}
-            />
-          </label>
           <label className="sheet-totals-field">
             <span>Total MSW</span>
             <input
@@ -219,7 +152,7 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
           {error ? <p className="sheet-totals-error">{error}</p> : null}
           <div className="sheet-totals-actions">
             <button type="submit" className="btn-primary sheet-totals-save" disabled={saving}>
-              {saving ? "Saving…" : "Save sheet totals"}
+              {saving ? "Saving…" : "Save day totals"}
             </button>
           </div>
         </form>

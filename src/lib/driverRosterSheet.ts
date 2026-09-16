@@ -183,13 +183,6 @@ export function parsedTabToRows(tab: ParsedRosterTab): ImportedRosterRow[] {
 }
 
 /** Offline CSV parsers only. Roster lives in the app / Supabase. */
-export async function fetchRosterWorkbook(): Promise<{
-  rows: ImportedRosterRow[];
-  tabs: ParsedRosterTab[];
-}> {
-  return { tabs: [], rows: [] };
-}
-
 export function describeImportGroup(group: string): string {
   const [kind, yard] = group.split(":");
   const yardLabel = isDriverRosterYard(yard)

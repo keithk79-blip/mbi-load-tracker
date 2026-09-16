@@ -39,19 +39,10 @@ type EntryRow = {
   updated_at: string;
 };
 
-export type DriverGoneImportResult = {
-  added: number;
-  skipped: boolean;
-  error: string | null;
-};
-
 type DriverGoneContextValue = {
   store: DriverGoneStore;
   cloud: boolean;
-  importing: boolean;
-  lastImport: DriverGoneImportResult | null;
   refresh: () => Promise<void>;
-  importFromSheet: () => Promise<DriverGoneImportResult>;
   addGone: (input: DriverGoneInput) => Promise<DriverGoneEntry | null>;
   updateGone: (
     id: string,
@@ -259,10 +250,6 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
     };
   }, [cloud, refresh]);
 
-  const importFromSheet = useCallback(async (): Promise<DriverGoneImportResult> => {
-    return { added: 0, skipped: true, error: null };
-  }, []);
-
   const addGone = useCallback(
     async (input: DriverGoneInput) => {
       epochRef.current += 1;
@@ -307,15 +294,12 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
     () => ({
       store,
       cloud,
-      importing: false,
-      lastImport: null,
       refresh,
-      importFromSheet,
       addGone,
       updateGone,
       removeGone,
     }),
-    [store, cloud, refresh, importFromSheet, addGone, updateGone, removeGone],
+    [store, cloud, refresh, addGone, updateGone, removeGone],
   );
 
   return <DriverGoneContext.Provider value={value}>{children}</DriverGoneContext.Provider>;

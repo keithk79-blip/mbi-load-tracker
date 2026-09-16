@@ -56,6 +56,3 @@ export function parseGoneSheetCsv(csv: string): ImportedGoneRow[] {
   return rows;
 }
 
-export async function fetchGoneWorkbook(): Promise<{ rows: ImportedGoneRow[] }> {
-  return { rows: [] };
-}

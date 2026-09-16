@@ -532,16 +532,6 @@ export function DriverScreen() {
                 {resetting ? "Resetting…" : "Reset to full roster"}
               </button>
             ) : null}
-            {onGone ? (
-              <button
-                type="button"
-                className="text-btn"
-                disabled={gone.importing || goneTotal > 0}
-                onClick={() => void gone.importFromSheet()}
-              >
-                {gone.importing ? "Importing…" : "Import Gone 2026"}
-              </button>
-            ) : null}
           </div>
         </div>
       </header>
@@ -691,16 +681,6 @@ export function DriverScreen() {
         />
       ) : null}
 
-      {onGone && gone.lastImport?.error ? <p className="form-error">{gone.lastImport.error}</p> : null}
-      {onGone && gone.lastImport && !gone.lastImport.error ? (
-        <p className="field-hint">
-          {gone.lastImport.added
-            ? `Imported ${gone.lastImport.added} drivers into the empty Gone archive.`
-            : gone.lastImport.skipped
-              ? "Import ran — Gone already has rows, so nothing was added."
-              : "Import ran — no Gone rows found."}
-        </p>
-      ) : null}
       {!onGone && kind === "sat" ? (
         <div className="drv-copy-card">
           <div className="drv-copy-toolbar">
@@ -727,16 +707,7 @@ export function DriverScreen() {
               : `No ${yardLabel} ${kind === "sat" ? "Saturday planning" : "hired"} drivers yet`}
           </h2>
           <div className="vac-add-actions">
-            {onGone ? (
-              <button
-                type="button"
-                className="text-btn amber"
-                disabled={gone.importing}
-                onClick={() => void gone.importFromSheet()}
-              >
-                Import Gone 2026
-              </button>
-            ) : kind === "sat" && fullCount ? (
+            {!onGone && kind === "sat" && fullCount ? (
               <button
                 type="button"
                 className="text-btn amber"

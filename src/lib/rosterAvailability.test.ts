@@ -138,7 +138,9 @@ describe("chicago Full Roster available base", () => {
     expect(src).not.toContain('"/sheets/offs"');
     expect(src).not.toContain("/sheets/sat-body/");
     expect(src).not.toContain('"/sheets/roster"');
-    expect(src).toContain("DISPATCH_BOARD_PAGES_PATH");
+    expect(src).not.toContain("DISPATCH_BOARD_PAGES_PATH");
+    expect(src).not.toContain("docs.google.com");
+    expect(src).not.toContain("spreadsheets.google.com");
   });
 
   it("dropOffsAlreadyUnavailable is a no-op when names do not match", () => {
