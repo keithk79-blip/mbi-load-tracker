@@ -101,6 +101,7 @@ html[data-theme="halloween"] .chip,
 html[data-theme="halloween"] .icon-btn,
 html[data-theme="halloween"] .btn-ghost,
 html[data-theme="halloween"] .day-chip,
+html[data-theme="halloween"] .choice-chip,
 html[data-theme="halloween"] .oot-chip,
 html[data-theme="halloween"] .calloff-add-btn {
   background: rgba(46, 26, 34, 0.86) !important;
@@ -111,6 +112,7 @@ html[data-theme="halloween"] .calloff-add-btn {
 html[data-theme="halloween"] .chip.chip-selected,
 html[data-theme="halloween"] .chip[aria-pressed="true"],
 html[data-theme="halloween"] .day-chip-active,
+html[data-theme="halloween"] .choice-chip-active,
 html[data-theme="halloween"] .btn-primary,
 html[data-theme="halloween"] button.log-load-top,
 html[data-theme="halloween"] .numpad-go {

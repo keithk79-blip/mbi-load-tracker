@@ -688,9 +688,9 @@ button.log-load-top {
   border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--text);
-  border-radius: 999px;
-  min-height: 42px;
-  padding: 8px 14px;
+  border-radius: 14px;
+  min-height: 48px;
+  padding: 12px 14px;
   font-weight: 650;
 }
 
@@ -759,6 +759,34 @@ button.log-load-top {
 .text-input:focus {
   outline: 2px solid var(--amber);
   border-color: var(--amber);
+}
+
+.choice-chip,
+.vac-year-row .day-chip,
+.calloffs-reason-row .day-chip {
+  min-height: 48px;
+  height: 48px;
+  width: auto;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--text);
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.choice-chip-active,
+.vac-year-row .day-chip-active,
+.calloffs-reason-row .day-chip-active {
+  background: var(--brand, #d8282c);
+  color: #ffffff;
+  border-color: var(--brand, #d8282c);
 }
 
 .overlay-footer {
@@ -1529,9 +1557,9 @@ button.log-load-top {
 .oot-chip {
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
-  padding: 3px 9px;
-  border-radius: 999px;
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 14px;
   border: 1px solid #d4a9a9;
   background: #fae6e7;
   color: var(--text);
@@ -1560,9 +1588,9 @@ button.log-load-top {
   gap: 4px;
   margin: 0;
   padding: 4px 8px;
-  min-height: 28px;
+  min-height: 32px;
   border: 1px solid #d4a9a9;
-  border-radius: 999px;
+  border-radius: 14px;
   background: #fae6e7;
   color: #8b3a3e;
   font-size: 12px;
@@ -1607,9 +1635,9 @@ button.log-load-top {
 
 .calloff-kind-btn,
 .calloff-add-form .calloff-kind-btn {
-  min-height: 32px;
-  padding: 4px 10px;
-  border-radius: 999px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 14px;
   font-size: 12px;
   font-weight: 800;
   opacity: 1;
@@ -3029,9 +3057,9 @@ body.app-ready .splash {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-height: 28px;
-  padding: 2px 4px 2px 9px;
-  border-radius: 999px;
+  min-height: 32px;
+  padding: 6px 8px 6px 12px;
+  border-radius: 14px;
   border: 1px solid var(--line);
   background: var(--surface-2);
   color: var(--text);

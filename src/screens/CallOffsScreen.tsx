@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { DriverNameInput } from "../components/DriverNameInput";
-import { chicagoToday } from "../lib/chicagoDate";
+import { addDays, chicagoToday } from "../lib/chicagoDate";
 import {
   CALL_OFF_REASON_PRESETS,
   formatSheetStyleDate,
@@ -13,7 +13,7 @@ import { CALL_OFF_KIND_OPTIONS } from "../lib/driverAvailability";
 import { useCallOffLog } from "../store/CallOffLogContext";
 import "./calloffs-screen.css";
 
-type FilterId = "upcoming" | "today" | "all";
+type FilterId = "upcoming" | "today" | "yesterday" | "all";
 
 function kindLabel(reason: string): string {
   const kind = kindForLogEntry({ reason });
@@ -22,6 +22,7 @@ function kindLabel(reason: string): string {
 
 export function CallOffsScreen() {
   const today = chicagoToday();
+  const yesterday = addDays(today, -1);
   const { rows, cloud, error, addRow, removeRow, loadSheet } = useCallOffLog();
   const [filter, setFilter] = useState<FilterId>("all");
   const [name, setName] = useState("");
@@ -34,10 +35,11 @@ export function CallOffsScreen() {
     return rows.filter((row) => {
       const last = row.end ?? row.start;
       if (filter === "today") return row.start <= today && last >= today;
+      if (filter === "yesterday") return row.start <= yesterday && last >= yesterday;
       if (filter === "upcoming") return last >= today;
       return true;
     });
-  }, [rows, filter, today]);
+  }, [rows, filter, today, yesterday]);
 
   const todayCount = rows.filter((row) => {
     const last = row.end ?? row.start;
@@ -154,6 +156,7 @@ export function CallOffsScreen() {
             ["all", `All (${rows.length})`],
             ["upcoming", "Upcoming"],
             ["today", `Today (${formatSheetStyleDate(today)})`],
+            ["yesterday", `Yesterday (${formatSheetStyleDate(yesterday)})`],
           ] as const
         ).map(([id, label]) => (
           <button

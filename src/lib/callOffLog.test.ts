@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { CALL_OFF_LOG_SEED_CSV } from "../data/callOffLogSeed";
 import {
@@ -59,5 +60,14 @@ describe("call-off log", () => {
     expect(entry?.name).toBe("Test Driver");
     const merged = mergeCallOffLog(seeded, seeded, []);
     expect(merged).toHaveLength(seeded.length);
+  });
+});
+
+describe("Call-Off's screen filters", () => {
+  it("includes Yesterday next to All / Upcoming / Today", () => {
+    const src = readFileSync(new URL("../screens/CallOffsScreen.tsx", import.meta.url), "utf8");
+    expect(src).toContain('"yesterday"');
+    expect(src).toContain("Yesterday (");
+    expect(src).toContain("addDays(today, -1)");
   });
 });
