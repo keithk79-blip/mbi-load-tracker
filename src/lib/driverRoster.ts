@@ -218,6 +218,14 @@ export function cleanDriverName(raw: unknown): string {
   return raw.replace(/\s+/g, " ").trim();
 }
 
+function normalizeRosterPersonName(name: string): string {
+  return cleanDriverName(name)
+    .toLowerCase()
+    .replace(/\s*-\s*t\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function cleanDriverStatus(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.replace(/\s+/g, " ").trim();
@@ -482,11 +490,88 @@ export function rosterEntryCount(
   kind: DriverRosterKind,
   yard: DriverRosterYard,
 ): number {
-  let n = 0;
-  for (const entry of Object.values(store.entries)) {
-    if (entry.kind === kind && entry.yard === yard) n += 1;
+  return entriesForRoster(store, kind, yard).length;
+}
+
+function preferRosterDuplicate(a: DriverRosterEntry, b: DriverRosterEntry): DriverRosterEntry {
+  const aEmp = Boolean(cleanTruckNumber(a.truckNumber));
+  const bEmp = Boolean(cleanTruckNumber(b.truckNumber));
+  if (aEmp !== bEmp) return aEmp ? a : b;
+  if (Boolean(a.hireDate) !== Boolean(b.hireDate)) return a.hireDate ? a : b;
+  if (Boolean(a.assignedTruck) !== Boolean(b.assignedTruck)) {
+    return a.assignedTruck ? a : b;
   }
-  return n;
+  if (a.updatedAt !== b.updatedAt) return a.updatedAt >= b.updatedAt ? a : b;
+  if (a.createdAt !== b.createdAt) return a.createdAt <= b.createdAt ? a : b;
+  return a.id <= b.id ? a : b;
+}
+
+/**
+ * One hired / Sat row per person at a yard. Emp # wins; a name-only copy of
+ * the same person is dropped. Trainer `-T` suffixes do not make a second row.
+ */
+export function collapseDuplicateRosterEntries(store: DriverRosterStore): {
+  store: DriverRosterStore;
+  droppedIds: string[];
+} {
+  const buckets = new Map<string, DriverRosterEntry[]>();
+  for (const entry of Object.values(store.entries)) {
+    const group = `${entry.kind}:${entry.yard}`;
+    const list = buckets.get(group);
+    if (list) list.push(entry);
+    else buckets.set(group, [entry]);
+  }
+
+  const keep = new Map<string, DriverRosterEntry>();
+  const droppedIds: string[] = [];
+
+  for (const list of buckets.values()) {
+    const byEmp = new Map<string, DriverRosterEntry>();
+    for (const entry of list) {
+      const emp = cleanTruckNumber(entry.truckNumber);
+      if (!emp) continue;
+      const existing = byEmp.get(emp);
+      if (!existing) {
+        byEmp.set(emp, entry);
+        continue;
+      }
+      const winner = preferRosterDuplicate(existing, entry);
+      droppedIds.push(winner.id === existing.id ? entry.id : existing.id);
+      byEmp.set(emp, winner);
+    }
+    const namesHeld = new Set(
+      [...byEmp.values()].map((entry) => normalizeRosterPersonName(entry.name)),
+    );
+    const byName = new Map<string, DriverRosterEntry>();
+    for (const entry of list) {
+      if (cleanTruckNumber(entry.truckNumber)) continue;
+      const name = normalizeRosterPersonName(entry.name);
+      if (!name) {
+        droppedIds.push(entry.id);
+        continue;
+      }
+      if (namesHeld.has(name)) {
+        droppedIds.push(entry.id);
+        continue;
+      }
+      const existing = byName.get(name);
+      if (!existing) {
+        byName.set(name, entry);
+        continue;
+      }
+      const winner = preferRosterDuplicate(existing, entry);
+      droppedIds.push(winner.id === existing.id ? entry.id : existing.id);
+      byName.set(name, winner);
+    }
+    for (const entry of [...byEmp.values(), ...byName.values()]) {
+      keep.set(entry.id, entry);
+    }
+  }
+
+  if (!droppedIds.length) return { store, droppedIds: [] };
+  const entries: Record<string, DriverRosterEntry> = {};
+  for (const [id, entry] of keep) entries[id] = entry;
+  return { store: { entries }, droppedIds: [...new Set(droppedIds)] };
 }
 
 export function entriesForRoster(
@@ -494,28 +579,17 @@ export function entriesForRoster(
   kind: DriverRosterKind,
   yard: DriverRosterYard,
 ): DriverRosterEntry[] {
-  const seen = new Map<string, DriverRosterEntry>();
-  
-  // First pass: build a map of (truck, name) → entry, keeping the oldest by createdAt
-  for (const entry of Object.values(store.entries)) {
-    if (entry.kind !== kind || entry.yard !== yard) continue;
-    const key = `${entry.truckNumber ?? ""}\u0000${cleanDriverName(entry.name).toLowerCase()}`;
-    const existing = seen.get(key);
-    
-    // Keep the entry with the earlier createdAt (original entry)
-    if (!existing || entry.createdAt < existing.createdAt) {
-      seen.set(key, entry);
-    }
-  }
-  
-  return [...seen.values()].sort((a, b) => {
-    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
-    const truck = (a.truckNumber ?? "").localeCompare(b.truckNumber ?? "", "en", {
-      numeric: true,
+  const collapsed = collapseDuplicateRosterEntries(store).store;
+  return Object.values(collapsed.entries)
+    .filter((entry) => entry.kind === kind && entry.yard === yard)
+    .sort((a, b) => {
+      if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
+      const truck = (a.truckNumber ?? "").localeCompare(b.truckNumber ?? "", "en", {
+        numeric: true,
+      });
+      if (truck !== 0) return truck;
+      return a.name.localeCompare(b.name, "en", { sensitivity: "base" });
     });
-    if (truck !== 0) return truck;
-    return a.name.localeCompare(b.name, "en", { sensitivity: "base" });
-  });
 }
 
 /**
@@ -670,7 +744,8 @@ export function seedEmptySatRostersFromFull(
 ): SeedEmptySatFromFullResult {
   const yards = opts?.yards?.length ? opts.yards.map(cleanDriverRosterYard) : [...DRIVER_ROSTER_YARDS];
   const at = opts?.at;
-  let next = store;
+  const collapsed = collapseDuplicateRosterEntries(store);
+  let next = collapsed.store;
   let added = 0;
   const seededYards: DriverRosterYard[] = [];
 
@@ -726,17 +801,23 @@ export function resetSatRosterFromFull(
   opts?: { at?: string; forDate?: string | null },
 ): ResetSatRosterFromFullResult {
   const cleanedYard = cleanDriverRosterYard(yard);
-  const full = entriesForRoster(store, "full", cleanedYard);
-  const existingSat = entriesForRoster(store, "sat", cleanedYard);
+  const collapsed = collapseDuplicateRosterEntries(store);
+  let next = collapsed.store;
+  const full = entriesForRoster(next, "full", cleanedYard);
+  const existingSat = Object.values(next.entries).filter(
+    (entry) => entry.kind === "sat" && entry.yard === cleanedYard,
+  );
   const forDate =
-    opts?.forDate !== undefined ? cleanForDate(opts.forDate) : satDateForYard(store, cleanedYard);
+    opts?.forDate !== undefined ? cleanForDate(opts.forDate) : satDateForYard(next, cleanedYard);
   const at = opts?.at;
   const nextIds = new Set(
     full.map((person) => satEntryIdFromFull(cleanedYard, person.truckNumber, person.name)),
   );
-  const removedIds = existingSat.map((entry) => entry.id).filter((id) => !nextIds.has(id));
+  const removedIds = [
+    ...collapsed.droppedIds,
+    ...existingSat.map((entry) => entry.id).filter((id) => !nextIds.has(id)),
+  ];
 
-  let next = store;
   for (const id of removedIds) {
     next = removeRosterEntry(next, id).store;
   }
@@ -1040,14 +1121,13 @@ export type DriverRosterCloudReconcileResult = {
 /**
  * HARD CONSTRAINT — same class as loads / vacation silent wipes:
  * Sync must never delete, wipe, or prune hired Full Roster or Sat Roster
- * rows unless Keith pressed × in the UI.
+ * rows unless Keith pressed × in the UI or Reset to full roster.
  *
  * - No subset-pull hides, no seen-missing tombstones, no wipe-then-reinsert.
  * - Empty / thin remote keeps every local row. Cloud-only remote rows upsert in.
- * - Live remote beats a stale local tombstone (do not re-DELETE that row).
- * - `toDeleteRemoteEntries` is always empty. Remote DELETE is only
- *   DriverRosterContext.removeDriver (×) or resetSatToFullRoster (Reset).
- *   Refresh / import / this merge must never DELETE.
+ * - Explicit × / Reset tombstones stick even if remote still has the row, and
+ *   those ids are retried on `toDeleteRemoteEntries`. Sync never invents deletes
+ *   for ids Keith did not remove.
  * - Sheet import and Vacation auto-VAC may add or update marks; they never
  *   remove rows.
  */
@@ -1063,13 +1143,8 @@ export function reconcileDriverRosterCloud(
     ),
   );
   const remoteIds = new Set(Object.keys(input.remote.entries));
-
-  // Forget tombstones for ids that are live on remote. A leftover × on a
-  // stale client must not hide or delete a cloud-only hired row.
-  const deleted = new Set<string>();
-  for (const id of incomingDeleted) {
-    if (!remoteIds.has(id)) deleted.add(id);
-  }
+  const deleted = new Set(incomingDeleted);
+  const toDeleteRemoteEntries = [...deleted].filter((id) => remoteIds.has(id));
 
   const next: DriverRosterStore = { entries: {} };
   const toUploadEntries: DriverRosterEntry[] = [];
@@ -1108,7 +1183,7 @@ export function reconcileDriverRosterCloud(
     next,
     deletedEntryIds: [...deleted],
     seenRemoteEntryIds: [...nextSeen],
-    toDeleteRemoteEntries: [],
+    toDeleteRemoteEntries,
     toUploadEntries,
   };
 }

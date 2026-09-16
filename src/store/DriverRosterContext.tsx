@@ -19,6 +19,7 @@ import {
   cleanDriverTabGroup,
   mergeImportedRows,
   moveRosterEntry,
+  collapseDuplicateRosterEntries,
   readDriverRosterPersisted,
   readDriverRosterUi,
   reconcileDriverRosterCloud,
@@ -179,10 +180,12 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
 
   const persistLocal = useCallback((next: DriverRosterStore) => {
     const owned = enforceOneYardPerDriver(next);
+    const collapsed = collapseDuplicateRosterEntries(owned.store);
     for (const row of owned.removed) deletedRef.current.add(row.id);
+    for (const id of collapsed.droppedIds) deletedRef.current.add(id);
     const snapshot: DriverRosterPersisted = {
       version: 1,
-      entries: owned.store.entries,
+      entries: collapsed.store.entries,
       deletedEntryIds: [...deletedRef.current],
       seenRemoteEntryIds: [...seenRef.current],
       importedAt: importedAtRef.current,
@@ -191,7 +194,12 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     const stripped = persistSnapshot(snapshot);
     storeRef.current = stripped;
     setStore(stripped);
-    return owned.removed;
+    return [
+      ...owned.removed,
+      ...collapsed.droppedIds
+        .map((id) => owned.store.entries[id] ?? next.entries[id])
+        .filter((row): row is DriverRosterEntry => Boolean(row)),
+    ];
   }, []);
 
   const pullRemote = useCallback(async (): Promise<DriverRosterStore | null> => {
@@ -377,6 +385,9 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       if (epoch !== epochRef.current) return;
       deletedRef.current = new Set(result.deletedEntryIds);
       seenRef.current = new Set(result.seenRemoteEntryIds);
+      if (result.toDeleteRemoteEntries.length) {
+        await cloudDeleteEntries(result.toDeleteRemoteEntries);
+      }
       const removed = persistLocal(next);
       if (removed.length) await cloudDeleteEntries(removed.map((row) => row.id));
     }
