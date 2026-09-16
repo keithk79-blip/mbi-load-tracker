@@ -36,6 +36,9 @@ function nameFromUser(user: User | null): string {
 
 function authFailMessage(err: unknown): string {
   const text = err instanceof Error ? err.message : String(err ?? "");
+  if (/no such host|dns error|os error 11001/i.test(text)) {
+    return "Desktop .env has a Supabase URL that does not exist. Set VITE_SUPABASE_URL to the Project URL from Supabase → Settings → API, then rebuild.";
+  }
   if (
     /failed to fetch|networkerror|timed?\s*out|load failed|error sending request/i.test(
       text,
