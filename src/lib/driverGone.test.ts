@@ -244,6 +244,7 @@ describe("Full Roster × dialog paths", () => {
     expect(src).not.toContain("Import empty lists");
     expect(src).toContain("drv-full-grid");
     expect(src).toContain("drv-yos-tag");
+    expect(src).toContain("drv-allot-tag");
     expect(src).toContain("Truck #");
   });
 });

@@ -68,6 +68,7 @@ type DriversContextValue = {
   ootNames: string[];
   availabilityOn: (date: string) => LockedDay | null;
   callOffsOn: (date: string) => CallOffEntry[];
+  manualOffs: ManualOffsStore;
   addManualOff: (
     date: string,
     name: string,
@@ -455,6 +456,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       ootNames,
       availabilityOn,
       callOffsOn,
+      manualOffs,
       addManualOff,
       removeManualOff,
       ytdAverage: (today: string) => ytdWorkingAverage(days, today),
@@ -471,6 +473,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       ootNames,
       availabilityOn,
       callOffsOn,
+      manualOffs,
       addManualOff,
       removeManualOff,
       refresh,

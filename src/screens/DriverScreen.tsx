@@ -35,9 +35,12 @@ import {
   vacationNamesOnDate,
 } from "../lib/rosterVacation";
 import { yearsOfService, yearsOfServiceLabel } from "../lib/rosterHireDate";
+import { allotmentForName, yearlyAllotmentUses } from "../lib/rosterAllotment";
 import { sundayOnOrBefore } from "../lib/vacationBoard";
+import { useCallOffLog } from "../store/CallOffLogContext";
 import { useDriverGone } from "../store/DriverGoneContext";
 import { useDriverRoster } from "../store/DriverRosterContext";
+import { useDrivers } from "../store/DriversContext";
 import { useVacation } from "../store/VacationContext";
 
 function upcomingSaturday(today: string): string {
@@ -328,6 +331,8 @@ export function DriverScreen() {
   } = useDriverRoster();
   const gone = useDriverGone();
   const vacation = useVacation();
+  const { rows: callOffRows } = useCallOffLog();
+  const { manualOffs } = useDrivers();
   const [adding, setAdding] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -358,6 +363,10 @@ export function DriverScreen() {
   const vacationNames = useMemo(
     () => (kind === "full" ? vacationNamesOnDate(vacation.store, asOf, yard) : []),
     [kind, vacation.store, asOf, yard],
+  );
+  const allotmentUses = useMemo(
+    () => (kind === "full" ? yearlyAllotmentUses(callOffRows, manualOffs, yearOfISO(today)) : []),
+    [kind, callOffRows, manualOffs, today],
   );
   const tally = useMemo(
     () =>
@@ -925,6 +934,7 @@ export function DriverScreen() {
                 Boolean(effective.onVacation);
               const storedOut = rosterStatusRemovesFromAvailable(entry.status);
               const yos = yearsOfService(entry.hireDate, today);
+              const allot = allotmentForName(entry.name, allotmentUses);
               return (
                 <div
                   key={entry.id}
@@ -1022,6 +1032,24 @@ export function DriverScreen() {
                           Vac + {rosterStatusLabel(entry.status)}
                         </span>
                       ) : null}
+                    </div>
+                    <div className="drv-allotment" aria-label={`Allotment for ${entry.name}`}>
+                      <span
+                        className={allot.pDayLeft ? "drv-allot-tag drv-allot-pday" : "drv-allot-tag drv-allot-pday is-empty"}
+                        title={`Personal days left this year (${allot.pDayUsed} used)`}
+                      >
+                        P-Day {allot.pDayLeft}
+                      </span>
+                      <span
+                        className={
+                          allot.callOffLeft
+                            ? "drv-allot-tag drv-allot-calloff"
+                            : "drv-allot-tag drv-allot-calloff is-empty"
+                        }
+                        title={`Call-offs left this year (${allot.callOffUsed} used)`}
+                      >
+                        Call-off {allot.callOffLeft}
+                      </span>
                     </div>
                   </div>
                 </div>
