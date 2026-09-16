@@ -21,6 +21,7 @@ import {
 } from "../lib/specialtyBoard";
 import { useSpecialty } from "../store/SpecialtyContext";
 import { Chip } from "./Chip";
+import "./specialty-board.css";
 
 export function SpecialtyBoardCard({ date }: { date: string }) {
   const { boardOn, addOpen, removeOpen, cloud } = useSpecialty();
@@ -67,7 +68,18 @@ export function SpecialtyBoardCard({ date }: { date: string }) {
               const custom = isCustomSpecialtyId(station.id);
               const label = custom ? customSpecialtyDisplayName(station.id) : station.name;
               return (
-                <li key={station.id} className="specialty-row">
+                <li
+                  key={station.id}
+                  className={
+                    custom
+                      ? picking
+                        ? "specialty-row is-custom is-picking"
+                        : "specialty-row is-custom"
+                      : picking
+                        ? "specialty-row is-picking"
+                        : "specialty-row"
+                  }
+                >
                   <div className="specialty-row-main">
                     {custom ? (
                       <CustomSpecialtyNameInput id={station.id as CustomSpecialtyId} />
@@ -221,11 +233,10 @@ function CustomSpecialtyPicker({
         placeholder="Delivery destination"
         aria-label="Custom delivery destination"
       />
-      <div className="vac-add-actions">
+      <div className="vac-add-actions specialty-picker-actions">
         <button
           type="button"
           className="text-btn amber"
-          disabled={!dest.trim()}
           onClick={() => onAdd(formatCustomSpecialtyChip(loadType, dest))}
         >
           Add open
