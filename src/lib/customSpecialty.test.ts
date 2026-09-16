@@ -92,12 +92,18 @@ describe("custom odd-ball specialty cards", () => {
       "utf8",
     );
     expect(src).toContain("specialty-name-input");
+    expect(src).toContain("specialty-extra-list");
     expect(src).toContain("is-custom");
     expect(src).toContain("is-picking");
+    expect(src).toContain("specialty-add-open");
+    expect(src).toContain('type="submit"');
     expect(src).not.toContain("disabled={!dest.trim()}");
     const css = readFileSync(new URL("../components/specialty-board.css", import.meta.url), "utf8");
     expect(css).toContain(".specialty-name-input");
-    expect(css).toContain(".specialty-picker .chip");
-    expect(css).toContain("grid-column: span 2");
+    expect(css).toContain("minmax(280px, 1fr)");
+    expect(css).toContain(".specialty-type-chip");
+    const indexCss = readFileSync(new URL("../index.css", import.meta.url), "utf8");
+    expect(indexCss).toContain(".specialty-extra-list");
+    expect(indexCss).toContain("minmax(280px, 1fr)");
   });
 });
