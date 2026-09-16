@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { isTauriRuntime } from "./layout";
 
 export function supabaseConfig(): { url: string; anonKey: string } | null {
   const url = import.meta.env.VITE_SUPABASE_URL?.trim();
@@ -14,15 +15,28 @@ export function isCloudConfigured(): boolean {
 
 let client: SupabaseClient | null = null;
 
+async function supabaseFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  if (isTauriRuntime()) {
+    const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
+    return tauriFetch(input, init);
+  }
+  return fetch(input, init);
+}
+
 export function getSupabase(): SupabaseClient | null {
   const config = supabaseConfig();
   if (!config) return null;
   if (!client) {
+    const desktop = isTauriRuntime();
     client = createClient(config.url, config.anonKey, {
+      global: { fetch: supabaseFetch },
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true,
+        detectSessionInUrl: !desktop,
       },
     });
   }

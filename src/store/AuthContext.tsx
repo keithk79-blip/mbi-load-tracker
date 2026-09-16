@@ -34,6 +34,28 @@ function nameFromUser(user: User | null): string {
   );
 }
 
+function authFailMessage(err: unknown): string {
+  const text = err instanceof Error ? err.message : String(err ?? "");
+  if (/failed to fetch|networkerror|timed?\s*out|load failed/i.test(text)) {
+    return "Could not reach the cloud from this desktop. Check internet, then try again.";
+  }
+  return text || "Sign-in failed.";
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Sign-in timed out.")), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const configured = isCloudConfigured();
   const [loading, setLoading] = useState(configured);
@@ -50,11 +72,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     let alive = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!alive) return;
-      setSession(data.session ?? null);
-      setLoading(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!alive) return;
+        setSession(data.session ?? null);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setLoading(false);
+      });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next);
       setLoading(false);
@@ -68,18 +96,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInPassword = useCallback(async (email: string, password: string) => {
     const supabase = getSupabase();
     if (!supabase) return "Cloud is not configured.";
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    return error?.message ?? null;
+    try {
+      const { error } = await withTimeout(
+        supabase.auth.signInWithPassword({ email, password }),
+        20000,
+      );
+      return error?.message ?? null;
+    } catch (err) {
+      return authFailMessage(err);
+    }
   }, []);
 
   const sendMagicLink = useCallback(async (email: string) => {
     const supabase = getSupabase();
     if (!supabase) return "Cloud is not configured.";
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin },
-    });
-    return error?.message ?? null;
+    try {
+      const { error } = await withTimeout(
+        supabase.auth.signInWithOtp({
+          email,
+          options: { emailRedirectTo: window.location.origin },
+        }),
+        20000,
+      );
+      return error?.message ?? null;
+    } catch (err) {
+      return authFailMessage(err);
+    }
   }, []);
 
   const signOut = useCallback(async () => {
