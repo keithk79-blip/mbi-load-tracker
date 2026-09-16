@@ -9,30 +9,48 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#14161b" />
+    <meta name="theme-color" content="#ffffff" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Keith's Load Tracker" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
     <title>Keith's Load Tracker</title>
-    <meta
-      name="description"
-      content="Keith's Load Tracker — truck, pickup, commodity, destination."
-    />
+    <style>
+      html, body, #root { margin: 0; min-height: 100%; height: 100%; background: #fff; color: #111; }
+      #boot-fallback {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding: 24px;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        background: #fff;
+        color: #111;
+      }
+      #boot-fallback img { height: 84px; width: auto; }
+      #boot-error { color: #b91c1c; max-width: 28rem; text-align: center; line-height: 1.4; }
+    </style>
   </head>
   <body>
-    <div class="splash" id="splash">
-      <img src="/brand/klt-logo.png" alt="Keith's Load Tracker" />
-      <p>Keith's Load Tracker</p>
-      <p id="splash-error" hidden></p>
+    <div id="root">
+      <div id="boot-fallback">
+        <img src="/brand/klt-logo.png" alt="Keith's Load Tracker" />
+        <div>Starting Keith's Load Tracker…</div>
+        <div id="boot-error"></div>
+      </div>
     </div>
-    <div id="root"></div>
+    <script>
+      setTimeout(function () {
+        var boot = document.getElementById("boot-fallback");
+        var err = document.getElementById("boot-error");
+        if (boot && err && !err.textContent) {
+          err.textContent =
+            "Desktop is stuck starting. Run git pull, then npm run tauri build, and install the new setup.exe.";
+        }
+      }, 8000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

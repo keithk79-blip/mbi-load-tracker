@@ -1,7 +1,15 @@
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, type CSSProperties, type ErrorInfo, type ReactNode } from "react";
 
 type Props = { children: ReactNode };
 type State = { error: Error | null };
+
+const wrap: CSSProperties = {
+  minHeight: "100vh",
+  padding: 32,
+  fontFamily: '"Segoe UI", system-ui, sans-serif',
+  background: "#ffffff",
+  color: "#111111",
+};
 
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { error: null };
@@ -12,21 +20,15 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("Load Tracker crashed", error, info.componentStack);
-    document.body.classList.add("app-ready");
   }
 
   render() {
     if (!this.state.error) return this.props.children;
     return (
-      <div className="screen overlay-screen login-screen">
-        <p className="eyebrow">Desktop failed to start</p>
-        <h1 className="page-title">Something broke after the logo</h1>
-        <p className="field-hint">{this.state.error.message}</p>
-        <button
-          type="button"
-          className="block-btn"
-          onClick={() => window.location.reload()}
-        >
+      <div style={wrap}>
+        <p style={{ margin: "0 0 8px", fontWeight: 700 }}>Desktop failed to start</p>
+        <p style={{ margin: "0 0 16px" }}>{this.state.error.message}</p>
+        <button type="button" onClick={() => window.location.reload()}>
           Reload
         </button>
       </div>

@@ -59,6 +59,10 @@ function sigalertDevApi(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwindcss(), sigalertDevApi()],
   clearScreen: false,
+  build: {
+    target: ["es2021", "chrome105"],
+    chunkSizeWarningLimit: 1500,
+  },
   server: {
     host: host || "0.0.0.0",
     port: 4521,
