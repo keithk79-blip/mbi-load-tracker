@@ -36,8 +36,12 @@ function nameFromUser(user: User | null): string {
 
 function authFailMessage(err: unknown): string {
   const text = err instanceof Error ? err.message : String(err ?? "");
-  if (/failed to fetch|networkerror|timed?\s*out|load failed/i.test(text)) {
-    return "Could not reach the cloud from this desktop. Check internet, then try again.";
+  if (
+    /failed to fetch|networkerror|timed?\s*out|load failed|error sending request/i.test(
+      text,
+    )
+  ) {
+    return `Could not reach the cloud from this desktop. ${text}`;
   }
   return text || "Sign-in failed.";
 }
