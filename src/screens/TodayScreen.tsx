@@ -23,6 +23,7 @@ import { StationCallsCard } from "../components/StationCallsCard";
 import { SpecialtyBoardCard } from "../components/SpecialtyBoardCard";
 import { ChicagoTrafficCard } from "../components/ChicagoTrafficCard";
 import { LoadRow } from "../components/LoadRow";
+import { SheetTotalsForm } from "../components/SheetTotalsForm";
 
 type TodayScreenProps = {
   date: string;
@@ -43,7 +44,7 @@ export function TodayScreen({
 }: TodayScreenProps) {
   const today = chicagoToday();
   const { loads, loadsOn } = useLoads();
-  const { totalsOn } = useDailyEod();
+  const { totalsOn, upsertTotals } = useDailyEod();
   const { availabilityOn } = useDrivers();
   const dayLoads = useMemo(() => sortLoadsNewestFirst(loadsOn(date)), [date, loadsOn]);
   const snapshot = totalsOn(date);
@@ -112,6 +113,13 @@ export function TodayScreen({
           })}
         </div>
       </div>
+
+      <SheetTotalsForm
+        key={`${date}:${snapshot?.updatedAt ?? "new"}`}
+        date={date}
+        existing={snapshot}
+        onSave={upsertTotals}
+      />
 
       <button type="button" className="log-load-top" onClick={() => onLog(date)}>
         + Log load

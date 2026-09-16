@@ -12,7 +12,9 @@
         { "url": "https://cdn-dynamic.sigalert.com/**" },
         { "url": "https://cdn.sigalert.com/**" },
         { "url": "https://*.supabase.co/**" },
-        { "url": "https://*.supabase.in/**" }
+        { "url": "https://*.supabase.in/**" },
+        { "url": "https://docs.google.com/**" },
+        { "url": "https://spreadsheets.google.com/**" }
       ]
     }
   ]

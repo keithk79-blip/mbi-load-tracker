@@ -1107,6 +1107,13 @@ button.log-load-top {
   gap: 10px;
 }
 
+.sheet-totals-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+}
+
 .sheet-totals-toggle {
   align-self: flex-start;
   padding: 0;
@@ -1125,6 +1132,12 @@ button.log-load-top {
   text-decoration: underline;
   text-underline-offset: 3px;
   outline: none;
+}
+
+.sheet-totals-toggle:disabled {
+  opacity: 0.6;
+  cursor: wait;
+  text-decoration: none;
 }
 
 .sheet-totals-fields {
@@ -1165,6 +1178,10 @@ button.log-load-top {
   min-width: 0;
 }
 
+.sheet-totals-url {
+  grid-column: 1 / -1;
+}
+
 .sheet-totals-field span {
   color: var(--muted);
   font-size: 11px;
@@ -1187,9 +1204,21 @@ button.log-load-top {
   color-scheme: light;
 }
 
+.sheet-totals-url input {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: normal;
+}
+
 .sheet-totals-field input:focus-visible {
   outline: none;
   border-color: #e0b07a;
+}
+
+.sheet-totals-field input:read-only {
+  opacity: 0.85;
+  cursor: default;
+  background: #151310;
 }
 
 .sheet-totals-actions {

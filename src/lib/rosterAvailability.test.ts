@@ -130,7 +130,7 @@ describe("chicago Full Roster available base", () => {
     expect(src).toMatch(/today uses Full\s+Roster/);
   });
 
-  it("dev proxy has no Google Sheets paths", () => {
+  it("dev proxy has no Google Sheets roster paths", () => {
     const src = readFileSync(new URL("../../vite.config.ts", import.meta.url), "utf8");
     expect(src).not.toContain("/sheets/roster-full/");
     expect(src).not.toContain("/sheets/roster-sat/");
@@ -138,8 +138,7 @@ describe("chicago Full Roster available base", () => {
     expect(src).not.toContain('"/sheets/offs"');
     expect(src).not.toContain("/sheets/sat-body/");
     expect(src).not.toContain('"/sheets/roster"');
-    expect(src).not.toContain("docs.google.com");
-    expect(src).not.toContain("gviz");
+    expect(src).toContain("DISPATCH_BOARD_PAGES_PATH");
   });
 
   it("dropOffsAlreadyUnavailable is a no-op when names do not match", () => {

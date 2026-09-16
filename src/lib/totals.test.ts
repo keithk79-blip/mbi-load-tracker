@@ -10,6 +10,7 @@ import {
 import {
   countBrokerLoads,
   countByTallyLabel,
+  countSheetTotalLoads,
   countTrashLoads,
   countWalkingFloorLoads,
   daySummaryCards,
@@ -96,6 +97,45 @@ describe("walking-floor tallies", () => {
       }),
     ];
     expect(countWalkingFloorLoads(loads)).toBe(1);
+  });
+
+  it("counts WOOD (Dekalb Speciality) as walking-floor, not trash", () => {
+    const wood = load({
+      id: "wood",
+      pickup: "Dekalb",
+      commodity: "Wood",
+      destination: "Newton",
+      stationId: "custom",
+    });
+    expect(isWalkingFloorLoad(wood)).toBe(true);
+    expect(countTrashLoads([wood])).toBe(0);
+    expect(countWalkingFloorLoads([wood])).toBe(1);
+  });
+
+  it("keeps Groot trash on WALKING-FLOOR so MSW + tank + WF = LOADS", () => {
+    const loads = [
+      load({ id: "msw", commodity: "Trash (MSW)" }),
+      load({
+        id: "groot",
+        commodity: "Trash (MSW)",
+        destination: "Groot Recycling",
+      }),
+      load({ id: "wood", commodity: "Wood", pickup: "Dekalb" }),
+      load({ id: "tank", commodity: "Leachate (tanker)" }),
+    ];
+    expect(countTrashLoads(loads)).toBe(1);
+    expect(countWalkingFloorLoads(loads)).toBe(2);
+    expect(countByTallyLabel(loads, "LEACHATE")).toBe(1);
+    expect(countSheetTotalLoads(loads)).toBe(4);
+    const cards = daySummaryCards(loads);
+    const value = (label: string) =>
+      cards.find((card) => card.label === label)?.count ?? 0;
+    expect(value("TRASH")).toBe(1);
+    expect(value("WALKING-FLOOR")).toBe(2);
+    expect(value("LOADS")).toBe(4);
+    expect(value("TRASH") + value("LEACHATE") + value("WALKING-FLOOR")).toBe(
+      value("LOADS"),
+    );
   });
 
   it("counts Van Drunen pickups as walking-floor even when the commodity is trash", () => {

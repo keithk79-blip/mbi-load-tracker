@@ -168,7 +168,8 @@ export function isWalkingFloorLoad(load: Load): boolean {
     commodityKey === "YARD" ||
     commodityKey === "RECYCLE" ||
     commodityKey === "RESIDUAL" ||
-    commodityKey === "CARDBOARD"
+    commodityKey === "CARDBOARD" ||
+    commodityKey === "WOOD"
   ) {
     return true;
   }
@@ -181,17 +182,22 @@ export function countWalkingFloorLoads(loads: Load[]): number {
 }
 
 /**
- * Today / EOD TRASH bubble: MSW, C&D, and Tires, except Van Drunen pickups and
- * the GraysLake Recycle → Hodgkins lane (those are WALKING-FLOOR even when the
- * commodity text looks like Trash/MSW).
+ * Today / EOD TRASH bubble: MSW, C&D, and Tires that are not a walking-floor
+ * lane (Van Drunen, GraysLake Recycle → Hodgkins, Groot, wood, etc.).
  */
 export function countTrashLoads(loads: Load[]): number {
   return loads.filter(
-    (load) =>
-      tallyLabel(load.commodity) === "TRASH" &&
-      !isVanDrunenPickup(load) &&
-      !isGraysLakeRecycleLane(load),
+    (load) => tallyLabel(load.commodity) === "TRASH" && !isWalkingFloorLoad(load),
   ).length;
+}
+
+/** Dispatch Board Total Loads = Total MSW + Total Tank + Total Walking-Floor. */
+export function countSheetTotalLoads(loads: Load[]): number {
+  return (
+    countTrashLoads(loads) +
+    countByTallyLabel(loads, "LEACHATE") +
+    countWalkingFloorLoads(loads)
+  );
 }
 
 export type DaySummaryCard = {
@@ -221,7 +227,7 @@ export function daySummaryCards(loads: Load[]): DaySummaryCard[] {
     {
       key: "loads",
       label: "LOADS",
-      count: loads.length,
+      count: countSheetTotalLoads(loads),
       emphasis: true,
     },
     { key: "subs", label: "SUBS", count: countBrokerLoads(loads) },
@@ -322,7 +328,7 @@ export function endOfDaySummary(
   board: StationDayBoard,
 ): EndOfDaySummary {
   return {
-    loads: loads.length,
+    loads: countSheetTotalLoads(loads),
     subs: countBrokerLoads(loads),
     trash: countTrashLoads(loads),
     leachate: countByTallyLabel(loads, "LEACHATE"),
