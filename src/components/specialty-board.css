@@ -1,0 +1,64 @@
+.specialty-row.is-custom,
+.specialty-row.is-picking {
+  min-width: 0;
+  overflow: visible;
+}
+
+@media (min-width: 900px) {
+  .specialty-row.is-custom,
+  .specialty-row.is-picking {
+    grid-column: span 2;
+  }
+}
+
+@media (min-width: 1200px) {
+  .specialty-row.is-custom.is-picking {
+    grid-column: span 3;
+  }
+}
+
+.specialty-name-input {
+  grid-column: 1;
+  grid-row: 1;
+  margin-top: 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  height: 32px;
+  padding: 4px 8px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.specialty-dest-input {
+  margin-top: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 14px;
+  font-size: 13px;
+}
+
+.specialty-picker {
+  min-width: 0;
+}
+
+.specialty-picker .chip-row {
+  gap: 6px;
+}
+
+.specialty-picker .chip {
+  min-height: 32px;
+  height: auto;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 14px;
+}
+
+.specialty-picker-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}

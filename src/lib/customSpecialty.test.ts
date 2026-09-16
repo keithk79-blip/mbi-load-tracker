@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   CUSTOM_SPECIALTY_DEFAULT_NAMES,
@@ -83,5 +84,20 @@ describe("custom odd-ball specialty cards", () => {
     writeCustomSpecialtyName("custom-1", "Zion transfer");
     expect(readCustomSpecialtyNameField("custom-1")).toBe("Zion transfer");
     expect(customSpecialtyDisplayName("custom-1")).toBe("Zion transfer");
+  });
+
+  it("keeps odd-ball name fields and Add open usable in the narrow specialty grid", () => {
+    const src = readFileSync(
+      new URL("../components/SpecialtyBoardCard.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(src).toContain("specialty-name-input");
+    expect(src).toContain("is-custom");
+    expect(src).toContain("is-picking");
+    expect(src).not.toContain("disabled={!dest.trim()}");
+    const css = readFileSync(new URL("../components/specialty-board.css", import.meta.url), "utf8");
+    expect(css).toContain(".specialty-name-input");
+    expect(css).toContain(".specialty-picker .chip");
+    expect(css).toContain("grid-column: span 2");
   });
 });
