@@ -1,8 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
+  CUSTOM_SPECIALTY_DEFAULT_NAMES,
   CUSTOM_SPECIALTY_IDS,
+  customSpecialtyDisplayName,
   formatCustomSpecialtyChip,
   parseCustomSpecialtyChip,
+  readCustomSpecialtyNameField,
+  writeCustomSpecialtyName,
 } from "./customSpecialty";
 import {
   isSpecialtyStationId,
@@ -11,6 +15,26 @@ import {
   specialtyDestinationsFor,
   specialtyDestHint,
 } from "./specialtyBoard";
+
+const memory = new Map<string, string>();
+const localStorageMock = {
+  getItem: (key: string) => memory.get(key) ?? null,
+  setItem: (key: string, value: string) => {
+    memory.set(key, value);
+  },
+  removeItem: (key: string) => {
+    memory.delete(key);
+  },
+  clear: () => memory.clear(),
+};
+Object.defineProperty(globalThis, "localStorage", {
+  value: localStorageMock,
+  configurable: true,
+});
+
+afterEach(() => {
+  memory.clear();
+});
 
 describe("custom odd-ball specialty cards", () => {
   it("adds four typed-name cards at the end of the board", () => {
@@ -47,5 +71,17 @@ describe("custom odd-ball specialty cards", () => {
     ).toMatchObject({
       specialtyId: "custom-1",
     });
+  });
+
+  it("lets the dispatcher clear the Odd-ball example without it snapping back", () => {
+    writeCustomSpecialtyName("custom-1", "");
+    expect(readCustomSpecialtyNameField("custom-1")).toBe("");
+    expect(customSpecialtyDisplayName("custom-1")).toBe(
+      CUSTOM_SPECIALTY_DEFAULT_NAMES["custom-1"],
+    );
+
+    writeCustomSpecialtyName("custom-1", "Zion transfer");
+    expect(readCustomSpecialtyNameField("custom-1")).toBe("Zion transfer");
+    expect(customSpecialtyDisplayName("custom-1")).toBe("Zion transfer");
   });
 });

@@ -35,15 +35,16 @@ function cleanLabel(raw: string): string {
 }
 
 export function readCustomSpecialtyNames(): Record<CustomSpecialtyId, string> {
-  const next = { ...CUSTOM_SPECIALTY_DEFAULT_NAMES };
+  const next: Record<CustomSpecialtyId, string> = { ...CUSTOM_SPECIALTY_DEFAULT_NAMES };
   try {
     const raw = localStorage.getItem(NAMES_KEY);
     if (!raw) return next;
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     for (const id of CUSTOM_SPECIALTY_IDS) {
+      if (!Object.prototype.hasOwnProperty.call(parsed, id)) continue;
       const value = parsed[id];
-      if (typeof value === "string" && cleanLabel(value)) {
-        next[id] = cleanLabel(value);
+      if (typeof value === "string") {
+        next[id] = value;
       }
     }
   } catch {
@@ -52,15 +53,20 @@ export function readCustomSpecialtyNames(): Record<CustomSpecialtyId, string> {
   return next;
 }
 
+/** Stored field text. Empty means the dispatcher cleared the example name. */
+export function readCustomSpecialtyNameField(id: CustomSpecialtyId): string {
+  return readCustomSpecialtyNames()[id] ?? CUSTOM_SPECIALTY_DEFAULT_NAMES[id];
+}
+
 export function writeCustomSpecialtyName(id: CustomSpecialtyId, name: string): void {
   const names = readCustomSpecialtyNames();
-  names[id] = cleanLabel(name) || CUSTOM_SPECIALTY_DEFAULT_NAMES[id];
+  names[id] = name;
   localStorage.setItem(NAMES_KEY, JSON.stringify(names));
 }
 
 export function customSpecialtyDisplayName(id: string): string {
   if (!isCustomSpecialtyId(id)) return id;
-  return readCustomSpecialtyNames()[id];
+  return cleanLabel(readCustomSpecialtyNames()[id]) || CUSTOM_SPECIALTY_DEFAULT_NAMES[id];
 }
 
 export function lookupCustomSpecialtyIdByName(raw: string): CustomSpecialtyId | null {
@@ -69,7 +75,7 @@ export function lookupCustomSpecialtyIdByName(raw: string): CustomSpecialtyId | 
   if (isCustomSpecialtyId(name)) return name;
   const names = readCustomSpecialtyNames();
   for (const id of CUSTOM_SPECIALTY_IDS) {
-    if (names[id].toLowerCase() === name) return id;
+    if (cleanLabel(names[id]).toLowerCase() === name) return id;
     if (CUSTOM_SPECIALTY_DEFAULT_NAMES[id].toLowerCase() === name) return id;
   }
   return null;

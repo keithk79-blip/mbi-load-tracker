@@ -2,10 +2,12 @@ import { useMemo, useState } from "react";
 import { ChevronDown, Minus, Plus } from "lucide-react";
 import { formatHeaderDate } from "../lib/chicagoDate";
 import {
+  CUSTOM_SPECIALTY_DEFAULT_NAMES,
   CUSTOM_SPECIALTY_LOAD_TYPES,
   customSpecialtyDisplayName,
   formatCustomSpecialtyChip,
   isCustomSpecialtyId,
+  readCustomSpecialtyNameField,
   writeCustomSpecialtyName,
   type CustomSpecialtyId,
   type CustomSpecialtyLoadType,
@@ -24,11 +26,9 @@ export function SpecialtyBoardCard({ date }: { date: string }) {
   const { boardOn, addOpen, removeOpen, cloud } = useSpecialty();
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
-  const [namesTick, setNamesTick] = useState(0);
 
   const board = useMemo(() => boardOn(date), [boardOn, date]);
   const totalOpen = board.length;
-  void namesTick;
 
   return (
     <article className={`specialty-card${open ? "" : " specialty-card-collapsed"}`}>
@@ -70,19 +70,7 @@ export function SpecialtyBoardCard({ date }: { date: string }) {
                 <li key={station.id} className="specialty-row">
                   <div className="specialty-row-main">
                     {custom ? (
-                      <input
-                        className="text-input specialty-name-input"
-                        value={label}
-                        onChange={(event) => {
-                          writeCustomSpecialtyName(
-                            station.id as CustomSpecialtyId,
-                            event.target.value,
-                          );
-                          setNamesTick((n) => n + 1);
-                        }}
-                        placeholder="Name this pickup"
-                        aria-label={`Odd-ball pickup name for ${station.id}`}
-                      />
+                      <CustomSpecialtyNameInput id={station.id as CustomSpecialtyId} />
                     ) : (
                       <span className="specialty-station">{station.name}</span>
                     )}
@@ -171,6 +159,34 @@ export function SpecialtyBoardCard({ date }: { date: string }) {
         </div>
       ) : null}
     </article>
+  );
+}
+
+function CustomSpecialtyNameInput({ id }: { id: CustomSpecialtyId }) {
+  const example = CUSTOM_SPECIALTY_DEFAULT_NAMES[id];
+  const [value, setValue] = useState(() => readCustomSpecialtyNameField(id));
+
+  return (
+    <input
+      className="text-input specialty-name-input"
+      value={value}
+      placeholder={example}
+      aria-label={`Pickup name for ${id}`}
+      onFocus={(event) => {
+        if (value === example) event.currentTarget.select();
+      }}
+      onChange={(event) => {
+        const next = event.target.value;
+        setValue(next);
+        writeCustomSpecialtyName(id, next);
+      }}
+      onBlur={() => {
+        const next = value.replace(/\s+/g, " ").trim();
+        if (next === value) return;
+        setValue(next);
+        writeCustomSpecialtyName(id, next);
+      }}
+    />
   );
 }
 
