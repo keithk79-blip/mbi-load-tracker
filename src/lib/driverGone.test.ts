@@ -3,17 +3,20 @@ import { describe, expect, it } from "vitest";
 import {
   addGoneEntry,
   applyFullRosterDelete,
+  collapseDuplicateGoneEntries,
   DRIVER_GONE_STORE_KEY,
   emptyDriverGoneStore,
   entriesForGone,
   entriesForGoneYear,
   goneArchiveYears,
   goneEntryCount,
+  gonePersonKey,
   goneYearLabel,
   goneYearOf,
   mergeImportedGoneRows,
   parseGoneDate,
   reconcileDriverGoneCloud,
+  removeGoneEntriesForPerson,
   scrubPrivacyFromNotes,
 } from "./driverGone";
 import { parseGoneSheetCsv } from "./driverGoneSheet";
@@ -343,7 +346,7 @@ describe("Gone cloud delete posture", () => {
     expect(result.toUploadEntries).toEqual([]);
   });
 
-  it("adopts a live remote row over a stale tombstone and never schedules a remote delete", () => {
+  it("keeps an explicit × tombstone and retries the remote delete", () => {
     const added = addGoneEntry(emptyDriverGoneStore(), {
       employeeNumber: "39963",
       name: "Habeeb Bello",
@@ -356,9 +359,9 @@ describe("Gone cloud delete posture", () => {
       deletedEntryIds: [id],
       seenRemoteEntryIds: [id],
     });
-    expect(result.next.entries[id]).toEqual(added.store.entries[id]);
-    expect(result.deletedEntryIds).toEqual([]);
-    expect(result.toDeleteRemoteEntries).toEqual([]);
+    expect(result.next.entries[id]).toBeUndefined();
+    expect(result.deletedEntryIds).toContain(id);
+    expect(result.toDeleteRemoteEntries).toEqual([id]);
   });
 
   it("does not drop Gone names when a later sheet import runs", () => {
@@ -382,7 +385,92 @@ describe("Gone cloud delete posture", () => {
   it("never issues an unscoped driver_gone_entries delete", () => {
     const src = readFileSync(new URL("../store/DriverGoneContext.tsx", import.meta.url), "utf8");
     expect(src).toContain('.from("driver_gone_entries").delete().in("id", ids)');
-    expect(src).not.toContain("toDeleteRemoteEntries");
     expect(src).toContain("the only path that may DELETE a cloud Gone row");
+    expect(src).not.toContain(".delete().neq(");
+  });
+});
+
+describe("Gone duplicate people", () => {
+  it("collapses the same emp # to one row and keeps the newer notes", () => {
+    const first = addGoneEntry(emptyDriverGoneStore(), {
+      employeeNumber: "40690",
+      name: "John Vinson",
+      terminationDate: "2026-09-08",
+      notes: "Quit.",
+    });
+    const second = addGoneEntry(
+      { entries: { ...first.store.entries, extra: {
+        ...first.entry!,
+        id: "extra",
+        notes: "Quit. no notice given. got a job with a postal contractor. good driver.",
+        updatedAt: "2099-01-01T00:00:00.000Z",
+      } } },
+      {
+        employeeNumber: "514",
+        name: "David Garkey",
+      },
+    );
+    expect(gonePersonKey(first.entry!)).toBe("emp:40690");
+    const collapsed = collapseDuplicateGoneEntries(second.store);
+    expect(collapsed.droppedIds).toEqual([first.entry!.id]);
+    expect(collapsed.store.entries.extra?.notes).toContain("postal contractor");
+    expect(goneEntryCount(collapsed.store)).toBe(2);
+  });
+
+  it("× on one Gone row removes every copy of that person", () => {
+    const a = addGoneEntry(emptyDriverGoneStore(), {
+      employeeNumber: "40675",
+      name: "Antonio Guzman",
+      notes: "Quit.",
+    });
+    const twin: typeof a.entry = {
+      ...a.entry!,
+      id: "twin",
+      notes: "Quit. no notice given, took another job. do not rehire.",
+    };
+    const store = { entries: { [a.entry!.id]: a.entry!, twin: twin! } };
+    const result = removeGoneEntriesForPerson(store, "twin");
+    expect(result.removed).toHaveLength(2);
+    expect(goneEntryCount(result.store)).toBe(0);
+  });
+
+  it("adding the same emp # updates the existing Gone row instead of doubling", () => {
+    const first = addGoneEntry(emptyDriverGoneStore(), {
+      employeeNumber: "1183",
+      name: "Terry Muzzarelli",
+      notes: "Term",
+    });
+    const second = addGoneEntry(first.store, {
+      employeeNumber: "1183",
+      name: "Terry Muzzarelli",
+      notes: "Term, tested positive for cocaine. 23 years with MBI.:(",
+    });
+    expect(goneEntryCount(second.store)).toBe(1);
+    expect(second.entry?.id).toBe(first.entry?.id);
+    expect(second.entry?.notes).toContain("cocaine");
+  });
+
+  it("cloud reconcile drops duplicate emp # rows and retries those deletes", () => {
+    const a = addGoneEntry(emptyDriverGoneStore(), {
+      employeeNumber: "31147",
+      name: "Buddy Johnson",
+      notes: "Term, failed to report accident. intoxicated on the job.",
+    });
+    const bId = "buddy-copy";
+    const remote = {
+      entries: {
+        [a.entry!.id]: a.entry!,
+        [bId]: { ...a.entry!, id: bId, notes: "Term, failed to report accident, under the influence of alcohol. No rehire", updatedAt: "2099-01-01T00:00:00.000Z" },
+      },
+    };
+    const result = reconcileDriverGoneCloud({
+      local: a.store,
+      remote,
+      deletedEntryIds: [],
+      seenRemoteEntryIds: [a.entry!.id, bId],
+    });
+    expect(goneEntryCount(result.next)).toBe(1);
+    expect(result.next.entries[bId]?.notes).toContain("No rehire");
+    expect(result.toDeleteRemoteEntries).toContain(a.entry!.id);
   });
 });

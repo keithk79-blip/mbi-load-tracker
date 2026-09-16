@@ -13,9 +13,10 @@ import {
   addGoneEntry,
   applyGoneTombstones,
   cleanDriverGoneEntry,
+  collapseDuplicateGoneEntries,
   readDriverGonePersisted,
   reconcileDriverGoneCloud,
-  removeGoneEntry,
+  removeGoneEntriesForPerson,
   updateGoneEntry,
   writeDriverGonePersisted,
   type DriverGoneEntry,
@@ -96,9 +97,16 @@ function entryToRow(entry: DriverGoneEntry, userId: string | null) {
 }
 
 function persistSnapshot(next: DriverGonePersisted): DriverGoneStore {
-  const stripped = applyGoneTombstones({ entries: next.entries }, next.deletedEntryIds);
-  writeDriverGonePersisted({ ...next, entries: stripped.entries });
-  return stripped;
+  const collapsed = collapseDuplicateGoneEntries(
+    applyGoneTombstones({ entries: next.entries }, next.deletedEntryIds),
+  );
+  const deletedEntryIds = [...new Set([...next.deletedEntryIds, ...collapsed.droppedIds])];
+  writeDriverGonePersisted({
+    ...next,
+    entries: collapsed.store.entries,
+    deletedEntryIds,
+  });
+  return collapsed.store;
 }
 
 export function DriverGoneProvider({ children }: { children: ReactNode }) {
@@ -106,7 +114,9 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
   const cloud = configured && !!session;
   const [store, setStore] = useState<DriverGoneStore>(() => {
     const persisted = readDriverGonePersisted();
-    return applyGoneTombstones({ entries: persisted.entries }, persisted.deletedEntryIds);
+    return collapseDuplicateGoneEntries(
+      applyGoneTombstones({ entries: persisted.entries }, persisted.deletedEntryIds),
+    ).store;
   });
   const storeRef = useRef(store);
   storeRef.current = store;
@@ -118,9 +128,11 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
   const uploadingRef = useRef(false);
 
   const persistLocal = useCallback((next: DriverGoneStore) => {
+    const collapsed = collapseDuplicateGoneEntries(next);
+    for (const id of collapsed.droppedIds) deletedRef.current.add(id);
     const snapshot: DriverGonePersisted = {
       version: 1,
-      entries: next.entries,
+      entries: collapsed.store.entries,
       deletedEntryIds: [...deletedRef.current],
       seenRemoteEntryIds: [...seenRef.current],
       importedAt: importedAtRef.current,
@@ -154,6 +166,7 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
     if (!ids.length) return;
     const supabase = getSupabase();
     if (!supabase) return;
+    // Explicit × and retry of those tombstones are the only path that may DELETE a cloud Gone row.
     const { error } = await supabase.from("driver_gone_entries").delete().in("id", ids);
     if (error) console.warn("driver gone delete failed", error.message);
   }, []);
@@ -202,13 +215,17 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
         }
       }
       if (epoch !== epochRef.current) return;
+      if (result.toDeleteRemoteEntries.length) {
+        await cloudDeleteEntries(result.toDeleteRemoteEntries);
+      }
+      if (epoch !== epochRef.current) return;
       deletedRef.current = new Set(result.deletedEntryIds);
       seenRef.current = new Set(result.seenRemoteEntryIds);
       persistLocal(result.next);
     }
 
     await seedIfEmpty();
-  }, [cloud, cloudUpsert, persistLocal, pullRemote, seedIfEmpty]);
+  }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, pullRemote, seedIfEmpty]);
 
   const refresh = useCallback(() => {
     const run = refreshTailRef.current.then(refreshInner, refreshInner);
@@ -277,11 +294,11 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
   const removeGone = useCallback(
     async (id: string) => {
       epochRef.current += 1;
-      const result = removeGoneEntry(storeRef.current, id);
-      if (!result.removed) return;
-      deletedRef.current.add(id);
+      const result = removeGoneEntriesForPerson(storeRef.current, id);
+      if (!result.removed.length) return;
+      for (const row of result.removed) deletedRef.current.add(row.id);
       persistLocal(result.store);
-      if (cloud) await cloudDeleteEntries([id]);
+      if (cloud) await cloudDeleteEntries(result.removed.map((row) => row.id));
     },
     [cloud, cloudDeleteEntries, persistLocal],
   );
