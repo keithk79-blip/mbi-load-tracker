@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { BrandMark } from "./components/BrandMark";
 import { SessionBar } from "./components/SessionBar";
@@ -44,6 +44,9 @@ function wrapOverlay(desktop: boolean, child: ReactNode) {
 
 function Gate({ children }: { children: ReactNode }) {
   const { configured, loading, session } = useAuth();
+  useLayoutEffect(() => {
+    document.body.classList.add("app-ready");
+  }, []);
   if (configured && loading) {
     return (
       <div className="screen overlay-screen login-screen">

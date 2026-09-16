@@ -33,7 +33,10 @@ html,
 body,
 #root {
   margin: 0;
+  height: 100%;
   min-height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
   background: var(--bg);
   color: var(--text);
   font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
@@ -56,6 +59,8 @@ button {
 }
 
 .app-shell {
+  min-height: 100%;
+  min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   justify-content: center;
@@ -64,6 +69,7 @@ button {
 
 .phone {
   width: min(430px, 100%);
+  min-height: calc(100vh - 28px);
   min-height: calc(100dvh - 28px);
   background: var(--phone);
   border: 1px solid var(--line);
@@ -1958,6 +1964,16 @@ button.log-load-top {
   text-transform: uppercase;
 }
 
+#splash-error {
+  max-width: min(420px, 86vw);
+  color: #b91c1c;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: center;
+  line-height: 1.4;
+}
+
 body.app-ready .splash {
   display: none;
 }
@@ -2076,6 +2092,8 @@ body.app-ready .splash {
 
 .app-shell.is-desktop .phone {
   width: 100%;
+  min-height: 100%;
+  min-height: 100vh;
   min-height: 100dvh;
   border: 0;
   border-radius: 0;
