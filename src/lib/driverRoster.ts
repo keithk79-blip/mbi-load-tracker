@@ -1120,6 +1120,26 @@ export function fullRosterDriversForTruck(
     });
 }
 
+/**
+ * A truck # can only sit on one Full Roster driver at a time. Returns the
+ * other driver already holding it, or null when the number is free.
+ * `excludeId` lets an existing card re-save its own unchanged number.
+ */
+export function findAssignedTruckConflict(
+  store: DriverRosterStore,
+  truck: string | null,
+  excludeId?: string,
+): DriverRosterEntry | null {
+  const needle = cleanAssignedTruck(truck);
+  if (!needle) return null;
+  for (const entry of Object.values(store.entries)) {
+    if (entry.kind !== "full") continue;
+    if (entry.id === excludeId) continue;
+    if (cleanAssignedTruck(entry.assignedTruck) === needle) return entry;
+  }
+  return null;
+}
+
 export type DriverRosterCloudReconcileInput = {
 
   local: DriverRosterStore;

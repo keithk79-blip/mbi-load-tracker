@@ -11,6 +11,7 @@ import {
   formatRosterCopyList,
   formatRosterLine,
   fullRosterDriversForTruck,
+  findAssignedTruckConflict,
   fullRosterTally,
   matchDriverNameSuggestions,
   collapseDuplicateRosterEntries,
@@ -755,6 +756,46 @@ describe("assigned truck (not EMP #)", () => {
     const search = readFileSync(new URL("../screens/SearchScreen.tsx", import.meta.url), "utf8");
     expect(search).toContain("loggedDriverNamesForTruck");
     expect(search).not.toContain("fullRosterDriversForTruck");
+  });
+
+  it("flags a truck # already held by another Full Roster driver", () => {
+    let store = emptyDriverRosterStore();
+    store = addRosterEntry(store, {
+      kind: "full",
+      yard: "rockford",
+      truckNumber: "185",
+      assignedTruck: "418",
+      name: "Christopher Oleson",
+    }).store;
+    const other = addRosterEntry(store, {
+      kind: "full",
+      yard: "burnham",
+      truckNumber: "56",
+      assignedTruck: null,
+      name: "Dave Vanderbilt",
+    });
+    store = other.store;
+
+    const conflict = findAssignedTruckConflict(store, "418");
+    expect(conflict?.name).toBe("Christopher Oleson");
+
+    // Same driver re-saving their own unchanged number is not a conflict.
+    const existing = Object.values(store.entries).find((row) => row.name === "Christopher Oleson");
+    expect(findAssignedTruckConflict(store, "418", existing?.id)).toBeNull();
+
+    // A different truck #, an empty value, or a Sat-roster row never conflicts.
+    expect(findAssignedTruckConflict(store, "419")).toBeNull();
+    expect(findAssignedTruckConflict(store, null)).toBeNull();
+    store = addRosterEntry(store, {
+      kind: "sat",
+      yard: "rockford",
+      truckNumber: "185",
+      assignedTruck: "418",
+      name: "Christopher Oleson",
+    }).store;
+    expect(findAssignedTruckConflict(store, "418", other.entry!.id)?.name).toBe(
+      "Christopher Oleson",
+    );
   });
 
   it("SQL keeps emp # on truck_number and adds assigned_truck", () => {
