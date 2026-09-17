@@ -93,12 +93,13 @@ function AddRosterForm({
 }: {
   kind: DriverRosterKind;
   onCancel: () => void;
-  onSave: (emp: string, name: string, status: string, assignedTruck: string) => void;
+  onSave: (emp: string, name: string, status: string, assignedTruck: string) => Promise<string | null>;
 }) {
   const [truck, setTruck] = useState("");
   const [assignedTruck, setAssignedTruck] = useState("");
   const [name, setName] = useState("");
   const [status, setStatus] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -111,7 +112,12 @@ function AddRosterForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (!name.trim()) return;
-        onSave(truck.trim(), name.trim(), status.trim(), assignedTruck.trim());
+        setError(null);
+        void onSave(truck.trim(), name.trim(), status.trim(), assignedTruck.trim()).then(
+          (conflictName) => {
+            if (conflictName) setError(`Truck # already assigned to ${conflictName}.`);
+          },
+        );
       }}
     >
       <input
@@ -127,7 +133,10 @@ function AddRosterForm({
         <input
           className="text-input drv-add-truck"
           value={assignedTruck}
-          onChange={(event) => setAssignedTruck(event.target.value)}
+          onChange={(event) => {
+            setAssignedTruck(event.target.value);
+            if (error) setError(null);
+          }}
           placeholder="Truck #"
           autoComplete="off"
           aria-label="Truck number"
@@ -155,6 +164,11 @@ function AddRosterForm({
             </option>
           ))}
         </select>
+      ) : null}
+      {error ? (
+        <p className="drv-add-error" role="alert">
+          {error}
+        </p>
       ) : null}
       <div className="vac-add-actions">
         <button type="submit" className="text-btn amber">
@@ -653,15 +667,17 @@ export function DriverScreen() {
         <AddRosterForm
           kind={kind}
           onCancel={() => setAdding(false)}
-          onSave={(emp, name, status, assignedTruck) => {
-            void addDriver({
+          onSave={async (emp, name, status, assignedTruck) => {
+            const result = await addDriver({
               truckNumber: emp,
               assignedTruck: assignedTruck || null,
               name,
               status,
               forDate: satDate,
             });
+            if (result.conflictName) return result.conflictName;
             setAdding(false);
+            return null;
           }}
         />
       ) : null}
@@ -907,7 +923,7 @@ export function DriverScreen() {
                 onMove={(delta) => void moveDriver(entry.id, delta)}
                 onRemove={() => setRemoveDialog({ step: "choose", entry })}
                 onStatus={(status) => void setDriverStatus(entry.id, status)}
-                onTruck={(value) => void setDriverAssignedTruck(entry.id, value || null)}
+                onTruck={(value) => setDriverAssignedTruck(entry.id, value || null)}
                 onProfile={(patch) => void setDriverProfile(entry.id, patch)}
               />
             );
