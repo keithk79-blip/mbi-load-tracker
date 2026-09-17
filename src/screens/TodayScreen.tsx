@@ -17,6 +17,7 @@ import { DriversCard } from "../components/DriversCard";
 import { StationCallsCard } from "../components/StationCallsCard";
 import { SpecialtyBoardCard } from "../components/SpecialtyBoardCard";
 import { ChicagoTrafficCard } from "../components/ChicagoTrafficCard";
+import { DispatchTalliesRow } from "../components/DispatchTalliesRow";
 import { LoadRow } from "../components/LoadRow";
 import { SheetTotalsForm } from "../components/SheetTotalsForm";
 
@@ -59,6 +60,14 @@ export function TodayScreen({
   }, [loads, date, totalsOn]);
 
   const loadWord = dayLoads.length === 1 ? "load" : "loads";
+  const bataviaDispatchedToday = useMemo(
+    () =>
+      dayLoads.filter(
+        (load) =>
+          load.pickup.trim().toLowerCase() === "batavia" && load.commodity === "Trash (MSW)",
+      ).length,
+    [dayLoads],
+  );
 
   return (
     <div className="screen">
@@ -88,9 +97,12 @@ export function TodayScreen({
 
       <DriversCard compact collapsible date={date} loadCount={displayLoadCount(dayLoads.length, snapshot)} />
 
-      <button type="button" className="log-load-top" onClick={() => onLog(date)}>
-        + Log load
-      </button>
+      <div className="log-load-row">
+        <button type="button" className="log-load-top" onClick={() => onLog(date)}>
+          + Log load
+        </button>
+        <DispatchTalliesRow date={date} bataviaDispatchedToday={bataviaDispatchedToday} />
+      </div>
 
       <ChicagoTrafficCard />
 
