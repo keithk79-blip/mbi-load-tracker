@@ -2174,7 +2174,7 @@ body.app-ready .splash {
 
 .session-bar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 8px;
@@ -2184,6 +2184,44 @@ body.app-ready .splash {
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
+}
+
+.session-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.crew-presence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.crew-presence-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.crew-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.crew-dot.is-online {
+  background: #2f8a55;
+  box-shadow: 0 0 0 2px rgba(47, 138, 85, 0.18);
+}
+
+.crew-dot.is-offline {
+  background: var(--danger);
+  box-shadow: 0 0 0 2px rgba(232, 93, 76, 0.16);
 }
 
 .session-bar .text-btn:disabled {
