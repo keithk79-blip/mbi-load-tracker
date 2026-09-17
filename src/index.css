@@ -4046,7 +4046,7 @@ body.app-ready .splash {
   gap: 2px;
   padding-top: 4px;
   container-type: inline-size;
-  min-width: 0;
+}
 
 .drv-pay-day {
   display: flex;
@@ -4058,13 +4058,13 @@ body.app-ready .splash {
 
 .drv-pay-dow {
   color: var(--muted);
-  font-size: clamp(9px, 2.5cqw, 11px)
+  font-size: clamp(9px, 2.5cqw, 11px);
   font-weight: 800;
   letter-spacing: 0.04em;
 }
 
 .drv-pay-amt {
-  font-size: clamp(9px, 3cqw, 13px)
+  font-size: clamp(9px, 3cqw, 13px);
   font-weight: 750;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
