@@ -87,9 +87,11 @@ function TallyChip({
 export function DispatchTalliesRow({
   date,
   bataviaDispatchedToday,
+  evanstonDispatchedToday,
 }: {
   date: string;
   bataviaDispatchedToday: number;
+  evanstonDispatchedToday: number;
 }) {
   const { talliesOn, setBataviaPreload, decrementBataviaPreload, setEvanstonAsking } =
     useDispatchTallies();
@@ -108,6 +110,7 @@ export function DispatchTalliesRow({
       <TallyChip
         label="Evanston Asking"
         value={tallies.evanstonAsking}
+        sub={`${evanstonDispatchedToday} dispatched today`}
         onSet={(n) => void setEvanstonAsking(date, n)}
         onStepDown={() => void setEvanstonAsking(date, Math.max(0, tallies.evanstonAsking - 1))}
         onStepUp={() => void setEvanstonAsking(date, tallies.evanstonAsking + 1)}
