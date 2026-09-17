@@ -17,6 +17,7 @@ import {
   cleanDriverRosterYard,
   DRIVER_ROSTER_YARDS,
   cleanDriverTabGroup,
+  findAssignedTruckConflict,
   moveRosterEntry,
   collapseDuplicateRosterEntries,
   phonesNeedingUpload,
@@ -78,9 +79,14 @@ type DriverRosterContextValue = {
   setYard: (yard: DriverRosterYard) => void;
   cloud: boolean;
   refresh: () => Promise<void>;
-  addDriver: (input: Omit<DriverRosterInput, "kind" | "yard">) => Promise<DriverRosterEntry | null>;
+  addDriver: (
+    input: Omit<DriverRosterInput, "kind" | "yard">,
+  ) => Promise<{ entry: DriverRosterEntry | null; conflictName?: string }>;
   setDriverStatus: (id: string, status: string | null) => Promise<void>;
-  setDriverAssignedTruck: (id: string, assignedTruck: string | null) => Promise<void>;
+  setDriverAssignedTruck: (
+    id: string,
+    assignedTruck: string | null,
+  ) => Promise<{ ok: boolean; conflictName?: string }>;
   setDriverProfile: (
     id: string,
     patch: { hireDate?: string | null; phone?: string | null },
@@ -423,6 +429,10 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
 
   const addDriver = useCallback(
     async (input: Omit<DriverRosterInput, "kind" | "yard">) => {
+      if (ui.kind === "full") {
+        const conflict = findAssignedTruckConflict(storeRef.current, input.assignedTruck ?? null);
+        if (conflict) return { entry: null, conflictName: conflict.name };
+      }
       epochRef.current += 1;
       const satDate =
         ui.kind === "sat"
@@ -438,13 +448,13 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
         yard: ui.yard,
         forDate: satDate,
       });
-      if (!result.entry) return null;
+      if (!result.entry) return { entry: null };
       if (result.entry.kind === "sat") satInitializedRef.current.add(result.entry.yard);
       const removed = persistLocal(result.store);
       if (cloud && removed.length) await cloudDeleteEntries(removed.map((row) => row.id));
       const kept = storeRef.current.entries[result.entry.id];
       if (cloud && kept) await cloudUpsert([kept]);
-      return kept ?? result.entry;
+      return { entry: kept ?? result.entry };
     },
     [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, ui.kind, ui.yard],
   );
@@ -462,11 +472,14 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
 
   const setDriverAssignedTruck = useCallback(
     async (id: string, assignedTruck: string | null) => {
+      const conflict = findAssignedTruckConflict(storeRef.current, assignedTruck, id);
+      if (conflict) return { ok: false, conflictName: conflict.name };
       epochRef.current += 1;
       const next = updateRosterEntry(storeRef.current, id, { assignedTruck });
       const entry = next.entries[id];
       persistLocal(next);
       if (cloud && entry) await cloudUpsert([entry]);
+      return { ok: true };
     },
     [cloud, cloudUpsert, persistLocal],
   );
