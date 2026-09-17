@@ -60,14 +60,16 @@ export function TodayScreen({
   }, [loads, date, totalsOn]);
 
   const loadWord = dayLoads.length === 1 ? "load" : "loads";
-  const bataviaDispatchedToday = useMemo(
-    () =>
-      dayLoads.filter(
-        (load) =>
-          load.pickup.trim().toLowerCase() === "batavia" && load.commodity === "Trash (MSW)",
-      ).length,
-    [dayLoads],
-  );
+  const msWDispatchedToday = useMemo(() => {
+    const counts = { batavia: 0, evanston: 0 };
+    for (const load of dayLoads) {
+      if (load.commodity !== "Trash (MSW)") continue;
+      const pickup = load.pickup.trim().toLowerCase();
+      if (pickup === "batavia") counts.batavia += 1;
+      else if (pickup === "evanston") counts.evanston += 1;
+    }
+    return counts;
+  }, [dayLoads]);
 
   return (
     <div className="screen">
@@ -101,7 +103,11 @@ export function TodayScreen({
         <button type="button" className="log-load-top" onClick={() => onLog(date)}>
           + Log load
         </button>
-        <DispatchTalliesRow date={date} bataviaDispatchedToday={bataviaDispatchedToday} />
+        <DispatchTalliesRow
+          date={date}
+          bataviaDispatchedToday={msWDispatchedToday.batavia}
+          evanstonDispatchedToday={msWDispatchedToday.evanston}
+        />
       </div>
 
       <ChicagoTrafficCard />
