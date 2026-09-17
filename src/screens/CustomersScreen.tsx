@@ -26,6 +26,19 @@ function formatTier(n: number | null): string {
   return n % 1 === 0 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`;
 }
 
+type LaneFormState = {
+  customer: string;
+  id?: string;
+  destination: string;
+  commodity: string;
+  effectiveDate: string;
+  t1: string;
+  t2: string;
+  t3: string;
+  t4: string;
+  t5: string;
+};
+
 export function CustomersScreen() {
   const { store, saveLane, deleteLane } = useCustomerLanes();
   const today = chicagoToday();
@@ -33,18 +46,7 @@ export function CustomersScreen() {
   const [addingCustomer, setAddingCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState("");
   const [openCustomer, setOpenCustomer] = useState<string | null>(null);
-  const [laneForm, setLaneForm] = useState<{
-    customer: string;
-    id?: string;
-    destination: string;
-    commodity: string;
-    effectiveDate: string;
-    t1: string;
-    t2: string;
-    t3: string;
-    t4: string;
-    t5: string;
-  } | null>(null);
+  const [laneForm, setLaneForm] = useState<LaneFormState | null>(null);
 
   const names = useMemo(() => customerNames(store), [store]);
   const current = useMemo(() => currentLanesByCustomer(store, today), [store, today]);
@@ -175,7 +177,8 @@ export function CustomersScreen() {
                 <button
                   type="button"
                   className="text-btn"
-                  onClick={() =>
+                  onClick={() => {
+                    setOpenCustomer(name);
                     setLaneForm({
                       customer: name,
                       destination: "",
@@ -186,14 +189,17 @@ export function CustomersScreen() {
                       t3: "",
                       t4: "",
                       t5: "",
-                    })
-                  }
+                    });
+                  }}
                 >
                   + Lane
                 </button>
               </header>
               {open ? (
                 <div className="cust-body">
+                  {laneForm && laneForm.customer === name ? (
+                    <LaneForm laneForm={laneForm} setLaneForm={setLaneForm} onSave={saveForm} />
+                  ) : null}
                   {live.length === 0 ? (
                     <p className="field-hint">Add a destination and the five tier rates.</p>
                   ) : (
@@ -243,82 +249,84 @@ export function CustomersScreen() {
           );
         })}
       </div>
-
-      {laneForm ? (
-        <form
-          className="cust-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void saveForm();
-          }}
-        >
-          <h2>{laneForm.id ? "Edit lane" : "Add lane"} · {laneForm.customer}</h2>
-          <label className="drv-pay-field">
-            <span>Destination</span>
-            <input
-              className="text-input"
-              value={laneForm.destination}
-              onChange={(event) =>
-                setLaneForm({ ...laneForm, destination: event.target.value })
-              }
-              placeholder="DeKalb"
-              autoComplete="off"
-            />
-          </label>
-          <label className="drv-pay-field">
-            <span>Commodity</span>
-            <select
-              className="text-input"
-              value={laneForm.commodity}
-              onChange={(event) =>
-                setLaneForm({ ...laneForm, commodity: event.target.value })
-              }
-            >
-              {LANE_COMMODITIES.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="drv-pay-field">
-            <span>Contract start</span>
-            <input
-              className="text-input"
-              type="date"
-              value={laneForm.effectiveDate}
-              onChange={(event) =>
-                setLaneForm({ ...laneForm, effectiveDate: event.target.value })
-              }
-            />
-          </label>
-          <div className="cust-tiers">
-            {(["t1", "t2", "t3", "t4", "t5"] as const).map((key, i) => (
-              <label key={key} className="drv-pay-field">
-                <span>Tier {i + 1}</span>
-                <input
-                  className="text-input"
-                  inputMode="decimal"
-                  value={laneForm[key]}
-                  onChange={(event) =>
-                    setLaneForm({ ...laneForm, [key]: event.target.value })
-                  }
-                  placeholder="0.00"
-                />
-              </label>
-            ))}
-          </div>
-          <div className="vac-add-actions">
-            <button type="submit" className="text-btn amber">
-              Save lane
-            </button>
-            <button type="button" className="text-btn" onClick={() => setLaneForm(null)}>
-              Cancel
-            </button>
-          </div>
-        </form>
-      ) : null}
     </section>
+  );
+}
+
+function LaneForm({
+  laneForm,
+  setLaneForm,
+  onSave,
+}: {
+  laneForm: LaneFormState;
+  setLaneForm: (next: LaneFormState | null) => void;
+  onSave: () => void;
+}) {
+  return (
+    <form
+      className="cust-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSave();
+      }}
+    >
+      <h2>{laneForm.id ? "Edit lane" : "Add lane"}</h2>
+      <label className="drv-pay-field">
+        <span>Destination</span>
+        <input
+          className="text-input"
+          value={laneForm.destination}
+          onChange={(event) => setLaneForm({ ...laneForm, destination: event.target.value })}
+          placeholder="DeKalb"
+          autoComplete="off"
+        />
+      </label>
+      <label className="drv-pay-field">
+        <span>Commodity</span>
+        <select
+          className="text-input"
+          value={laneForm.commodity}
+          onChange={(event) => setLaneForm({ ...laneForm, commodity: event.target.value })}
+        >
+          {LANE_COMMODITIES.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="drv-pay-field">
+        <span>Contract start</span>
+        <input
+          className="text-input"
+          type="date"
+          value={laneForm.effectiveDate}
+          onChange={(event) => setLaneForm({ ...laneForm, effectiveDate: event.target.value })}
+        />
+      </label>
+      <div className="cust-tiers">
+        {(["t1", "t2", "t3", "t4", "t5"] as const).map((key, i) => (
+          <label key={key} className="drv-pay-field">
+            <span>Tier {i + 1}</span>
+            <input
+              className="text-input"
+              inputMode="decimal"
+              value={laneForm[key]}
+              onChange={(event) => setLaneForm({ ...laneForm, [key]: event.target.value })}
+              placeholder="0.00"
+            />
+          </label>
+        ))}
+      </div>
+      <div className="vac-add-actions">
+        <button type="submit" className="text-btn amber">
+          Save lane
+        </button>
+        <button type="button" className="text-btn" onClick={() => setLaneForm(null)}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 
