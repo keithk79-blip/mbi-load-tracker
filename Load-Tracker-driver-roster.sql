@@ -69,6 +69,12 @@ alter table public.driver_roster_entries
 comment on column public.driver_roster_entries.hire_date is
   'Full Roster start date (America/Chicago). Null until known. Sat rows stay null.';
 
+alter table public.driver_roster_entries
+  add column if not exists phone text;
+
+comment on column public.driver_roster_entries.phone is
+  'Optional Full Roster contact. Sat rows stay null.';
+
 comment on column public.driver_roster_entries.status is
   'Full Roster unavailability abbreviation (oot, fmla, vac, wc, …). Null = working. Driver stays on the hired list. Later tally: hired − full-day status − day offs.';
 comment on column public.driver_roster_entries.for_date is

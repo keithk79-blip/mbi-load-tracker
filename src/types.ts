@@ -26,6 +26,7 @@ export type Load = {
 export type TabId =
   | "today"
   | "trucks"
+  | "customers"
   | "analytics"
   | "driver"
   | "vacation"

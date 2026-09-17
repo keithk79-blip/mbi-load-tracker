@@ -65,6 +65,8 @@ export type DriverRosterEntry = {
   status: string | null;
   /** Full Roster only: first day on the job (America/Chicago). Null until known. */
   hireDate: string | null;
+  /** Full Roster only: optional contact. Sat rows stay null. */
+  phone: string | null;
   sortOrder: number;
   forDate: string | null;
   createdAt: string;
@@ -131,6 +133,7 @@ export type DriverRosterInput = {
   name: string;
   status?: string | null;
   hireDate?: string | null;
+  phone?: string | null;
   sortOrder?: number;
   forDate?: string | null;
 };
@@ -216,6 +219,13 @@ export function cleanAssignedTruck(raw: unknown): string | null {
 export function cleanDriverName(raw: unknown): string {
   if (typeof raw !== "string") return "";
   return raw.replace(/\s+/g, " ").trim();
+}
+
+export function cleanPhone(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.replace(/\s+/g, " ").trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, 24);
 }
 
 function normalizeRosterPersonName(name: string): string {
@@ -392,6 +402,7 @@ export function cleanDriverRosterEntry(raw: unknown): DriverRosterEntry | null {
     name,
     status: kind === "full" ? cleanDriverStatus(rec.status) : null,
     hireDate: kind === "full" ? cleanForDate(rec.hireDate ?? rec.hire_date) : null,
+    phone: kind === "full" ? cleanPhone(rec.phone) : null,
     sortOrder,
     forDate: kind === "sat" ? cleanForDate(rec.forDate) : null,
     createdAt,
@@ -867,6 +878,7 @@ export function addRosterEntry(
     name,
     status: kind === "full" ? cleanDriverStatus(input.status ?? null) : null,
     hireDate: kind === "full" ? cleanForDate(input.hireDate ?? null) : null,
+    phone: kind === "full" ? cleanPhone(input.phone ?? null) : null,
     sortOrder:
       typeof input.sortOrder === "number" && Number.isFinite(input.sortOrder)
         ? Math.floor(input.sortOrder)
@@ -884,7 +896,7 @@ export function updateRosterEntry(
   patch: Partial<
     Pick<
       DriverRosterEntry,
-      "truckNumber" | "assignedTruck" | "name" | "status" | "hireDate" | "sortOrder" | "forDate"
+      "truckNumber" | "assignedTruck" | "name" | "status" | "hireDate" | "phone" | "sortOrder" | "forDate"
     >
   >,
   at?: string,
@@ -915,6 +927,12 @@ export function updateRosterEntry(
         ? patch.hireDate !== undefined
           ? cleanForDate(patch.hireDate)
           : prev.hireDate
+        : null,
+    phone:
+      prev.kind === "full"
+        ? patch.phone !== undefined
+          ? cleanPhone(patch.phone)
+          : prev.phone
         : null,
     sortOrder:
       typeof patch.sortOrder === "number" && Number.isFinite(patch.sortOrder)
@@ -1187,3 +1205,34 @@ export function reconcileDriverRosterCloud(
     toUploadEntries,
   };
 }
+
+export function preservePhones(
+  previous: DriverRosterStore,
+  incoming: DriverRosterStore,
+): DriverRosterStore {
+  const entries: Record<string, DriverRosterEntry> = { ...incoming.entries };
+  for (const [id, row] of Object.entries(entries)) {
+    if (row.kind !== "full") continue;
+    if (cleanPhone(row.phone)) continue;
+    const kept = cleanPhone(previous.entries[id]?.phone ?? null);
+    if (!kept) continue;
+    entries[id] = { ...row, phone: kept };
+  }
+  return { entries };
+}
+
+export function phonesNeedingUpload(
+  store: DriverRosterStore,
+  remote: DriverRosterStore,
+): DriverRosterEntry[] {
+  const out: DriverRosterEntry[] = [];
+  for (const row of Object.values(store.entries)) {
+    if (row.kind !== "full") continue;
+    const local = cleanPhone(row.phone);
+    if (!local) continue;
+    const remotePhone = cleanPhone(remote.entries[row.id]?.phone ?? null);
+    if (local !== remotePhone) out.push(row);
+  }
+  return out;
+}
+

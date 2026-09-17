@@ -19,6 +19,8 @@ import {
   cleanDriverTabGroup,
   moveRosterEntry,
   collapseDuplicateRosterEntries,
+  phonesNeedingUpload,
+  preservePhones,
   readDriverRosterPersisted,
   readDriverRosterUi,
   reconcileDriverRosterCloud,
@@ -59,6 +61,7 @@ type EntryRow = {
   name: string;
   status: string | null;
   hire_date?: string | null;
+  phone?: string | null;
   sort_order: number;
   for_date: string | null;
   created_at: string;
@@ -78,6 +81,10 @@ type DriverRosterContextValue = {
   addDriver: (input: Omit<DriverRosterInput, "kind" | "yard">) => Promise<DriverRosterEntry | null>;
   setDriverStatus: (id: string, status: string | null) => Promise<void>;
   setDriverAssignedTruck: (id: string, assignedTruck: string | null) => Promise<void>;
+  setDriverProfile: (
+    id: string,
+    patch: { hireDate?: string | null; phone?: string | null },
+  ) => Promise<void>;
   removeDriver: (id: string) => Promise<void>;
   removeHiredAndSat: (id: string) => Promise<void>;
   moveDriver: (id: string, delta: -1 | 1) => Promise<void>;
@@ -102,6 +109,7 @@ function rowsToStore(rows: EntryRow[]): DriverRosterStore {
       name: row.name,
       status: row.status,
       hireDate: cleanDriverRosterKind(row.kind) === "full" ? row.hire_date ?? null : null,
+      phone: cleanDriverRosterKind(row.kind) === "full" ? row.phone ?? null : null,
       sortOrder: row.sort_order,
       forDate: row.for_date,
       createdAt: row.created_at,
@@ -121,6 +129,7 @@ function entryToRow(entry: DriverRosterEntry, userId: string | null) {
     name: entry.name,
     status: entry.status,
     hire_date: entry.hireDate,
+    phone: entry.phone,
     sort_order: entry.sortOrder,
     for_date: entry.forDate,
     created_at: entry.createdAt,
@@ -194,6 +203,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     if (!supabase || !session) return null;
     const page = await fetchAllPaged<EntryRow>(async (from, to) => {
       const selects = [
+        "id, kind, yard, truck_number, assigned_truck, name, status, hire_date, phone, sort_order, for_date, created_at, updated_at",
         "id, kind, yard, truck_number, assigned_truck, name, status, hire_date, sort_order, for_date, created_at, updated_at",
         "id, kind, yard, truck_number, assigned_truck, name, status, sort_order, for_date, created_at, updated_at",
         "id, kind, yard, truck_number, name, status, sort_order, for_date, created_at, updated_at",
@@ -211,7 +221,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
         lastError = result.error;
         const missingCol =
           result.error.code === "42703" ||
-          /hire_date|assigned_truck/i.test(result.error.message ?? "");
+          /hire_date|assigned_truck|phone/i.test(result.error.message ?? "");
         if (!missingCol) {
           return { data: result.data as EntryRow[] | null, error: result.error };
         }
@@ -244,7 +254,8 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       const msg = error.message ?? "";
       const missingHire = /hire_date/i.test(msg);
       const missingAssigned = /assigned_truck/i.test(msg);
-      if (error.code !== "42703" && !missingHire && !missingAssigned) {
+      const missingPhone = /\bphone\b/i.test(msg);
+      if (error.code !== "42703" && !missingHire && !missingAssigned && !missingPhone) {
         console.warn("driver roster upsert failed", error.message);
         return;
       }
@@ -254,6 +265,9 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       }
       if (missingAssigned) {
         payload = payload.map(({ assigned_truck: _a, ...row }) => row);
+      }
+      if (missingPhone) {
+        payload = payload.map(({ phone: _p, ...row }) => row);
       }
       const retry = await supabase.from("driver_roster_entries").upsert(payload);
       if (retry.error) console.warn("driver roster upsert failed", retry.error.message);
@@ -331,15 +345,21 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
         seenRemoteEntryIds: seenRef.current,
       });
       if (epoch !== epochRef.current) return;
-      const next = preserveHireDates(
+      const next = preservePhones(
         prior,
-        preserveAssignedTrucks(prior, result.next),
+        preserveHireDates(
+          prior,
+          preserveAssignedTrucks(prior, result.next),
+        ),
       );
       const toUpload = [...result.toUploadEntries];
       for (const row of assignedTrucksNeedingUpload(next, remote)) {
         if (!toUpload.some((item) => item.id === row.id)) toUpload.push(row);
       }
       for (const row of hireDatesNeedingUpload(next, remote)) {
+        if (!toUpload.some((item) => item.id === row.id)) toUpload.push(row);
+      }
+      for (const row of phonesNeedingUpload(next, remote)) {
         if (!toUpload.some((item) => item.id === row.id)) toUpload.push(row);
       }
       if (toUpload.length && !uploadingRef.current) {
@@ -444,6 +464,17 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     async (id: string, assignedTruck: string | null) => {
       epochRef.current += 1;
       const next = updateRosterEntry(storeRef.current, id, { assignedTruck });
+      const entry = next.entries[id];
+      persistLocal(next);
+      if (cloud && entry) await cloudUpsert([entry]);
+    },
+    [cloud, cloudUpsert, persistLocal],
+  );
+
+  const setDriverProfile = useCallback(
+    async (id: string, patch: { hireDate?: string | null; phone?: string | null }) => {
+      epochRef.current += 1;
+      const next = updateRosterEntry(storeRef.current, id, patch);
       const entry = next.entries[id];
       persistLocal(next);
       if (cloud && entry) await cloudUpsert([entry]);
@@ -577,6 +608,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       addDriver,
       setDriverStatus,
       setDriverAssignedTruck,
+      setDriverProfile,
       removeDriver,
       removeHiredAndSat,
       moveDriver,
@@ -596,6 +628,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       addDriver,
       setDriverStatus,
       setDriverAssignedTruck,
+      setDriverProfile,
       removeDriver,
       removeHiredAndSat,
       moveDriver,

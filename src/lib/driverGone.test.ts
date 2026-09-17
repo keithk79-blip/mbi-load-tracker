@@ -244,10 +244,16 @@ describe("Full Roster × dialog paths", () => {
     expect(src).not.toContain("Import empty lists");
     expect(src).not.toContain("Import Gone 2026");
     expect(src).not.toContain("importFromSheet");
-    expect(src).toContain("drv-full-grid");
-    expect(src).toContain("drv-yos-tag");
-    expect(src).toContain("drv-allot-tag");
+    expect(src).toContain("FullRosterDriverCard");
+    expect(src).toContain("drv-pay-list");
     expect(src).toContain("Truck #");
+    const card = readFileSync(
+      new URL("../components/FullRosterDriverCard.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(card).toContain("drv-yos-tag");
+    expect(card).toContain("drv-allot-tag");
+    expect(card).toContain("drv-pay-week");
   });
 });
 

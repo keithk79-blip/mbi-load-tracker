@@ -7,6 +7,7 @@ import { chicagoToday } from "./lib/chicagoDate";
 import { useDesktopLayout } from "./lib/layout";
 import { replaceRetiredTotalsLocation, replaceTabLocation, tabFromLocation } from "./lib/tabRoute";
 import { CallOffsScreen } from "./screens/CallOffsScreen";
+import { CustomersScreen } from "./screens/CustomersScreen";
 import { DriverScreen } from "./screens/DriverScreen";
 import { EditLoadScreen } from "./screens/EditLoadScreen";
 import { LogLoadScreen } from "./screens/LogLoadScreen";
@@ -18,6 +19,7 @@ import { TotalsScreen } from "./screens/TotalsScreen";
 import { VacationScreen } from "./screens/VacationScreen";
 import { AuthProvider, useAuth } from "./store/AuthContext";
 import { CallOffLogProvider } from "./store/CallOffLogContext";
+import { CustomerLanesProvider } from "./store/CustomerLanesContext";
 import { DailyEodProvider } from "./store/DailyEodContext";
 import { DriverGoneProvider } from "./store/DriverGoneContext";
 import { DriverRosterProvider } from "./store/DriverRosterContext";
@@ -78,7 +80,7 @@ function Shell() {
     setJustEditedId(id);
     setOverlay(null);
     if (date) setFeedDate(date);
-    if (tab === "analytics" || tab === "vacation" || tab === "driver" || tab === "calloffs") return;
+    if (tab === "analytics" || tab === "vacation" || tab === "driver" || tab === "calloffs" || tab === "customers") return;
     setTab("today");
   };
 
@@ -173,6 +175,8 @@ function Shell() {
 
           {tab === "driver" ? <DriverScreen /> : null}
 
+          {tab === "customers" ? <CustomersScreen /> : null}
+
           {tab === "calloffs" ? <CallOffsScreen /> : null}
 
           {tab === "vacation" ? <VacationScreen /> : null}
@@ -229,11 +233,13 @@ export default function App() {
               <DriverGoneProvider>
                 <CallOffLogProvider>
                   <DriversProvider>
+                    <CustomerLanesProvider>
                     <DailyEodProvider>
                       <Gate>
                         <Shell />
                       </Gate>
                     </DailyEodProvider>
+                    </CustomerLanesProvider>
                   </DriversProvider>
                 </CallOffLogProvider>
               </DriverGoneProvider>

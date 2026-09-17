@@ -76,10 +76,10 @@ describe("tabFromLocation", () => {
 });
 
 describe("sidebar labels and order", () => {
-  it("lists Today, Drivers, Vacation, Trucks, Analytics", () => {
+  it("lists Today, Drivers, Vacation, Trucks, Customers, Analytics", () => {
     const src = readFileSync(new URL("../components/TabBar.tsx", import.meta.url), "utf8");
     expect(src).toMatch(
-      /id: "today".*label: "Today"[\s\S]*id: "driver".*label: "Drivers"[\s\S]*id: "vacation".*label: "Vacation"[\s\S]*id: "trucks".*label: "Trucks"[\s\S]*id: "analytics".*label: "Analytics"/,
+      /id: "today".*label: "Today"[\s\S]*id: "driver".*label: "Drivers"[\s\S]*id: "vacation".*label: "Vacation"[\s\S]*id: "trucks".*label: "Trucks"[\s\S]*id: "customers".*label: "Customers"[\s\S]*id: "analytics".*label: "Analytics"/,
     );
     expect(src).not.toContain("AnalyticsYTD");
     expect(src).not.toMatch(/label: "Driver"/);
@@ -89,6 +89,7 @@ describe("sidebar labels and order", () => {
 describe("hrefForTab / replaceTabLocation", () => {
   it("maps Driver to /driver", () => {
     expect(hrefForTab("driver")).toBe("/driver");
+    expect(hrefForTab("customers")).toBe("/customers");
     expect(hrefForTab("today")).toBe("/");
   });
 
