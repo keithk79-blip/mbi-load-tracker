@@ -1,18 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { dailyCounts } from "../lib/analytics";
-import {
-  applyDailyEodToCards,
-  displayLoadCount,
-  isSheetEodCard,
-} from "../lib/dailyEod";
+import { displayLoadCount } from "../lib/dailyEod";
 import {
   chicagoToday,
   formatHeaderDate,
   weekStartingSunday,
 } from "../lib/chicagoDate";
 import { sortLoadsNewestFirst } from "../lib/sortLoads";
-import { daySummaryCards } from "../lib/totals";
 import { useDailyEod } from "../store/DailyEodContext";
 import { useDrivers } from "../store/DriversContext";
 import { useLoads } from "../store/LoadsContext";
@@ -63,7 +58,6 @@ export function TodayScreen({
     return map;
   }, [loads, date, totalsOn]);
 
-  const summaryCards = applyDailyEodToCards(daySummaryCards(dayLoads), snapshot);
   const loadWord = dayLoads.length === 1 ? "load" : "loads";
 
   return (
@@ -92,34 +86,7 @@ export function TodayScreen({
         </button>
       ) : null}
 
-      <div className="tally-block">
-        <div className="tally-row">
-          {summaryCards.map((card) => {
-            const fromSheet = Boolean(snapshot) && isSheetEodCard(card.key);
-            return (
-              <article
-                key={card.key}
-                className={[
-                  card.emphasis ? "tally-card tally-loads" : "tally-card",
-                  fromSheet ? "tally-card-sheet" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                <span className="tally-label">{card.label}</span>
-                <span className="tally-value">{card.count}</span>
-              </article>
-            );
-          })}
-        </div>
-      </div>
-
-      <SheetTotalsForm
-        key={`${date}:${snapshot?.updatedAt ?? "new"}`}
-        date={date}
-        existing={snapshot}
-        onSave={upsertTotals}
-      />
+      <DriversCard compact collapsible date={date} loadCount={displayLoadCount(dayLoads.length, snapshot)} />
 
       <button type="button" className="log-load-top" onClick={() => onLog(date)}>
         + Log load
@@ -127,7 +94,12 @@ export function TodayScreen({
 
       <ChicagoTrafficCard />
 
-      <DriversCard compact collapsible date={date} loadCount={displayLoadCount(dayLoads.length, snapshot)} />
+      <SheetTotalsForm
+        key={`${date}:${snapshot?.updatedAt ?? "new"}`}
+        date={date}
+        existing={snapshot}
+        onSave={upsertTotals}
+      />
 
       <StationCallsCard date={date} />
 
