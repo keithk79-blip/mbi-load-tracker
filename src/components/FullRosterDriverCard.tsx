@@ -23,7 +23,7 @@ type FullRosterDriverCardProps = {
   onMove: (delta: -1 | 1) => void;
   onRemove: () => void;
   onStatus: (status: string | null) => void;
-  onTruck: (truck: string) => void;
+  onTruck: (truck: string) => Promise<{ ok: boolean; conflictName?: string }>;
   onProfile: (patch: { hireDate?: string | null; phone?: string | null }) => void;
 };
 
@@ -47,6 +47,7 @@ export function FullRosterDriverCard({
   const [open, setOpen] = useState(true);
   const [editing, setEditing] = useState(false);
   const [truck, setTruck] = useState(entry.assignedTruck ?? "");
+  const [truckError, setTruckError] = useState<string | null>(null);
   const [phone, setPhone] = useState(entry.phone ?? "");
   const [hireDate, setHireDate] = useState(entry.hireDate ?? "");
 
@@ -63,9 +64,16 @@ export function FullRosterDriverCard({
   const yos = yearsOfService(entry.hireDate, today);
   const tier = payTierFromHireDate(entry.hireDate, asOf);
 
-  const saveTruck = () => {
+  const saveTruck = async () => {
     const next = truck.trim();
-    if ((entry.assignedTruck ?? "") !== next) onTruck(next);
+    if ((entry.assignedTruck ?? "") === next) return;
+    const result = await onTruck(next);
+    if (result && !result.ok) {
+      setTruck(entry.assignedTruck ?? "");
+      setTruckError(`Truck # already assigned to ${result.conflictName ?? "another driver"}.`);
+    } else {
+      setTruckError(null);
+    }
   };
 
   const saveProfile = () => {
@@ -189,8 +197,11 @@ export function FullRosterDriverCard({
             <input
               className="text-input drv-assigned-truck"
               value={truck}
-              onChange={(event) => setTruck(event.target.value)}
-              onBlur={saveTruck}
+              onChange={(event) => {
+                setTruck(event.target.value);
+                if (truckError) setTruckError(null);
+              }}
+              onBlur={() => void saveTruck()}
               onKeyDown={(event) => {
                 if (event.key === "Enter") event.currentTarget.blur();
               }}
@@ -198,6 +209,11 @@ export function FullRosterDriverCard({
               autoComplete="off"
               aria-label={`Truck number for ${entry.name}`}
             />
+            {truckError ? (
+              <p className="drv-truck-error" role="alert">
+                {truckError}
+              </p>
+            ) : null}
             <div className="drv-status-cell">
               <select
                 className={
