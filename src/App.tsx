@@ -21,6 +21,7 @@ import { AuthProvider, useAuth } from "./store/AuthContext";
 import { CallOffLogProvider } from "./store/CallOffLogContext";
 import { CustomerLanesProvider } from "./store/CustomerLanesContext";
 import { DailyEodProvider } from "./store/DailyEodContext";
+import { DispatchTalliesProvider } from "./store/DispatchTalliesContext";
 import { DriverGoneProvider } from "./store/DriverGoneContext";
 import { DriverRosterProvider } from "./store/DriverRosterContext";
 import { DriversProvider } from "./store/DriversContext";
@@ -235,9 +236,11 @@ export default function App() {
                   <DriversProvider>
                     <CustomerLanesProvider>
                     <DailyEodProvider>
+                    <DispatchTalliesProvider>
                       <Gate>
                         <Shell />
                       </Gate>
+                    </DispatchTalliesProvider>
                     </DailyEodProvider>
                     </CustomerLanesProvider>
                   </DriversProvider>
