@@ -2516,8 +2516,8 @@ body.app-ready .splash {
 .station-calls-corner,
 .station-calls-table thead th:first-child,
 .station-calls-table tbody th {
-  width: 260px !important;
-  min-width: 260px !important;
+  width: 148px !important;
+  min-width: 148px !important;
   max-width: none !important;
   text-align: left !important;
 }
