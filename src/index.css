@@ -2430,8 +2430,8 @@ body.app-ready .splash {
   border-radius: 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 10px 10px;
+  gap: 4px;
+  padding: 6px 6px 6px;
 }
 .station-calls-head {
   padding: 0 2px;
@@ -2462,7 +2462,7 @@ body.app-ready .splash {
 .station-calls-table td {
   border: 1px solid var(--line);
   text-align: center;
-  padding: 8px 4px;
+  padding: 2px 2px;
   min-width: 0;
   font-size: 14px;
   height: 28px;
@@ -4336,6 +4336,8 @@ body.app-ready .splash {
   grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
   gap: 8px;
 }
+
+
 
 
 
