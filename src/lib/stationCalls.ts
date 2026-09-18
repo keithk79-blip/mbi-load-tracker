@@ -616,7 +616,12 @@ export function writeStationCallStore(store: StationCallStore): void {
 }
 
 export function boardForDate(store: StationCallStore, date: string): StationDayBoard {
-  return store[date] ?? emptyBoard();
+  const base = store[date] ?? emptyBoard();
+  const out: StationDayBoard = { ...base };
+  for (const yard of stationCallYards()) {
+    if (!out[yard.id]) out[yard.id] = emptyRow();
+  }
+  return out;
 }
 
 /** Effective Close for carry-over: numeric Close, else last numeric hour, else Start. */

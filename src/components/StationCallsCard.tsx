@@ -576,7 +576,7 @@ export function StationCallsCard({ date }: { date: string }) {
           </thead>
           <tbody>
             {yards.map((yard) => {
-              const row = board[yard.id];
+              const row = board[yard.id] ?? { hours: {}, close: null };
               const start = startForStation(store, date, yard.id);
               const note = noteForStation(notes, yard.id);
               return (
