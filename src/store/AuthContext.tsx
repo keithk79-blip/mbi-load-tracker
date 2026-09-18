@@ -79,8 +79,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     let alive = true;
-    supabase.auth
-      .getSession()
+    // If Supabase/API gateway is down, getSession can hang forever and trap the UI on "Signing in...".
+    withTimeout(supabase.auth.getSession(), 10000)
       .then(({ data }) => {
         if (!alive) return;
         setSession(data.session ?? null);
@@ -88,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         if (!alive) return;
+        setSession(null);
         setLoading(false);
       });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
