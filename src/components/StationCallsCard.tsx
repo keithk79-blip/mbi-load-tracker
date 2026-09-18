@@ -16,6 +16,7 @@ import {
   stationCallYards,
   addStationCallYard,
   removeStationCallYard,
+  STATION_CORNER_NOTE_ID,
   adjacentStationId,
   boardForDate,
   commitStationCell,
@@ -383,7 +384,7 @@ function StationNameCell({
           }}
           onClick={beginEdit}
         >
-          {label}
+          {label || (filled ? shown : "")}
         </button>
       </div>
       {pop}
@@ -548,24 +549,24 @@ export function StationCallsCard({ date }: { date: string }) {
           <thead>
             <tr>
               <StationNameCell
-                stationId="__date__"
+                stationId={STATION_CORNER_NOTE_ID}
                 label=""
-                note={noteForStation(notes, "__date__")}
-                open={activeNote?.id === "__date__" ? activeNote.mode : null}
+                note={noteForStation(notes, STATION_CORNER_NOTE_ID)}
+                open={activeNote?.id === STATION_CORNER_NOTE_ID ? activeNote.mode : null}
                 onPeek={() =>
                   setNoteOpen((cur) =>
                     cur?.date === date && cur.mode === "edit"
                       ? cur
-                      : { date, id: "__date__", mode: "peek" },
+                      : { date, id: STATION_CORNER_NOTE_ID, mode: "peek" },
                   )
                 }
-                onEdit={() => setNoteOpen({ date, id: "__date__", mode: "edit" })}
+                onEdit={() => setNoteOpen({ date, id: STATION_CORNER_NOTE_ID, mode: "edit" })}
                 onClose={() =>
                   setNoteOpen((cur) =>
-                    cur?.date === date && cur.id === "__date__" ? null : cur,
+                    cur?.date === date && cur.id === STATION_CORNER_NOTE_ID ? null : cur,
                   )
                 }
-                onCommit={(next) => onNote("__date__", next)}
+                onCommit={(next) => onNote(STATION_CORNER_NOTE_ID, next)}
               />
               <th>Start</th>
               {STATION_CALL_HOURS.map((h) => (

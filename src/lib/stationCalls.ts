@@ -218,6 +218,13 @@ function knownStationId(id: string): boolean {
   return stationCallYards().some((yard) => yard.id === id);
 }
 
+/** Corner-cell + yard notes. Corner id is global across all Chicago days. */
+export const STATION_CORNER_NOTE_ID = "__date__";
+
+function isNoteStationId(id: string): boolean {
+  return id === STATION_CORNER_NOTE_ID || knownStationId(id);
+}
+
 function nowIso(at?: string): string {
   return at ?? new Date().toISOString();
 }
@@ -484,7 +491,7 @@ export function seedStationNotes(
 ): StationNoteStore {
   const out: StationNoteStore = { ...notes };
   for (const [stationId, row] of Object.entries(legacy)) {
-    if (!knownStationId(stationId) || !stationCellFilled(row.note)) continue;
+    if (!isNoteStationId(stationId) || !stationCellFilled(row.note)) continue;
     if (stationNoteInitialized(out[stationId])) continue;
     out[stationId] = {
       note: row.note,
@@ -531,7 +538,7 @@ export function readStationNoteStore(): StationNoteStore {
     }
     const out: StationNoteStore = {};
     for (const [stationId, rawRow] of Object.entries(parsed.notes as Record<string, unknown>)) {
-      if (!knownStationId(stationId)) continue;
+      if (!isNoteStationId(stationId)) continue;
       const row = cleanNoteRow(rawRow);
       if (row) out[stationId] = row;
     }
@@ -693,7 +700,7 @@ export function setStationNote(
   value: string | null,
   at?: string,
 ): StationNoteStore {
-  if (!knownStationId(stationId)) return notes;
+  if (!isNoteStationId(stationId)) return notes;
   const stamp = nowIso(at);
   const note = value === null ? null : commitStationNote(value);
   return {
@@ -771,7 +778,7 @@ export async function fetchStationNotesFromCloud(): Promise<StationNoteStore | n
   }
   const out: StationNoteStore = {};
   for (const row of data as { station_id: string; note: unknown; updated_at: unknown }[]) {
-    if (!knownStationId(row.station_id)) continue;
+    if (!isNoteStationId(row.station_id)) continue;
     const noteAt = readIsoAt(row.updated_at);
     const note = readNote(row.note);
     if (!noteAt && !stationCellFilled(note)) continue;
@@ -962,7 +969,7 @@ export function mergeStationNoteStores(
   const ids = new Set([...Object.keys(local), ...Object.keys(remote)]);
   const out: StationNoteStore = {};
   for (const id of ids) {
-    if (!knownStationId(id)) continue;
+    if (!isNoteStationId(id)) continue;
     const l = noteRowMergeInput(local[id]);
     const r = noteRowMergeInput(remote[id]);
     const picked = pickMergedCell(l.value, r.value, l.at, r.at);
@@ -986,12 +993,16 @@ export function reconcileStationNotesCloud(
 ): StationNoteReconcile {
   const merged = seedStationNotes(mergeStationNoteStores(local, remote), legacy);
   const toPush: { stationId: string; row: StationNoteRow }[] = [];
-  for (const yard of stationCallYards()) {
-    const row = merged[yard.id];
+  const noteIds = [
+    STATION_CORNER_NOTE_ID,
+    ...stationCallYards().map((yard) => yard.id),
+  ];
+  for (const stationId of noteIds) {
+    const row = merged[stationId];
     if (!row || !stationNoteInitialized(row)) continue;
-    const remoteRow = remote[yard.id];
+    const remoteRow = remote[stationId];
     if (!remoteRow || !notesEquivalent(row, remoteRow)) {
-      toPush.push({ stationId: yard.id, row });
+      toPush.push({ stationId, row });
     }
   }
   return { merged, toPush };
