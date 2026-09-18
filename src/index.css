@@ -2465,7 +2465,7 @@ body.app-ready .splash {
   padding: 8px 4px;
   min-width: 0;
   font-size: 14px;
-  height: 40px;
+  height: 28px;
 }
 .station-calls-table thead th {
   background: #ede9e4;
@@ -4336,5 +4336,6 @@ body.app-ready .splash {
   grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
   gap: 8px;
 }
+
 
 
