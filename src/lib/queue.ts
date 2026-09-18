@@ -110,3 +110,10 @@ export function pendingIds(ops = readQueue()): Set<string> {
   }
   return ids;
 }
+
+export function removeQueueOp(opId: string): QueueOp[] {
+  const ops = readQueue();
+  const next = ops.filter((op) => op.opId !== opId);
+  if (next.length !== ops.length) writeQueue(next);
+  return next;
+}
