@@ -384,7 +384,7 @@ function StationNameCell({
           }}
           onClick={beginEdit}
         >
-          {label || (filled ? shown : "")}
+          {label}
         </button>
       </div>
       {pop}

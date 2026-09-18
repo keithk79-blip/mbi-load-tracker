@@ -2518,8 +2518,10 @@ body.app-ready .splash {
 .station-calls-table tbody th {
   width: 148px !important;
   min-width: 148px !important;
-  max-width: none !important;
+  max-width: 148px !important;
   text-align: left !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
 }
 .station-calls-corner {
   background: #d4cfc8 !important;
@@ -2566,7 +2568,10 @@ body.app-ready .splash {
   display: block;
   flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
   width: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
   height: 28px;
   margin: 0;
   padding: 0 8px 0 2px;
