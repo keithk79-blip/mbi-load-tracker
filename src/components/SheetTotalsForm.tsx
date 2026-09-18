@@ -26,25 +26,28 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
   const [walkingFloor, setWalkingFloor] = useState(
     asField(existing?.walkingFloor ?? null),
   );
-  const [loads, setLoads] = useState(asField(existing?.loads ?? null));
   const [subs, setSubs] = useState(asField(existing?.subs ?? null));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const nextTrash = parseField(trash);
+  const nextLeachate = parseField(leachate);
+  const nextWalking = parseField(walkingFloor);
+  const nextSubs = parseField(subs);
+  const totalLoads =
+    nextTrash !== null && nextLeachate !== null && nextWalking !== null
+      ? nextTrash + nextLeachate + nextWalking
+      : null;
+
   const save = async () => {
-    const nextTrash = parseField(trash);
-    const nextLeachate = parseField(leachate);
-    const nextWalking = parseField(walkingFloor);
-    const nextLoads = parseField(loads);
-    const nextSubs = parseField(subs);
     if (
       nextTrash === null ||
       nextLeachate === null ||
       nextWalking === null ||
-      nextLoads === null ||
+      totalLoads === null ||
       nextSubs === null
     ) {
-      setError("Enter five non-negative whole numbers from the Dispatch Board footer.");
+      setError("Enter MSW, tank, walking-floor, and subs.");
       return;
     }
     setSaving(true);
@@ -54,9 +57,9 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
       trash: nextTrash,
       leachate: nextLeachate,
       walkingFloor: nextWalking,
-      loads: nextLoads,
+      loads: totalLoads,
       subs: nextSubs,
-      source: "sheet-import",
+      source: "manual",
     });
     setSaving(false);
     if (message) {
@@ -68,14 +71,16 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
 
   return (
     <div className="sheet-totals-form">
-      <button
-        type="button"
-        className="sheet-totals-toggle"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        {existing ? "Edit sheet totals" : "Enter sheet totals"}
-      </button>
+      <div className="sheet-totals-toolbar">
+        <button
+          type="button"
+          className="sheet-totals-toggle"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          {existing ? "Edit day totals" : "Enter day totals"}
+        </button>
+      </div>
       {open ? (
         <form
           className="sheet-totals-fields"
@@ -85,9 +90,8 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
           }}
         >
           <p className="sheet-totals-hint">
-            Dispatch Board Loads footer — MSW + Tank + Walking-Floor = Total
-            Loads. Subs is separate. Saves these five numbers only. Does not
-            create truck rows.
+            Loads footer: Total MSW + Tank + Walking-Floor = Total Loads.
+            Type the four counts. Does not create truck rows.
           </p>
           <label className="sheet-totals-field">
             <span>Total MSW</span>
@@ -129,8 +133,9 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
               type="number"
               min={0}
               step={1}
-              value={loads}
-              onChange={(event) => setLoads(event.target.value)}
+              value={totalLoads === null ? "" : String(totalLoads)}
+              readOnly
+              tabIndex={-1}
             />
           </label>
           <label className="sheet-totals-field">
@@ -147,10 +152,12 @@ export function SheetTotalsForm({ date, existing, onSave }: SheetTotalsFormProps
           {error ? <p className="sheet-totals-error">{error}</p> : null}
           <div className="sheet-totals-actions">
             <button type="submit" className="btn-primary sheet-totals-save" disabled={saving}>
-              {saving ? "Saving…" : "Save sheet totals"}
+              {saving ? "Saving…" : "Save day totals"}
             </button>
           </div>
         </form>
+      ) : error ? (
+        <p className="sheet-totals-error">{error}</p>
       ) : null}
     </div>
   );

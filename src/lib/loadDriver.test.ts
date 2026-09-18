@@ -6,9 +6,11 @@ import {
   emptyDriverRosterStore,
 } from "./driverRoster";
 import {
+  formatTruckDriverPreview,
   keepLoadDriverName,
   loadTruckEquals,
   loggedDriverNamesForTruck,
+  previewDriversForTruckInput,
   snapshotDriverNameForTruck,
 } from "./loadDriver";
 
@@ -64,6 +66,33 @@ describe("snapshotDriverNameForTruck", () => {
       name: "Bob Jones",
     }).store;
     expect(snapshotDriverNameForTruck(store, "418")).toBe("Bob Jones · Alice Smith");
+  });
+});
+
+describe("previewDriversForTruckInput", () => {
+  it("shows the exact assignee as soon as the unit is complete", () => {
+    const store = rosterWith("Alice Smith", "418");
+    expect(previewDriversForTruckInput(store, "418").exact).toBe("Alice Smith");
+    expect(formatTruckDriverPreview(previewDriversForTruckInput(store, "418"))).toBe(
+      "Alice Smith",
+    );
+  });
+
+  it("lists prefix matches while the unit is still being typed", () => {
+    let store = rosterWith("Alice Smith", "418");
+    store = addRosterEntry(store, {
+      kind: "full",
+      yard: "burnham",
+      truckNumber: "91",
+      assignedTruck: "410",
+      name: "Carl Diaz",
+    }).store;
+    const preview = previewDriversForTruckInput(store, "41");
+    expect(preview.exact).toBeNull();
+    expect(preview.guesses.map((row) => row.name).sort()).toEqual([
+      "Alice Smith",
+      "Carl Diaz",
+    ]);
   });
 });
 
@@ -151,6 +180,7 @@ describe("day-locked truck driver wiring", () => {
     const row = readFileSync(new URL("../components/LoadRow.tsx", import.meta.url), "utf8");
     expect(log).toContain("snapshotDriverNameForTruck");
     expect(log).toContain("driverName:");
+    expect(log).toContain("previewDriversForTruckInput");
     expect(edit).toContain("snapshotDriverNameForTruck");
     expect(edit).toContain("loadTruckEquals");
     expect(search).toContain("loggedDriverNamesForTruck");

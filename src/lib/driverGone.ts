@@ -1,8 +1,10 @@
 /** Terminated / left drivers — Driver tab Gone grouping.
  *
- * HARD CONSTRAINT: never auto-delete / wipe / prune Gone rows.
- * Sheet seed may add only when the local store is empty. Remote DELETE
- * is an explicit UI × (`removeGoneEntry`). See `reconcileDriverGoneCloud`.
+ * HARD CONSTRAINT: never auto-wipe the Gone archive from a thin/empty
+ * cloud pull or a later sheet import. Remote DELETE is explicit UI ×
+ * (`removeGoneEntriesForPerson`) plus retry of those tombstones.
+ * Duplicate rows for the same person (same emp #, or same name + term
+ * date) collapse to one — that is not a wipe.
  *
  * Contact columns from the sheet are discarded and are never persisted.
  */
@@ -215,6 +217,47 @@ export function writeDriverGonePersisted(next: DriverGonePersisted): void {
   localStorage.setItem(DRIVER_GONE_STORE_KEY, JSON.stringify(payload));
 }
 
+export function gonePersonKey(
+  entry: Pick<DriverGoneEntry, "employeeNumber" | "name" | "terminationDate">,
+): string {
+  const emp = cleanEmployeeNumber(entry.employeeNumber ?? null);
+  if (emp) return `emp:${emp}`;
+  const name = cleanDriverName(entry.name).toLowerCase();
+  const term = entry.terminationDate ?? "";
+  return `name:${name}|term:${term}`;
+}
+
+function preferGoneEntry(a: DriverGoneEntry, b: DriverGoneEntry): DriverGoneEntry {
+  if (a.updatedAt !== b.updatedAt) return a.updatedAt > b.updatedAt ? a : b;
+  if (a.notes.length !== b.notes.length) return a.notes.length >= b.notes.length ? a : b;
+  if (Boolean(a.hireDate) !== Boolean(b.hireDate)) return a.hireDate ? a : b;
+  return a.id <= b.id ? a : b;
+}
+
+/** One row per person. Extra ids are duplicates to tombstone. */
+export function collapseDuplicateGoneEntries(store: DriverGoneStore): {
+  store: DriverGoneStore;
+  droppedIds: string[];
+} {
+  const groups = new Map<string, DriverGoneEntry[]>();
+  for (const entry of Object.values(store.entries)) {
+    const key = gonePersonKey(entry);
+    const list = groups.get(key) ?? [];
+    list.push(entry);
+    groups.set(key, list);
+  }
+  const entries: Record<string, DriverGoneEntry> = {};
+  const droppedIds: string[] = [];
+  for (const list of groups.values()) {
+    const keep = list.reduce(preferGoneEntry);
+    entries[keep.id] = keep;
+    for (const row of list) {
+      if (row.id !== keep.id) droppedIds.push(row.id);
+    }
+  }
+  return { store: { entries }, droppedIds };
+}
+
 export function applyGoneTombstones(
   store: DriverGoneStore,
   deletedIds: Iterable<string>,
@@ -287,14 +330,36 @@ export function addGoneEntry(
   const name = cleanDriverName(input.name);
   if (!name) return { store, entry: null };
   const at = nowIso(opts?.at);
+  const employeeNumber = cleanEmployeeNumber(input.employeeNumber ?? null);
+  const hireDate = parseGoneDate(input.hireDate ?? null);
+  const terminationDate = parseGoneDate(input.terminationDate ?? null);
+  const notes = cleanGoneNotes(input.notes ?? "");
+  const yard = cleanGoneYard(input.yard);
+  const key = gonePersonKey({ employeeNumber, name, terminationDate });
+  const existing = Object.values(store.entries).find((row) => gonePersonKey(row) === key);
+  if (existing && !opts?.id) {
+    const next = updateGoneEntry(
+      store,
+      existing.id,
+      {
+        employeeNumber: employeeNumber ?? existing.employeeNumber,
+        hireDate: hireDate ?? existing.hireDate,
+        terminationDate: terminationDate ?? existing.terminationDate,
+        notes: notes.length >= existing.notes.length ? notes : existing.notes,
+        yard: yard ?? existing.yard,
+      },
+      at,
+    );
+    return { store: next, entry: next.entries[existing.id] ?? existing };
+  }
   const entry: DriverGoneEntry = {
     id: opts?.id ?? newDriverGoneId(),
-    employeeNumber: cleanEmployeeNumber(input.employeeNumber ?? null),
+    employeeNumber,
     name,
-    hireDate: parseGoneDate(input.hireDate ?? null),
-    terminationDate: parseGoneDate(input.terminationDate ?? null),
-    notes: cleanGoneNotes(input.notes ?? ""),
-    yard: cleanGoneYard(input.yard),
+    hireDate,
+    terminationDate,
+    notes,
+    yard,
     createdAt: opts?.createdAt ?? at,
     updatedAt: at,
   };
@@ -336,10 +401,26 @@ export function removeGoneEntry(
   store: DriverGoneStore,
   id: string,
 ): { store: DriverGoneStore; removed: DriverGoneEntry | null } {
-  const removed = store.entries[id] ?? null;
-  if (!removed) return { store, removed: null };
+  const result = removeGoneEntriesForPerson(store, id);
+  return { store: result.store, removed: result.removed[0] ?? null };
+}
+
+/** × on a Gone row removes every copy of that person (same emp # or name+term). */
+export function removeGoneEntriesForPerson(
+  store: DriverGoneStore,
+  id: string,
+): { store: DriverGoneStore; removed: DriverGoneEntry[] } {
+  const target = store.entries[id];
+  if (!target) return { store, removed: [] };
+  const key = gonePersonKey(target);
+  const removed: DriverGoneEntry[] = [];
   const entries = { ...store.entries };
-  delete entries[id];
+  for (const row of Object.values(store.entries)) {
+    if (gonePersonKey(row) === key) {
+      removed.push(row);
+      delete entries[row.id];
+    }
+  }
   return { store: { entries }, removed };
 }
 
@@ -358,7 +439,15 @@ export function mergeImportedGoneRows(
   const at = nowIso(opts?.at);
   let next = store;
   let added = 0;
+  const seenKeys = new Set<string>();
   rows.forEach((row, index) => {
+    const key = gonePersonKey({
+      employeeNumber: row.employeeNumber,
+      name: row.name,
+      terminationDate: row.terminationDate,
+    });
+    if (seenKeys.has(key)) return;
+    seenKeys.add(key);
     const result = addGoneEntry(
       next,
       {
@@ -465,13 +554,13 @@ export type DriverGoneCloudReconcileResult = {
 
 /**
  * HARD CONSTRAINT — same class as roster / vacation silent wipes:
- * Sync must never delete, wipe, or prune Gone rows unless Keith pressed ×.
+ * Sync must never wipe the Gone archive from a thin/empty pull.
  *
  * - No subset-pull hides, no seen-missing tombstones, no wipe-then-reinsert.
  * - Empty / thin remote keeps every local row. Cloud-only remote rows upsert in.
- * - Live remote beats a stale local tombstone (do not re-DELETE that row).
- * - `toDeleteRemoteEntries` is always empty. The only remote DELETE is
- *   DriverGoneContext.removeGone (the × button).
+ * - Explicit × tombstones stick even if remote still has the row; retry DELETE.
+ * - Duplicate rows for the same person collapse to one and the extra ids
+ *   are scheduled for remote delete.
  * - Sheet seed may add when Gone is empty; it never removes rows.
  */
 export function reconcileDriverGoneCloud(
@@ -487,10 +576,7 @@ export function reconcileDriverGoneCloud(
   );
   const remoteIds = new Set(Object.keys(input.remote.entries));
 
-  const deleted = new Set<string>();
-  for (const id of incomingDeleted) {
-    if (!remoteIds.has(id)) deleted.add(id);
-  }
+  const deleted = new Set(incomingDeleted);
 
   const next: DriverGoneStore = { entries: {} };
   const toUploadEntries: DriverGoneEntry[] = [];
@@ -522,14 +608,22 @@ export function reconcileDriverGoneCloud(
     }
   }
 
+  const collapsed = collapseDuplicateGoneEntries(next);
+  for (const id of collapsed.droppedIds) deleted.add(id);
+
+  const toDeleteRemoteEntries: string[] = [];
+  for (const id of deleted) {
+    if (remoteIds.has(id)) toDeleteRemoteEntries.push(id);
+  }
+
   const nextSeen = new Set(seen);
   for (const id of remoteIds) nextSeen.add(id);
 
   return {
-    next,
+    next: collapsed.store,
     deletedEntryIds: [...deleted],
     seenRemoteEntryIds: [...nextSeen],
-    toDeleteRemoteEntries: [],
-    toUploadEntries,
+    toDeleteRemoteEntries,
+    toUploadEntries: toUploadEntries.filter((row) => collapsed.store.entries[row.id]),
   };
 }

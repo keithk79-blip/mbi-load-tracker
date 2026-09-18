@@ -1,0 +1,129 @@
+.specialty-extra-label {
+  margin: 12px 2px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.specialty-extra-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+}
+
+.specialty-extra-list .specialty-row,
+.specialty-extra-list .specialty-row.is-custom,
+.specialty-extra-list .specialty-row.is-picking {
+  min-width: 0;
+  overflow: visible;
+  grid-column: auto;
+}
+
+.specialty-extra-main {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.specialty-extra-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.specialty-extra-controls .specialty-count {
+  grid-column: auto;
+  grid-row: auto;
+  min-width: 1.2rem;
+  text-align: left;
+}
+
+.specialty-extra-controls .specialty-stepper {
+  grid-column: auto;
+  grid-row: auto;
+  justify-content: flex-end;
+}
+
+.specialty-extra-list .text-input.specialty-name-input {
+  grid-column: auto;
+  grid-row: auto;
+  margin-top: 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  height: 40px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.specialty-extra-picker {
+  min-width: 0;
+  overflow: visible;
+}
+
+.specialty-type-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.specialty-type-chip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  min-height: 36px;
+  height: auto;
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-2, #ede9e4);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.specialty-type-chip.is-selected {
+  background: var(--amber);
+  color: var(--amber-ink);
+  border-color: var(--amber);
+}
+
+.specialty-extra-list .text-input.specialty-dest-input {
+  margin-top: 8px;
+  width: 100%;
+  min-height: 40px;
+  height: 40px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  font-size: 13px;
+}
+
+.specialty-picker-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.specialty-picker-actions .text-btn,
+.specialty-add-open {
+  white-space: nowrap;
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
+.specialty-add-open {
+  border: 1px solid var(--amber);
+  border-radius: 14px;
+}

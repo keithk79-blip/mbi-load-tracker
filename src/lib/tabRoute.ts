@@ -5,16 +5,20 @@ const RETIRED_TOTALS_SLUG = "totals";
 
 const TAB_SLUGS: Record<Exclude<TabId, "today">, string> = {
   trucks: "trucks",
+  customers: "customers",
   analytics: "analytics",
   driver: "driver",
   vacation: "vacation",
+  calloffs: "calloffs",
 };
 
 const SLUG_TO_TAB: Record<string, TabId> = {
   trucks: "trucks",
+  customers: "customers",
   analytics: "analytics",
   driver: "driver",
   vacation: "vacation",
+  calloffs: "calloffs",
 };
 
 type LocationBits = {
@@ -73,7 +77,7 @@ export function replaceRetiredTotalsLocation(
   const next = rewriteRetiredTotalsHref(loc);
   if (!next) return false;
   const current = `${loc.pathname}${loc.search}${loc.hash}`;
-  if (next !== current)   historyApi.replaceState(null, "", next);
+  if (next !== current) historyApi.replaceState(null, "", next);
   return true;
 }
 
@@ -93,7 +97,7 @@ export function hrefForTab(tab: TabId): string {
   return `/${TAB_SLUGS[tab]}`;
 }
 
-/** Keep `/driver` in the URL when that tab is open; leave other tabs on `/`. */
+/** Keep `/driver` and `/customers` in the URL when those tabs are open. */
 export function replaceTabLocation(
   tab: TabId,
   loc: LocationBits = typeof window !== "undefined"
@@ -101,12 +105,13 @@ export function replaceTabLocation(
     : { pathname: "/", search: "", hash: "" },
   historyApi: Pick<History, "replaceState"> = history,
 ): void {
-  const onDriverPath = lastPathSegment(loc.pathname) === "driver";
-  if (tab === "driver" && !onDriverPath) {
-    historyApi.replaceState(null, "", "/driver");
+  const segment = lastPathSegment(loc.pathname);
+  const pathTabs = new Set<TabId>(["driver", "customers"]);
+  if (pathTabs.has(tab) && segment !== tab) {
+    historyApi.replaceState(null, "", hrefForTab(tab));
     return;
   }
-  if (tab !== "driver" && onDriverPath) {
+  if (!pathTabs.has(tab) && (segment === "driver" || segment === "customers")) {
     historyApi.replaceState(null, "", "/");
   }
 }

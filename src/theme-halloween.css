@@ -1,0 +1,251 @@
+/* Seasonal overlay. Active only when <html data-theme="halloween">. */
+html[data-theme="halloween"] {
+  color-scheme: dark;
+  --bg: #12080c;
+  --phone: #160a10;
+  --surface: #24141a;
+  --surface-2: #2e1a22;
+  --line: #6b3a22;
+  --text: #f7ead6;
+  --muted: #c4a07a;
+  --panel: #1c1014;
+  --brand: #e85d04;
+  --brand-ink: #1a0c08;
+  --amber: #f4a261;
+  --amber-ink: #1a0c08;
+  --danger: #ef6b5b;
+  --halloween-bg: url("/brand/halloween-bg.png");
+}
+
+html[data-theme="halloween"],
+html[data-theme="halloween"] body,
+html[data-theme="halloween"] #root {
+  background-color: #12080c !important;
+  background-image:
+    linear-gradient(180deg, rgba(12, 6, 8, 0.18), rgba(12, 6, 8, 0.42)),
+    var(--halloween-bg) !important;
+  background-size: cover !important;
+  background-position: center 55% !important;
+  background-repeat: no-repeat !important;
+  background-attachment: scroll !important;
+  color: #f7ead6 !important;
+}
+
+html[data-theme="halloween"] .app-shell,
+html[data-theme="halloween"] .app-shell.is-desktop,
+html[data-theme="halloween"] .phone-body,
+html[data-theme="halloween"] .phone-stack,
+html[data-theme="halloween"] .desk-main,
+html[data-theme="halloween"] .desk-topbar,
+html[data-theme="halloween"] .screen,
+html[data-theme="halloween"] .splash,
+html[data-theme="halloween"] .overlay-screen {
+  background: transparent !important;
+  color: #f7ead6;
+}
+
+html[data-theme="halloween"] .phone {
+  background: rgba(16, 8, 12, 0.82) !important;
+  border-color: #6b3a22 !important;
+  box-shadow: 0 24px 80px rgba(80, 20, 8, 0.45);
+}
+
+html[data-theme="halloween"] .session-bar {
+  background: rgba(28, 16, 20, 0.70) !important;
+  border-color: #6b3a22 !important;
+  color: #c4a07a;
+}
+
+html[data-theme="halloween"] .tab-bar,
+html[data-theme="halloween"] .tab-bar-side {
+  background: rgba(28, 16, 20, 0.76) !important;
+  border-color: #6b3a22 !important;
+}
+
+html[data-theme="halloween"] .tab {
+  color: #c4a07a;
+}
+
+html[data-theme="halloween"] .tab-active {
+  background: #3a2018 !important;
+  color: #f4a261 !important;
+}
+
+html[data-theme="halloween"] .tally-card,
+html[data-theme="halloween"] .load-row,
+html[data-theme="halloween"] .empty,
+html[data-theme="halloween"] .totals-block,
+html[data-theme="halloween"] .eod-block,
+html[data-theme="halloween"] .eod-stat,
+html[data-theme="halloween"] .station-calls-card,
+html[data-theme="halloween"] .change-card,
+html[data-theme="halloween"] .truck-display,
+html[data-theme="halloween"] .truck-summary,
+html[data-theme="halloween"] .drivers-card,
+html[data-theme="halloween"] .calloffs-add {
+  background: rgba(36, 20, 26, 0.76) !important;
+  color: #f7ead6 !important;
+  border-color: #6b3a22 !important;
+}
+
+html[data-theme="halloween"] .tally-loads,
+html[data-theme="halloween"] .eod-stat-loads,
+html[data-theme="halloween"] .grand-total {
+  background: rgba(58, 24, 20, 0.84) !important;
+  border-color: #e85d04 !important;
+  color: #f7ead6 !important;
+}
+
+html[data-theme="halloween"] .numpad-key,
+html[data-theme="halloween"] .chip,
+html[data-theme="halloween"] .icon-btn,
+html[data-theme="halloween"] .btn-ghost,
+html[data-theme="halloween"] .day-chip,
+html[data-theme="halloween"] .choice-chip,
+html[data-theme="halloween"] .oot-chip,
+html[data-theme="halloween"] .calloff-add-btn {
+  background: rgba(46, 26, 34, 0.86) !important;
+  color: #f7ead6 !important;
+  border-color: #6b3a22 !important;
+}
+
+html[data-theme="halloween"] .chip.chip-selected,
+html[data-theme="halloween"] .chip[aria-pressed="true"],
+html[data-theme="halloween"] .day-chip-active,
+html[data-theme="halloween"] .choice-chip-active,
+html[data-theme="halloween"] .btn-primary,
+html[data-theme="halloween"] button.log-load-top,
+html[data-theme="halloween"] .numpad-go {
+  background: #e85d04 !important;
+  border-color: #f4a261 !important;
+  color: #1a0c08 !important;
+}
+
+html[data-theme="halloween"] .text-btn,
+html[data-theme="halloween"] .edit-link,
+html[data-theme="halloween"] .text-btn.amber {
+  color: #f4a261 !important;
+}
+
+html[data-theme="halloween"] .text-input,
+html[data-theme="halloween"] .calloff-name-input,
+html[data-theme="halloween"] .drv-copy-block,
+html[data-theme="halloween"] .drv-status-select,
+html[data-theme="halloween"] .vac-add-form,
+html[data-theme="halloween"] .vac-week-edit,
+html[data-theme="halloween"] .vac-add-form input,
+html[data-theme="halloween"] .vac-add-name,
+html[data-theme="halloween"] .vac-add-note,
+html[data-theme="halloween"] .vac-cap-input,
+html[data-theme="halloween"] .vac-add-form select,
+html[data-theme="halloween"] .calloffs-table input {
+  background: rgba(28, 16, 20, 0.88) !important;
+  color: #f7ead6 !important;
+  border-color: #6b3a22 !important;
+  color-scheme: dark;
+}
+
+html[data-theme="halloween"] .vac-table-wrap,
+html[data-theme="halloween"] .eod-table-wrap,
+html[data-theme="halloween"] .station-calls-scroll,
+html[data-theme="halloween"] .calloffs-table-wrap {
+  background: rgba(28, 16, 20, 0.84) !important;
+  border-color: #6b3a22 !important;
+}
+
+html[data-theme="halloween"] .vac-table thead th,
+html[data-theme="halloween"] .eod-table thead th,
+html[data-theme="halloween"] .station-calls-table thead th,
+html[data-theme="halloween"] .calloffs-table thead th {
+  background: #3a2018 !important;
+  color: #f4a261 !important;
+}
+
+html[data-theme="halloween"] .vac-table th,
+html[data-theme="halloween"] .vac-table td,
+html[data-theme="halloween"] .eod-table tbody th,
+html[data-theme="halloween"] .eod-table tbody td,
+html[data-theme="halloween"] .station-calls-table tbody td,
+html[data-theme="halloween"] .station-calls-table tbody th,
+html[data-theme="halloween"] .calloffs-table th,
+html[data-theme="halloween"] .calloffs-table td {
+  background: rgba(28, 16, 20, 0.88) !important;
+  color: #f7ead6 !important;
+}
+
+html[data-theme="halloween"] .theme-toggle {
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #6b3a22;
+  background: #2e1a22;
+  color: #f4a261;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+html[data-theme="halloween"] .theme-toggle.is-on {
+  background: #e85d04;
+  color: #1a0c08;
+  border-color: #f4a261;
+}
+
+html[data-theme="halloween"] .calloff-kind-btn {
+  font-weight: 800;
+  background: #3a2018 !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-call-off {
+  background: #1e3a5f !important;
+  border: 1px solid #7eb6ff !important;
+  color: #d6e8fb !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-call-off.selected {
+  background: #2f6fb3 !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-p-day {
+  background: #14532d !important;
+  border: 1px solid #6ee7a0 !important;
+  color: #dcfce7 !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-p-day.selected {
+  background: #166534 !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-okd-off {
+  background: #5c4300 !important;
+  border: 1px solid #f5d76e !important;
+  color: #fef9c3 !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-okd-off.selected {
+  background: #a16207 !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-ncns {
+  background: #7f1d1d !important;
+  border: 1px solid #ff8a8a !important;
+  color: #fee2e2 !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-ncns.selected {
+  background: #b91c1c !important;
+  color: #ffffff !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-late-early {
+  background: #7c2d12 !important;
+  border: 1px solid #f08a3a !important;
+  color: #ffedd5 !important;
+}
+
+html[data-theme="halloween"] .calloff-kind-late-early.selected {
+  background: #c2410c !important;
+  color: #ffffff !important;
+}

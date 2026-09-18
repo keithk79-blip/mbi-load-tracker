@@ -19,7 +19,12 @@ import {
 import { findNearDuplicate } from "../lib/duplicates";
 import { resolveSpecialtyBoardMatch } from "../lib/specialtyBoard";
 import { useSpecialty } from "../store/SpecialtyContext";
-import { loadTruckEquals, snapshotDriverNameForTruck } from "../lib/loadDriver";
+import {
+  formatTruckDriverPreview,
+  loadTruckEquals,
+  previewDriversForTruckInput,
+  snapshotDriverNameForTruck,
+} from "../lib/loadDriver";
 import { useDriverRoster } from "../store/DriverRosterContext";
 import { useLoads } from "../store/LoadsContext";
 import type { Load } from "../types";
@@ -71,6 +76,10 @@ export function EditLoadScreen({
   const editDriverName = truckChanged
     ? snapshotDriverNameForTruck(rosterStore, form.truck)
     : load.driverName;
+  const typingPreview = useMemo(
+    () => previewDriversForTruckInput(rosterStore, truckDigits),
+    [rosterStore, truckDigits],
+  );
 
     const finishSave = async () => {
     const pickup = pickupLabel(form.stationId, form.pickup);
@@ -197,6 +206,7 @@ export function EditLoadScreen({
           submitLabel="Use"
           autoFocus
           hint="Type the new unit number or broker code, or use the pad."
+          driverPreview={formatTruckDriverPreview(typingPreview)}
         />
       </div>
     );
@@ -274,6 +284,7 @@ export function EditLoadScreen({
           setTruckDigits(form.truck);
           setChangingTruck(true);
         }}
+        driverName={editDriverName ?? null}
       />
 
       {confirmDelete ? (

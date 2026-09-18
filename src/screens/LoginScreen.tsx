@@ -12,15 +12,19 @@ export function LoginScreen() {
 
   const submitPassword = async (event: FormEvent) => {
     event.preventDefault();
+    const trimmed = email.trim();
+    if (!trimmed) {
+      setError("Enter your email.");
+      return;
+    }
+    if (!password) {
+      setError("Enter your password, or use a magic link.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setInfo(null);
-    if (!password) {
-      setError("Enter your password, or use a magic link.");
-      setBusy(false);
-      return;
-    }
-    const message = await signInPassword(email.trim(), password);
+    const message = await signInPassword(trimmed, password);
     setBusy(false);
     if (message) setError(message);
   };
@@ -55,11 +59,11 @@ export function LoginScreen() {
           <div className="field-label">Email</div>
           <input
             className="text-input"
-            type="email"
+            type="text"
+            inputMode="email"
             autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            required
           />
         </label>
         <label className="field">
@@ -74,13 +78,13 @@ export function LoginScreen() {
         </label>
         {error ? <p className="form-error">{error}</p> : null}
         {info ? <p className="form-info">{info}</p> : null}
-        <button type="submit" className="btn-primary" disabled={busy || !email}>
-          Sign in
+        <button type="submit" className="btn-primary" disabled={busy}>
+          {busy ? "Signing in…" : "Sign in"}
         </button>
         <button
           type="button"
           className="btn-ghost"
-          disabled={busy || !email}
+          disabled={busy}
           onClick={magic}
         >
           Email me a magic link

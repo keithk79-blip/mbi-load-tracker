@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { STATION_BY_ID } from "../data/stations";
 import { applyPickupCascade } from "./cascade";
+import { isCustomSpecialtyId } from "./customSpecialty";
 import {
   SPECIALTY_DESTINATIONS,
   SPECIALTY_STATIONS,
@@ -585,6 +586,7 @@ describe("No Available Loads warn is only for specialty-board lanes", () => {
   it("never warns for Trash (MSW) from specialty pickups except Ford, Hearthside, and Batavia→Trash", () => {
     for (const station of SPECIALTY_STATIONS) {
       if (station.id === "ford" || station.id === "herthside") continue;
+      if (isCustomSpecialtyId(station.id)) continue;
       const dest = specialtyDestinationsFor(station.id)[0];
       expect(dest).toBeTruthy();
       const log = catalogLogPickup(station.id, station.name);
@@ -1260,7 +1262,7 @@ describe("specialty consume on logged loads", () => {
     expect(countSpecialtyOpens(afterGc, date, "liberty-tank", "CID")).toBe(0);
   });
 
-  it.each(SPECIALTY_STATIONS)(
+  it.each(SPECIALTY_STATIONS.filter((s) => !isCustomSpecialtyId(s.id)))(
     "consumes $id opens when a matching load is logged with qty=2",
     ({ id, name }) => {
       const dest = specialtyDestinationsFor(id)[0];
@@ -1381,7 +1383,7 @@ describe("specialty consume on logged loads", () => {
     expect(resolveSpecialtyBoardMatch("gray-tank", "Gray Tank", "CID", "Leachate (tanker)")).toBeNull();
   });
 
-  it.each(SPECIALTY_STATIONS)(
+  it.each(SPECIALTY_STATIONS.filter((s) => !isCustomSpecialtyId(s.id)))(
     "keeps $id minus after a stale remote merge when tombstones are applied",
     ({ id }) => {
       const dest = specialtyDestinationsFor(id)[0];

@@ -1,4 +1,4 @@
-﻿import {
+import {
   createContext,
   useCallback,
   useContext,
@@ -43,6 +43,7 @@ import {
   type CallOffRow,
 } from "../lib/driverAvailability";
 import { liveSheetFromRoster } from "../lib/rosterAvailability";
+import { useCallOffLog } from "./CallOffLogContext";
 import { useDriverRoster } from "./DriverRosterContext";
 import { useVacation } from "./VacationContext";
 import {
@@ -67,6 +68,7 @@ type DriversContextValue = {
   ootNames: string[];
   availabilityOn: (date: string) => LockedDay | null;
   callOffsOn: (date: string) => CallOffEntry[];
+  manualOffs: ManualOffsStore;
   addManualOff: (
     date: string,
     name: string,
@@ -79,16 +81,16 @@ type DriversContextValue = {
 
 const DriversContext = createContext<DriversContextValue | null>(null);
 
-/** Today available = Full Roster − status/VAC − manual offs. No live Google pull. */
+/** Today available = Full Roster − status/VAC − call-off log − manual offs. */
 export function DriversProvider({ children }: { children: ReactNode }) {
   const { configured, session } = useAuth();
   const { store: rosterStore } = useDriverRoster();
   const { store: vacationStore } = useVacation();
+  const { offs } = useCallOffLog();
   const [status, setStatus] = useState<DriversStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const [baseAvailable, setBase] = useState<number | null>(null);
   const [saturdayAvailable, setSaturday] = useState<number | null>(null);
-  const [offs] = useState<CallOffRow[]>([]);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const [ootNames, setOotNames] = useState<string[]>([]);
   const [days, setDays] = useState<DayStore>(() => {
@@ -108,6 +110,8 @@ export function DriversProvider({ children }: { children: ReactNode }) {
   rosterRef.current = rosterStore;
   const vacationRef = useRef(vacationStore);
   vacationRef.current = vacationStore;
+  const offsRef = useRef(offs);
+  offsRef.current = offs;
 
   const persistDays = useCallback((next: DayStore) => {
     writeDayStore(next);
@@ -203,7 +207,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
         roster: rosterRef.current,
         vacation: vacationRef.current,
         date: today,
-        offs: [],
+        offs: offsRef.current,
         manuals: manuals[today],
         saturdayUsesWeekdayBase: true,
       });
@@ -226,7 +230,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
         roster: rosterRef.current,
         vacation: vacationRef.current,
         date: today,
-        offs: [],
+        offs: offsRef.current,
         manuals: manuals[today],
         saturdayUsesWeekdayBase: true,
       });
@@ -258,7 +262,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       roster: rosterStore,
       vacation: vacationStore,
       date: today,
-      offs: [],
+      offs,
       manuals: manuals[today],
       saturdayUsesWeekdayBase: true,
     });
@@ -276,6 +280,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
     );
   }, [
     applySheetWithManuals,
+    offs,
     persistDays,
     rosterStore,
     vacationStore,
@@ -321,7 +326,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
             roster: rosterStore,
             vacation: vacationStore,
             date,
-            offs: [],
+            offs,
             manuals: manualOffs[date],
             saturdayUsesWeekdayBase: true,
           }),
@@ -363,7 +368,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
         roster: rosterStore,
         vacation: vacationStore,
         date: date === today ? today : date,
-        offs: [],
+        offs,
         manuals: nextManuals[date],
         saturdayUsesWeekdayBase: true,
       });
@@ -376,7 +381,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       }
       persistDays(applyManualsToStoredDay(readDayStore(), live, date, today, now));
     },
-    [applySheetWithManuals, persistDays, rosterStore, vacationStore],
+    [applySheetWithManuals, offs, persistDays, rosterStore, vacationStore],
   );
 
   const addManualOff = useCallback(
@@ -397,8 +402,6 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       if (!added) return false;
       const addKey = deletedManualKey(date, added.name);
       const nextDeleted = deletedRef.current.filter((key) => key !== addKey);
-      // Forget seen so a refresh before the upsert lands cannot treat this
-      // re-add as "another device deleted a previously pulled name".
       const nextSeen = seenRef.current.filter((key) => key !== addKey);
       persistManuals(next, nextDeleted, nextSeen);
       recomputeDayFrom(date, next);
@@ -453,6 +456,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       ootNames,
       availabilityOn,
       callOffsOn,
+      manualOffs,
       addManualOff,
       removeManualOff,
       ytdAverage: (today: string) => ytdWorkingAverage(days, today),
@@ -469,6 +473,7 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       ootNames,
       availabilityOn,
       callOffsOn,
+      manualOffs,
       addManualOff,
       removeManualOff,
       refresh,

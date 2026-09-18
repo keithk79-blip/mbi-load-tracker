@@ -13,11 +13,10 @@ import {
   addGoneEntry,
   applyGoneTombstones,
   cleanDriverGoneEntry,
-  goneStoreIsEmpty,
-  mergeImportedGoneRows,
+  collapseDuplicateGoneEntries,
   readDriverGonePersisted,
   reconcileDriverGoneCloud,
-  removeGoneEntry,
+  removeGoneEntriesForPerson,
   updateGoneEntry,
   writeDriverGonePersisted,
   type DriverGoneEntry,
@@ -25,7 +24,6 @@ import {
   type DriverGonePersisted,
   type DriverGoneStore,
 } from "../lib/driverGone";
-import { fetchGoneWorkbook } from "../lib/driverGoneSheet";
 import { getSupabase } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 
@@ -41,19 +39,10 @@ type EntryRow = {
   updated_at: string;
 };
 
-export type DriverGoneImportResult = {
-  added: number;
-  skipped: boolean;
-  error: string | null;
-};
-
 type DriverGoneContextValue = {
   store: DriverGoneStore;
   cloud: boolean;
-  importing: boolean;
-  lastImport: DriverGoneImportResult | null;
   refresh: () => Promise<void>;
-  importFromSheet: () => Promise<DriverGoneImportResult>;
   addGone: (input: DriverGoneInput) => Promise<DriverGoneEntry | null>;
   updateGone: (
     id: string,
@@ -99,9 +88,16 @@ function entryToRow(entry: DriverGoneEntry, userId: string | null) {
 }
 
 function persistSnapshot(next: DriverGonePersisted): DriverGoneStore {
-  const stripped = applyGoneTombstones({ entries: next.entries }, next.deletedEntryIds);
-  writeDriverGonePersisted({ ...next, entries: stripped.entries });
-  return stripped;
+  const collapsed = collapseDuplicateGoneEntries(
+    applyGoneTombstones({ entries: next.entries }, next.deletedEntryIds),
+  );
+  const deletedEntryIds = [...new Set([...next.deletedEntryIds, ...collapsed.droppedIds])];
+  writeDriverGonePersisted({
+    ...next,
+    entries: collapsed.store.entries,
+    deletedEntryIds,
+  });
+  return collapsed.store;
 }
 
 export function DriverGoneProvider({ children }: { children: ReactNode }) {
@@ -109,10 +105,10 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
   const cloud = configured && !!session;
   const [store, setStore] = useState<DriverGoneStore>(() => {
     const persisted = readDriverGonePersisted();
-    return applyGoneTombstones({ entries: persisted.entries }, persisted.deletedEntryIds);
+    return collapseDuplicateGoneEntries(
+      applyGoneTombstones({ entries: persisted.entries }, persisted.deletedEntryIds),
+    ).store;
   });
-  const [importing, setImporting] = useState(false);
-  const [lastImport, setLastImport] = useState<DriverGoneImportResult | null>(null);
   const storeRef = useRef(store);
   storeRef.current = store;
   const deletedRef = useRef<Set<string>>(new Set(readDriverGonePersisted().deletedEntryIds));
@@ -121,12 +117,13 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
   const epochRef = useRef(0);
   const refreshTailRef = useRef(Promise.resolve());
   const uploadingRef = useRef(false);
-  const seedingRef = useRef(false);
 
   const persistLocal = useCallback((next: DriverGoneStore) => {
+    const collapsed = collapseDuplicateGoneEntries(next);
+    for (const id of collapsed.droppedIds) deletedRef.current.add(id);
     const snapshot: DriverGonePersisted = {
       version: 1,
-      entries: next.entries,
+      entries: collapsed.store.entries,
       deletedEntryIds: [...deletedRef.current],
       seenRemoteEntryIds: [...seenRef.current],
       importedAt: importedAtRef.current,
@@ -156,14 +153,11 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
     return rowsToStore(page.data);
   }, [session]);
 
-  /**
-   * Remote DELETE is UI × only. Refresh / import must never call this —
-   * same class of bug as roster silent wipes.
-   */
   const cloudDeleteEntries = useCallback(async (ids: string[]) => {
     if (!ids.length) return;
     const supabase = getSupabase();
     if (!supabase) return;
+    // Explicit × and retry of those tombstones are the only path that may DELETE a cloud Gone row.
     const { error } = await supabase.from("driver_gone_entries").delete().in("id", ids);
     if (error) console.warn("driver gone delete failed", error.message);
   }, []);
@@ -180,38 +174,10 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
   );
 
   const seedIfEmpty = useCallback(async () => {
-    if (seedingRef.current) return;
     if (importedAtRef.current) return;
-    if (!goneStoreIsEmpty(storeRef.current)) {
-      importedAtRef.current = new Date().toISOString();
-      persistLocal(storeRef.current);
-      return;
-    }
-    seedingRef.current = true;
-    setImporting(true);
-    try {
-      const { rows } = await fetchGoneWorkbook();
-      const result = mergeImportedGoneRows(storeRef.current, rows);
-      importedAtRef.current = new Date().toISOString();
-      persistLocal(result.store);
-      if (cloud && result.added) {
-        await cloudUpsert(Object.values(result.store.entries));
-      }
-      setLastImport({
-        added: result.added,
-        skipped: result.skipped,
-        error: null,
-      });
-    } catch (err) {
-      importedAtRef.current = new Date().toISOString();
-      persistLocal(storeRef.current);
-      const message = err instanceof Error ? err.message : "Sheet import failed";
-      setLastImport({ added: 0, skipped: false, error: message });
-    } finally {
-      seedingRef.current = false;
-      setImporting(false);
-    }
-  }, [cloud, cloudUpsert, persistLocal]);
+    importedAtRef.current = new Date().toISOString();
+    persistLocal(storeRef.current);
+  }, [persistLocal]);
 
   const refreshInner = useCallback(async () => {
     if (!cloud) {
@@ -240,13 +206,17 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
         }
       }
       if (epoch !== epochRef.current) return;
+      if (result.toDeleteRemoteEntries.length) {
+        await cloudDeleteEntries(result.toDeleteRemoteEntries);
+      }
+      if (epoch !== epochRef.current) return;
       deletedRef.current = new Set(result.deletedEntryIds);
       seenRef.current = new Set(result.seenRemoteEntryIds);
       persistLocal(result.next);
     }
 
     await seedIfEmpty();
-  }, [cloud, cloudUpsert, persistLocal, pullRemote, seedIfEmpty]);
+  }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, pullRemote, seedIfEmpty]);
 
   const refresh = useCallback(() => {
     const run = refreshTailRef.current.then(refreshInner, refreshInner);
@@ -280,41 +250,6 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
     };
   }, [cloud, refresh]);
 
-  const importFromSheet = useCallback(async (): Promise<DriverGoneImportResult> => {
-    setImporting(true);
-    try {
-      const { rows } = await fetchGoneWorkbook();
-      const result = mergeImportedGoneRows(storeRef.current, rows);
-      importedAtRef.current = new Date().toISOString();
-      persistLocal(result.store);
-      if (cloud && result.added) {
-        const newIds = Object.values(result.store.entries)
-          .filter((entry) => !seenRef.current.has(entry.id))
-          .map((entry) => entry.id);
-        await cloudUpsert(
-          Object.values(result.store.entries).filter((entry) => newIds.includes(entry.id)),
-        );
-      }
-      const summary: DriverGoneImportResult = {
-        added: result.added,
-        skipped: result.skipped,
-        error: null,
-      };
-      setLastImport(summary);
-      return summary;
-    } catch (err) {
-      const summary: DriverGoneImportResult = {
-        added: 0,
-        skipped: false,
-        error: err instanceof Error ? err.message : "Sheet import failed",
-      };
-      setLastImport(summary);
-      return summary;
-    } finally {
-      setImporting(false);
-    }
-  }, [cloud, cloudUpsert, persistLocal]);
-
   const addGone = useCallback(
     async (input: DriverGoneInput) => {
       epochRef.current += 1;
@@ -346,12 +281,11 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
   const removeGone = useCallback(
     async (id: string) => {
       epochRef.current += 1;
-      const result = removeGoneEntry(storeRef.current, id);
-      if (!result.removed) return;
-      // Explicit UI × — the only path that may DELETE a cloud Gone row.
-      deletedRef.current.add(id);
+      const result = removeGoneEntriesForPerson(storeRef.current, id);
+      if (!result.removed.length) return;
+      for (const row of result.removed) deletedRef.current.add(row.id);
       persistLocal(result.store);
-      if (cloud) await cloudDeleteEntries([id]);
+      if (cloud) await cloudDeleteEntries(result.removed.map((row) => row.id));
     },
     [cloud, cloudDeleteEntries, persistLocal],
   );
@@ -360,15 +294,12 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
     () => ({
       store,
       cloud,
-      importing,
-      lastImport,
       refresh,
-      importFromSheet,
       addGone,
       updateGone,
       removeGone,
     }),
-    [store, cloud, importing, lastImport, refresh, importFromSheet, addGone, updateGone, removeGone],
+    [store, cloud, refresh, addGone, updateGone, removeGone],
   );
 
   return <DriverGoneContext.Provider value={value}>{children}</DriverGoneContext.Provider>;

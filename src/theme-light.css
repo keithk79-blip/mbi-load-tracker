@@ -95,30 +95,70 @@ select {
   border-color: #d0d3d9 !important;
 }
 
+.calloff-kind-btn {
+  font-weight: 800 !important;
+  opacity: 1 !important;
+}
+
+.calloff-kind-call-off,
+.calloff-kind-call-off.selected {
+  background: #1d4f91 !important;
+  border: 1px solid #163e73 !important;
+  color: #ffffff !important;
+}
+
+.calloff-kind-p-day,
+.calloff-kind-p-day.selected {
+  background: #166534 !important;
+  border: 1px solid #14532d !important;
+  color: #ffffff !important;
+}
+
+.calloff-kind-okd-off,
+.calloff-kind-okd-off.selected {
+  background: #a16207 !important;
+  border: 1px solid #854d0e !important;
+  color: #ffffff !important;
+}
+
+.calloff-kind-ncns,
+.calloff-kind-ncns.selected {
+  background: #b91c1c !important;
+  border: 1px solid #7f1d1d !important;
+  color: #ffffff !important;
+}
+
+.calloff-kind-late-early,
+.calloff-kind-late-early.selected {
+  background: #c2410c !important;
+  border: 1px solid #9a3412 !important;
+  color: #ffffff !important;
+}
+
 .calloff-chip-call-off {
-  background: #d9e8f8 !important;
-  color: #123152 !important;
+  background: #1d4f91 !important;
+  color: #ffffff !important;
 }
 
 .calloff-chip-p-day,
 .vacation-chip {
-  background: #d7f3e3 !important;
-  color: #14532d !important;
+  background: #166534 !important;
+  color: #ffffff !important;
 }
 
 .calloff-chip-okd-off {
-  background: #f8ecc8 !important;
-  color: #6b4e00 !important;
+  background: #a16207 !important;
+  color: #ffffff !important;
 }
 
 .calloff-chip-ncns {
-  background: #f8d4d4 !important;
-  color: #7f1d1d !important;
+  background: #b91c1c !important;
+  color: #ffffff !important;
 }
 
 .calloff-chip-late-early {
-  background: #fde4cc !important;
-  color: #7c2d12 !important;
+  background: #c2410c !important;
+  color: #ffffff !important;
 }
 
 .station-calls-scroll {
@@ -356,7 +396,43 @@ select {
   border-color: #d0d3d9;
 }
 
+/* Selected dispatch chips must beat the generic .chip light-theme fill. */
+.chip.chip-selected,
+.chip[aria-pressed="true"] {
+  background: #eddc9a !important;
+  border-color: #c4a44a !important;
+  color: #3b2f0b !important;
+  font-weight: 700;
+}
+
+.chip.chip-muted {
+  color: #6b6b6b;
+}
+
+.chip.chip-invalid {
+  background: transparent !important;
+  color: #8a8378 !important;
+  border-style: dashed;
+}
+
 .btn-ghost {
   background: #f4f5f7;
   color: #111111;
+}
+
+.theme-toggle {
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #d0d3d9;
+  background: #f4f5f7;
+  color: #111111;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.theme-toggle.is-on {
+  background: #eddc9a;
+  border-color: #c4a44a;
+  color: #3b2f0b;
 }

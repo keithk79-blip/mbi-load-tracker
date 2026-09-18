@@ -3,6 +3,13 @@
 import { destinationsFor } from "../data/stations";
 import { tallyLabel } from "./commodity";
 import { isValidISODate } from "./chicagoDate";
+import {
+  CUSTOM_SPECIALTY_DEFAULT_NAMES,
+  customSpecialtyLaneChips,
+  isCustomSpecialtyCommodity,
+  isCustomSpecialtyId,
+  lookupCustomSpecialtyIdByName,
+} from "./customSpecialty";
 
 export type SpecialtyStation = {
   id: string;
@@ -31,6 +38,10 @@ export const SPECIALTY_STATIONS: SpecialtyStation[] = [
   { id: "grayslake", name: "GraysLake" },
   { id: "liberty-tank", name: "Liberty" },
   { id: "herthside", name: "Hearthside" },
+  { id: "custom-1", name: CUSTOM_SPECIALTY_DEFAULT_NAMES["custom-1"] },
+  { id: "custom-2", name: CUSTOM_SPECIALTY_DEFAULT_NAMES["custom-2"] },
+  { id: "custom-3", name: CUSTOM_SPECIALTY_DEFAULT_NAMES["custom-3"] },
+  { id: "custom-4", name: CUSTOM_SPECIALTY_DEFAULT_NAMES["custom-4"] },
 ];
 
 /** Quick destinations for specialty / walking-floor opens. */
@@ -115,12 +126,16 @@ export function specialtyChipMode(
 
 /** Per-station dest chips; restricted yards match (or subset) log-load dests. */
 export function specialtyDestinationsFor(stationId: string): readonly string[] {
+  if (isCustomSpecialtyId(stationId)) return [];
   if (SPECIALTY_DEST_OVERRIDES[stationId]) return SPECIALTY_DEST_OVERRIDES[stationId];
   if (SPECIALTY_CATALOG_DEST_IDS.has(stationId)) return destinationsFor(stationId);
   return SPECIALTY_DESTINATIONS;
 }
 
 export function specialtyDestHint(stationId: string): string {
+  if (isCustomSpecialtyId(stationId)) {
+    return "Name the pickup · Leachate / Walking-floor / Trash · type the dest";
+  }
   if (stationId === "herthside") return "Trash destination for new open load";
   if (stationId === "hodgkins") {
     return "Residual · Pontiac/Liberty · Glass · Strategic/Resource MGT";
@@ -714,6 +729,8 @@ const SPECIALTY_DEST_ALIASES: Record<string, string> = {
 function lookupSpecialtyIdByName(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
+  const custom = lookupCustomSpecialtyIdByName(trimmed);
+  if (custom) return custom;
   if (isSpecialtyStationId(trimmed)) return trimmed;
   const name = normalizeSpecialtyLabel(trimmed);
   if (!name) return null;
@@ -757,6 +774,9 @@ function isSpecialtyBoardCommodity(
   destination: string,
   pickup: string,
 ): boolean {
+  if (isCustomSpecialtyId(specialtyId)) {
+    return isCustomSpecialtyCommodity(commodity, destination);
+  }
   const key = tallyLabel(commodity);
   if (specialtyChipMode(specialtyId) === "commodity") {
     return specialtyDestinationsFor(specialtyId).some((chip) =>
@@ -827,6 +847,11 @@ export function specialtyLaneChips(
   destination: string,
   commodity: string,
 ): string[] {
+  if (isCustomSpecialtyId(specialtyId)) {
+    return uniqueSpecialtyChipLabels(
+      customSpecialtyLaneChips(destination, commodity),
+    );
+  }
   const chips: string[] = [];
   const allowed = specialtyLaneChipLabel(specialtyId, destination, commodity);
   if (allowed) chips.push(allowed);

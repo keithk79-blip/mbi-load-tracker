@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import {
   formComplete,
@@ -14,7 +14,11 @@ import { findNearDuplicate } from "../lib/duplicates";
 import { batchCreatedAt, clampLoadQty } from "../lib/quantity";
 import { resolveSpecialtyBoardMatch } from "../lib/specialtyBoard";
 import { useSpecialty } from "../store/SpecialtyContext";
-import { snapshotDriverNameForTruck } from "../lib/loadDriver";
+import {
+  formatTruckDriverPreview,
+  previewDriversForTruckInput,
+  snapshotDriverNameForTruck,
+} from "../lib/loadDriver";
 import { newLoadId } from "../lib/storage";
 import { useDriverRoster } from "../store/DriverRosterContext";
 import { useLoads } from "../store/LoadsContext";
@@ -59,6 +63,10 @@ export function LogLoadScreen({
 
   const qty = clampLoadQty(quantity);
   const loggingDriverName = snapshotDriverNameForTruck(rosterStore, form.truck);
+  const typingPreview = useMemo(
+    () => previewDriversForTruckInput(rosterStore, truck),
+    [rosterStore, truck],
+  );
 
   const commitTruck = (nextTruck: string) => {
     setTruck(nextTruck);
@@ -178,6 +186,7 @@ export function LogLoadScreen({
           submitLabel="Next"
           autoFocus
           hint="Type the unit number or broker code, or use the pad."
+          driverPreview={formatTruckDriverPreview(typingPreview)}
         />
       </div>
     );
@@ -206,6 +215,7 @@ export function LogLoadScreen({
         value={form}
         onChange={setForm}
         onChangeTruck={() => setStep("truck")}
+        driverName={loggingDriverName}
       />
 
       {duplicate ? (

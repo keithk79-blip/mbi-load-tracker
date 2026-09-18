@@ -35,9 +35,10 @@ import {
   enqueueUpsert,
   isExplicitDeleteOp,
   pendingIds,
+  QUEUE_KEY,
   readQueue,
+  removeQueueOp,
   warnNonExplicitRemoteDelete,
-  writeQueue,
 } from "../lib/queue";
 import { buildSeedLoads } from "../lib/seed";
 import { sortLoads } from "../lib/sortLoads";
@@ -265,8 +266,7 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
               await new Promise((resolve) => setTimeout(resolve, 400 * attempts));
             }
           }
-          const rest = readQueue().filter((item) => item.opId !== op.opId);
-          writeQueue(rest);
+          const rest = removeQueueOp(op.opId);
           setQueuedCount(rest.length);
         }
       } catch {
@@ -428,10 +428,40 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
     window.addEventListener("offline", onOffline);
     if (!navigator.onLine) setSyncStatus("offline");
 
+    // Realtime websockets can die silently on flaky wifi, VPNs, or a laptop
+    // sleep/wake cycle without ever firing the browser's online/offline
+    // events (the network interface itself never went down). Two fallbacks
+    // bound how stale a device can get instead of relying on the socket
+    // alone: refresh whenever the tab regains focus, and poll on an interval
+    // as a last resort so a dead connection self-heals within ~90s.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshFromCloud();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    const pollId = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshFromCloud();
+    }, 90_000);
+
+    // Another tab / the desktop app enqueuing or flushing shows up here as a
+    // localStorage write we didn't make ourselves. Nudge this tab to flush
+    // and reflect the current queue length instead of waiting for its own
+    // next refresh cycle.
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== QUEUE_KEY) return;
+      setQueuedCount(readQueue().length);
+      void flushQueue();
+    };
+    window.addEventListener("storage", onStorage);
+
     return () => {
       void supabase.removeChannel(channel);
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      window.clearInterval(pollId);
+      window.removeEventListener("storage", onStorage);
     };
   }, [cloud, configured, flushQueue, persistCloudCache, refreshFromCloud]);
 

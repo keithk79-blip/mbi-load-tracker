@@ -470,6 +470,16 @@ create index if not exists driver_roster_entries_assigned_truck_idx
   on public.driver_roster_entries (assigned_truck)
   where assigned_truck is not null;
 
+alter table public.driver_roster_entries
+  add column if not exists hire_date date;
+
+comment on column public.driver_roster_entries.hire_date is
+  'Full Roster start date (America/Chicago). Null until known. Sat rows stay null.';
+
+create index if not exists driver_roster_entries_hire_date_idx
+  on public.driver_roster_entries (hire_date)
+  where hire_date is not null;
+
 alter table public.driver_roster_entries enable row level security;
 
 drop policy if exists "crew_select_driver_roster_entries" on public.driver_roster_entries;
@@ -587,5 +597,61 @@ alter table public.loads
 
 comment on column public.loads.driver_name is
   'Full Roster driver name snapshotted at log / truck-edit time. Null when the truck was unassigned. Not a live roster link. Not EMP #.';
+
+-- Customer tab lanes + 5-year contract books.
+create table if not exists public.customer_lanes (
+  id text primary key,
+  customer text not null,
+  destination text not null default '',
+  commodity text not null default 'Trash (MSW)',
+  effective_date date not null,
+  tier1 numeric(10,2),
+  tier2 numeric(10,2),
+  tier3 numeric(10,2),
+  tier4 numeric(10,2),
+  tier5 numeric(10,2),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid references auth.users (id) on delete set null
+);
+
+create unique index if not exists customer_lanes_book_idx
+  on public.customer_lanes (lower(customer), lower(destination), lower(commodity), effective_date);
+
+create index if not exists customer_lanes_customer_idx
+  on public.customer_lanes (customer, destination);
+
+comment on table public.customer_lanes is
+  'Customer tab lanes. One row per customer + dest + commodity + contract start. Tiers 1-5 are dollars per load. Empty destination is a customer shell with no dest yet.';
+
+alter table public.customer_lanes enable row level security;
+
+drop policy if exists "crew_select_customer_lanes" on public.customer_lanes;
+create policy "crew_select_customer_lanes"
+  on public.customer_lanes for select to authenticated using (true);
+
+drop policy if exists "crew_insert_customer_lanes" on public.customer_lanes;
+create policy "crew_insert_customer_lanes"
+  on public.customer_lanes for insert to authenticated with check (true);
+
+drop policy if exists "crew_update_customer_lanes" on public.customer_lanes;
+create policy "crew_update_customer_lanes"
+  on public.customer_lanes for update to authenticated using (true) with check (true);
+
+drop policy if exists "crew_delete_customer_lanes" on public.customer_lanes;
+create policy "crew_delete_customer_lanes"
+  on public.customer_lanes for delete to authenticated using (true);
+
+do $$
+begin
+  alter publication supabase_realtime add table public.customer_lanes;
+exception when duplicate_object then null;
+end $$;
+
+alter table public.driver_roster_entries
+  add column if not exists phone text;
+
+comment on column public.driver_roster_entries.phone is
+  'Optional Full Roster contact. Sat rows stay null.';
 
 notify pgrst, 'reload schema';

@@ -11,7 +11,6 @@ import {
   type DriverRosterYard,
   type ImportedRosterRow,
 } from "./driverRoster";
-import { rosterFullFetchUrl, rosterSatGridFetchUrl } from "./sheets";
 
 export const FULL_ROSTER_TABS = [
   { yard: "burnham", tab: "Burnham" },
@@ -183,48 +182,7 @@ export function parsedTabToRows(tab: ParsedRosterTab): ImportedRosterRow[] {
   }));
 }
 
-async function fetchText(url: string): Promise<string> {
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Sheets HTTP ${res.status}`);
-  const text = await res.text();
-  const trimmed = text.trimStart();
-  if (trimmed.startsWith("<!") || trimmed.toLowerCase().startsWith("<html")) {
-    throw new Error("Sheets proxy returned HTML instead of CSV");
-  }
-  return text;
-}
-
-/** One-time seed / explicit Import. Never used for Today’s available tally. */
-export async function fetchRosterWorkbook(opts?: {
-  fetchText?: (url: string) => Promise<string>;
-}): Promise<{ rows: ImportedRosterRow[]; tabs: ParsedRosterTab[] }> {
-  const load = opts?.fetchText ?? fetchText;
-  const specs: Array<{ kind: DriverRosterKind; yard: DriverRosterYard; tab: string; url: string }> =
-    [
-      ...FULL_ROSTER_TABS.map((item) => ({
-        kind: "full" as const,
-        yard: item.yard,
-        tab: item.tab,
-        url: rosterFullFetchUrl(item.yard),
-      })),
-      ...SAT_ROSTER_TABS.map((item) => ({
-        kind: "sat" as const,
-        yard: item.yard,
-        tab: item.tab,
-        url: rosterSatGridFetchUrl(item.yard),
-      })),
-    ];
-
-  const tabs = await Promise.all(
-    specs.map(async (spec) => {
-      const csv = await load(spec.url);
-      return parseRosterTabCsv(csv, spec.kind, spec.yard, spec.tab);
-    }),
-  );
-
-  return { tabs, rows: tabs.flatMap(parsedTabToRows) };
-}
-
+/** Offline CSV parsers only. Roster lives in the app / Supabase. */
 export function describeImportGroup(group: string): string {
   const [kind, yard] = group.split(":");
   const yardLabel = isDriverRosterYard(yard)

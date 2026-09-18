@@ -11,8 +11,10 @@ import {
   formatRosterCopyList,
   formatRosterLine,
   fullRosterDriversForTruck,
+  findAssignedTruckConflict,
   fullRosterTally,
   matchDriverNameSuggestions,
+  collapseDuplicateRosterEntries,
   cleanAssignedTruck,
   cleanTruckNumber,
   importEntryId,
@@ -530,6 +532,40 @@ describe("sat roster seeds and resets from full", () => {
     );
   });
 
+  it("collapses double names and Reset copies unique Full names onto Sat", () => {
+    let store = emptyDriverRosterStore();
+    store = addHired(store, "rockford", "185", "Christopher Oleson");
+    store = addRosterEntry(store, {
+      kind: "full",
+      yard: "rockford",
+      truckNumber: null,
+      name: "Christopher Oleson",
+    }).store;
+    store = addRosterEntry(store, {
+      kind: "sat",
+      yard: "rockford",
+      truckNumber: "185",
+      name: "Christopher Oleson",
+    }).store;
+    store = addRosterEntry(store, {
+      kind: "sat",
+      yard: "rockford",
+      truckNumber: "185",
+      name: "Christopher Oleson -T",
+    }).store;
+    const collapsed = collapseDuplicateRosterEntries(store);
+    expect(entriesForRoster(collapsed.store, "full", "rockford").map((row) => row.name)).toEqual([
+      "Christopher Oleson",
+    ]);
+    expect(rosterEntryCount(store, "full", "rockford")).toBe(1);
+    const reset = resetSatRosterFromFull(store, "rockford");
+    expect(entriesForRoster(reset.store, "sat", "rockford").map((row) => ({
+      emp: row.truckNumber,
+      name: row.name,
+    }))).toEqual([{ emp: "185", name: "Christopher Oleson" }]);
+    expect(satRosterMatchesFull(reset.store, "rockford")).toBe(true);
+  });
+
   it("Driver Sat grid still feeds copy list from formatRosterCopyList, not the cell layout", () => {
     const src = readFileSync(new URL("../screens/DriverScreen.tsx", import.meta.url), "utf8");
     expect(src).toContain("formatRosterCopyList(entries)");
@@ -613,7 +649,7 @@ describe("driver roster cloud delete posture", () => {
     const src = readFileSync(new URL("../store/DriverRosterContext.tsx", import.meta.url), "utf8");
     expect(src).toContain('.from("driver_roster_entries").delete().in("id", ids)');
     expect(src).not.toMatch(/\.from\(["']driver_roster_entries["']\)\s*\.delete\(\)\s*(?!.*\.in)/);
-    expect(src).not.toContain("toDeleteRemoteEntries");
+    expect(src).not.toContain(".delete().neq(");
     expect(src).toContain("the only paths that may DELETE a cloud roster row");
     const sql = readFileSync(new URL("../../Load-Tracker-driver-roster.sql", import.meta.url), "utf8");
     expect(sql).toContain("driver_roster_deletes_allowed");
@@ -622,12 +658,12 @@ describe("driver roster cloud delete posture", () => {
     );
   });
 
-  it("adopts a live remote row over a stale tombstone and never schedules a remote delete", () => {
+  it("keeps × / Reset tombstones so duplicate Sat rows cannot come back from cloud", () => {
     const added = addRosterEntry(emptyDriverRosterStore(), {
-      kind: "full",
-      yard: "burnham",
-      truckNumber: "56",
-      name: "Dave Vanderbilt",
+      kind: "sat",
+      yard: "rockford",
+      truckNumber: "185",
+      name: "Christopher Oleson",
     });
     const id = added.entry!.id;
     const result = reconcileDriverRosterCloud({
@@ -636,9 +672,9 @@ describe("driver roster cloud delete posture", () => {
       deletedEntryIds: [id],
       seenRemoteEntryIds: [id],
     });
-    expect(result.next.entries[id]).toEqual(added.store.entries[id]);
-    expect(result.deletedEntryIds).toEqual([]);
-    expect(result.toDeleteRemoteEntries).toEqual([]);
+    expect(result.next.entries[id]).toBeUndefined();
+    expect(result.deletedEntryIds).toContain(id);
+    expect(result.toDeleteRemoteEntries).toContain(id);
     expect(result.toUploadEntries).toEqual([]);
   });
 
@@ -722,11 +758,52 @@ describe("assigned truck (not EMP #)", () => {
     expect(search).not.toContain("fullRosterDriversForTruck");
   });
 
+  it("flags a truck # already held by another Full Roster driver", () => {
+    let store = emptyDriverRosterStore();
+    store = addRosterEntry(store, {
+      kind: "full",
+      yard: "rockford",
+      truckNumber: "185",
+      assignedTruck: "418",
+      name: "Christopher Oleson",
+    }).store;
+    const other = addRosterEntry(store, {
+      kind: "full",
+      yard: "burnham",
+      truckNumber: "56",
+      assignedTruck: null,
+      name: "Dave Vanderbilt",
+    });
+    store = other.store;
+
+    const conflict = findAssignedTruckConflict(store, "418");
+    expect(conflict?.name).toBe("Christopher Oleson");
+
+    // Same driver re-saving their own unchanged number is not a conflict.
+    const existing = Object.values(store.entries).find((row) => row.name === "Christopher Oleson");
+    expect(findAssignedTruckConflict(store, "418", existing?.id)).toBeNull();
+
+    // A different truck #, an empty value, or a Sat-roster row never conflicts.
+    expect(findAssignedTruckConflict(store, "419")).toBeNull();
+    expect(findAssignedTruckConflict(store, null)).toBeNull();
+    store = addRosterEntry(store, {
+      kind: "sat",
+      yard: "rockford",
+      truckNumber: "185",
+      assignedTruck: "418",
+      name: "Christopher Oleson",
+    }).store;
+    expect(findAssignedTruckConflict(store, "418", other.entry!.id)?.name).toBe(
+      "Christopher Oleson",
+    );
+  });
+
   it("SQL keeps emp # on truck_number and adds assigned_truck", () => {
     const sql = readFileSync(new URL("../../Load-Tracker-driver-roster.sql", import.meta.url), "utf8");
     expect(sql).toContain("assigned_truck");
     expect(sql).toContain("Not the unit / truck");
     expect(sql).toContain("truck_number");
+    expect(sql).toContain("hire_date");
   });
 
   it("persists assigned truck on update without rewriting emp #", () => {

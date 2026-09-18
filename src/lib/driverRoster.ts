@@ -63,6 +63,10 @@ export type DriverRosterEntry = {
   name: string;
   /** Full Roster only: unavailability abbreviation, or null if working. */
   status: string | null;
+  /** Full Roster only: first day on the job (America/Chicago). Null until known. */
+  hireDate: string | null;
+  /** Full Roster only: optional contact. Sat rows stay null. */
+  phone: string | null;
   sortOrder: number;
   forDate: string | null;
   createdAt: string;
@@ -128,6 +132,8 @@ export type DriverRosterInput = {
   assignedTruck?: string | null;
   name: string;
   status?: string | null;
+  hireDate?: string | null;
+  phone?: string | null;
   sortOrder?: number;
   forDate?: string | null;
 };
@@ -215,6 +221,21 @@ export function cleanDriverName(raw: unknown): string {
   return raw.replace(/\s+/g, " ").trim();
 }
 
+export function cleanPhone(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.replace(/\s+/g, " ").trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, 24);
+}
+
+function normalizeRosterPersonName(name: string): string {
+  return cleanDriverName(name)
+    .toLowerCase()
+    .replace(/\s*-\s*t\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function cleanDriverStatus(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.replace(/\s+/g, " ").trim();
@@ -236,7 +257,7 @@ export function rosterStatusLabel(status: string | null | undefined): string {
 
 /**
  * True when this hired-roster mark should drop the driver from an available
- * tally. Same idea as Today’s `isFullDayOff`: full-day reasons subtract;
+ * tally. Same idea as Today's `isFullDayOff`: full-day reasons subtract;
  * Late/Early and operational notes do not. Known sheet abbreviations
  * (oot / fmla / vac / wc / …) are full-day. Unknown short status-column
  * tokens also subtract — that column is only used for out marks.
@@ -380,6 +401,8 @@ export function cleanDriverRosterEntry(raw: unknown): DriverRosterEntry | null {
         : null,
     name,
     status: kind === "full" ? cleanDriverStatus(rec.status) : null,
+    hireDate: kind === "full" ? cleanForDate(rec.hireDate ?? rec.hire_date) : null,
+    phone: kind === "full" ? cleanPhone(rec.phone) : null,
     sortOrder,
     forDate: kind === "sat" ? cleanForDate(rec.forDate) : null,
     createdAt,
@@ -478,11 +501,88 @@ export function rosterEntryCount(
   kind: DriverRosterKind,
   yard: DriverRosterYard,
 ): number {
-  let n = 0;
-  for (const entry of Object.values(store.entries)) {
-    if (entry.kind === kind && entry.yard === yard) n += 1;
+  return entriesForRoster(store, kind, yard).length;
+}
+
+function preferRosterDuplicate(a: DriverRosterEntry, b: DriverRosterEntry): DriverRosterEntry {
+  const aEmp = Boolean(cleanTruckNumber(a.truckNumber));
+  const bEmp = Boolean(cleanTruckNumber(b.truckNumber));
+  if (aEmp !== bEmp) return aEmp ? a : b;
+  if (Boolean(a.hireDate) !== Boolean(b.hireDate)) return a.hireDate ? a : b;
+  if (Boolean(a.assignedTruck) !== Boolean(b.assignedTruck)) {
+    return a.assignedTruck ? a : b;
   }
-  return n;
+  if (a.updatedAt !== b.updatedAt) return a.updatedAt >= b.updatedAt ? a : b;
+  if (a.createdAt !== b.createdAt) return a.createdAt <= b.createdAt ? a : b;
+  return a.id <= b.id ? a : b;
+}
+
+/**
+ * One hired / Sat row per person at a yard. Emp # wins; a name-only copy of
+ * the same person is dropped. Trainer `-T` suffixes do not make a second row.
+ */
+export function collapseDuplicateRosterEntries(store: DriverRosterStore): {
+  store: DriverRosterStore;
+  droppedIds: string[];
+} {
+  const buckets = new Map<string, DriverRosterEntry[]>();
+  for (const entry of Object.values(store.entries)) {
+    const group = `${entry.kind}:${entry.yard}`;
+    const list = buckets.get(group);
+    if (list) list.push(entry);
+    else buckets.set(group, [entry]);
+  }
+
+  const keep = new Map<string, DriverRosterEntry>();
+  const droppedIds: string[] = [];
+
+  for (const list of buckets.values()) {
+    const byEmp = new Map<string, DriverRosterEntry>();
+    for (const entry of list) {
+      const emp = cleanTruckNumber(entry.truckNumber);
+      if (!emp) continue;
+      const existing = byEmp.get(emp);
+      if (!existing) {
+        byEmp.set(emp, entry);
+        continue;
+      }
+      const winner = preferRosterDuplicate(existing, entry);
+      droppedIds.push(winner.id === existing.id ? entry.id : existing.id);
+      byEmp.set(emp, winner);
+    }
+    const namesHeld = new Set(
+      [...byEmp.values()].map((entry) => normalizeRosterPersonName(entry.name)),
+    );
+    const byName = new Map<string, DriverRosterEntry>();
+    for (const entry of list) {
+      if (cleanTruckNumber(entry.truckNumber)) continue;
+      const name = normalizeRosterPersonName(entry.name);
+      if (!name) {
+        droppedIds.push(entry.id);
+        continue;
+      }
+      if (namesHeld.has(name)) {
+        droppedIds.push(entry.id);
+        continue;
+      }
+      const existing = byName.get(name);
+      if (!existing) {
+        byName.set(name, entry);
+        continue;
+      }
+      const winner = preferRosterDuplicate(existing, entry);
+      droppedIds.push(winner.id === existing.id ? entry.id : existing.id);
+      byName.set(name, winner);
+    }
+    for (const entry of [...byEmp.values(), ...byName.values()]) {
+      keep.set(entry.id, entry);
+    }
+  }
+
+  if (!droppedIds.length) return { store, droppedIds: [] };
+  const entries: Record<string, DriverRosterEntry> = {};
+  for (const [id, entry] of keep) entries[id] = entry;
+  return { store: { entries }, droppedIds: [...new Set(droppedIds)] };
 }
 
 export function entriesForRoster(
@@ -490,7 +590,8 @@ export function entriesForRoster(
   kind: DriverRosterKind,
   yard: DriverRosterYard,
 ): DriverRosterEntry[] {
-  return Object.values(store.entries)
+  const collapsed = collapseDuplicateRosterEntries(store).store;
+  return Object.values(collapsed.entries)
     .filter((entry) => entry.kind === kind && entry.yard === yard)
     .sort((a, b) => {
       if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
@@ -654,7 +755,8 @@ export function seedEmptySatRostersFromFull(
 ): SeedEmptySatFromFullResult {
   const yards = opts?.yards?.length ? opts.yards.map(cleanDriverRosterYard) : [...DRIVER_ROSTER_YARDS];
   const at = opts?.at;
-  let next = store;
+  const collapsed = collapseDuplicateRosterEntries(store);
+  let next = collapsed.store;
   let added = 0;
   const seededYards: DriverRosterYard[] = [];
 
@@ -710,17 +812,23 @@ export function resetSatRosterFromFull(
   opts?: { at?: string; forDate?: string | null },
 ): ResetSatRosterFromFullResult {
   const cleanedYard = cleanDriverRosterYard(yard);
-  const full = entriesForRoster(store, "full", cleanedYard);
-  const existingSat = entriesForRoster(store, "sat", cleanedYard);
+  const collapsed = collapseDuplicateRosterEntries(store);
+  let next = collapsed.store;
+  const full = entriesForRoster(next, "full", cleanedYard);
+  const existingSat = Object.values(next.entries).filter(
+    (entry) => entry.kind === "sat" && entry.yard === cleanedYard,
+  );
   const forDate =
-    opts?.forDate !== undefined ? cleanForDate(opts.forDate) : satDateForYard(store, cleanedYard);
+    opts?.forDate !== undefined ? cleanForDate(opts.forDate) : satDateForYard(next, cleanedYard);
   const at = opts?.at;
   const nextIds = new Set(
     full.map((person) => satEntryIdFromFull(cleanedYard, person.truckNumber, person.name)),
   );
-  const removedIds = existingSat.map((entry) => entry.id).filter((id) => !nextIds.has(id));
+  const removedIds = [
+    ...collapsed.droppedIds,
+    ...existingSat.map((entry) => entry.id).filter((id) => !nextIds.has(id)),
+  ];
 
-  let next = store;
   for (const id of removedIds) {
     next = removeRosterEntry(next, id).store;
   }
@@ -769,6 +877,8 @@ export function addRosterEntry(
     assignedTruck: kind === "full" ? cleanAssignedTruck(input.assignedTruck ?? null) : null,
     name,
     status: kind === "full" ? cleanDriverStatus(input.status ?? null) : null,
+    hireDate: kind === "full" ? cleanForDate(input.hireDate ?? null) : null,
+    phone: kind === "full" ? cleanPhone(input.phone ?? null) : null,
     sortOrder:
       typeof input.sortOrder === "number" && Number.isFinite(input.sortOrder)
         ? Math.floor(input.sortOrder)
@@ -784,7 +894,10 @@ export function updateRosterEntry(
   store: DriverRosterStore,
   id: string,
   patch: Partial<
-    Pick<DriverRosterEntry, "truckNumber" | "assignedTruck" | "name" | "status" | "sortOrder" | "forDate">
+    Pick<
+      DriverRosterEntry,
+      "truckNumber" | "assignedTruck" | "name" | "status" | "hireDate" | "phone" | "sortOrder" | "forDate"
+    >
   >,
   at?: string,
 ): DriverRosterStore {
@@ -808,6 +921,18 @@ export function updateRosterEntry(
         ? patch.status !== undefined
           ? cleanDriverStatus(patch.status)
           : prev.status
+        : null,
+    hireDate:
+      prev.kind === "full"
+        ? patch.hireDate !== undefined
+          ? cleanForDate(patch.hireDate)
+          : prev.hireDate
+        : null,
+    phone:
+      prev.kind === "full"
+        ? patch.phone !== undefined
+          ? cleanPhone(patch.phone)
+          : prev.phone
         : null,
     sortOrder:
       typeof patch.sortOrder === "number" && Number.isFinite(patch.sortOrder)
@@ -995,6 +1120,26 @@ export function fullRosterDriversForTruck(
     });
 }
 
+/**
+ * A truck # can only sit on one Full Roster driver at a time. Returns the
+ * other driver already holding it, or null when the number is free.
+ * `excludeId` lets an existing card re-save its own unchanged number.
+ */
+export function findAssignedTruckConflict(
+  store: DriverRosterStore,
+  truck: string | null,
+  excludeId?: string,
+): DriverRosterEntry | null {
+  const needle = cleanAssignedTruck(truck);
+  if (!needle) return null;
+  for (const entry of Object.values(store.entries)) {
+    if (entry.kind !== "full") continue;
+    if (entry.id === excludeId) continue;
+    if (cleanAssignedTruck(entry.assignedTruck) === needle) return entry;
+  }
+  return null;
+}
+
 export type DriverRosterCloudReconcileInput = {
 
   local: DriverRosterStore;
@@ -1014,14 +1159,13 @@ export type DriverRosterCloudReconcileResult = {
 /**
  * HARD CONSTRAINT — same class as loads / vacation silent wipes:
  * Sync must never delete, wipe, or prune hired Full Roster or Sat Roster
- * rows unless Keith pressed × in the UI.
+ * rows unless Keith pressed × in the UI or Reset to full roster.
  *
  * - No subset-pull hides, no seen-missing tombstones, no wipe-then-reinsert.
  * - Empty / thin remote keeps every local row. Cloud-only remote rows upsert in.
- * - Live remote beats a stale local tombstone (do not re-DELETE that row).
- * - `toDeleteRemoteEntries` is always empty. Remote DELETE is only
- *   DriverRosterContext.removeDriver (×) or resetSatToFullRoster (Reset).
- *   Refresh / import / this merge must never DELETE.
+ * - Explicit × / Reset tombstones stick even if remote still has the row, and
+ *   those ids are retried on `toDeleteRemoteEntries`. Sync never invents deletes
+ *   for ids Keith did not remove.
  * - Sheet import and Vacation auto-VAC may add or update marks; they never
  *   remove rows.
  */
@@ -1037,13 +1181,8 @@ export function reconcileDriverRosterCloud(
     ),
   );
   const remoteIds = new Set(Object.keys(input.remote.entries));
-
-  // Forget tombstones for ids that are live on remote. A leftover × on a
-  // stale client must not hide or delete a cloud-only hired row.
-  const deleted = new Set<string>();
-  for (const id of incomingDeleted) {
-    if (!remoteIds.has(id)) deleted.add(id);
-  }
+  const deleted = new Set(incomingDeleted);
+  const toDeleteRemoteEntries = [...deleted].filter((id) => remoteIds.has(id));
 
   const next: DriverRosterStore = { entries: {} };
   const toUploadEntries: DriverRosterEntry[] = [];
@@ -1082,7 +1221,38 @@ export function reconcileDriverRosterCloud(
     next,
     deletedEntryIds: [...deleted],
     seenRemoteEntryIds: [...nextSeen],
-    toDeleteRemoteEntries: [],
+    toDeleteRemoteEntries,
     toUploadEntries,
   };
 }
+
+export function preservePhones(
+  previous: DriverRosterStore,
+  incoming: DriverRosterStore,
+): DriverRosterStore {
+  const entries: Record<string, DriverRosterEntry> = { ...incoming.entries };
+  for (const [id, row] of Object.entries(entries)) {
+    if (row.kind !== "full") continue;
+    if (cleanPhone(row.phone)) continue;
+    const kept = cleanPhone(previous.entries[id]?.phone ?? null);
+    if (!kept) continue;
+    entries[id] = { ...row, phone: kept };
+  }
+  return { entries };
+}
+
+export function phonesNeedingUpload(
+  store: DriverRosterStore,
+  remote: DriverRosterStore,
+): DriverRosterEntry[] {
+  const out: DriverRosterEntry[] = [];
+  for (const row of Object.values(store.entries)) {
+    if (row.kind !== "full") continue;
+    const local = cleanPhone(row.phone);
+    if (!local) continue;
+    const remotePhone = cleanPhone(remote.entries[row.id]?.phone ?? null);
+    if (local !== remotePhone) out.push(row);
+  }
+  return out;
+}
+

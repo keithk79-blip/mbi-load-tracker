@@ -10,9 +10,21 @@ import {
   sameDestination,
 } from "../data/stations";
 import { applyPickupCascade, pickupLabel } from "../lib/cascade";
+import {
+  CUSTOM_SPECIALTY_IDS,
+  CUSTOM_SPECIALTY_LOAD_TYPES,
+  lookupCustomSpecialtyIdByName,
+  readCustomSpecialtyNames,
+} from "../lib/customSpecialty";
 import { rankPickupStations } from "../lib/pickupRank";
 import { useLoads } from "../store/LoadsContext";
 import { Chip } from "./Chip";
+
+const CUSTOM_SPECIALTY_COMMODITIES: Record<string, string> = {
+  Leachate: "Leachate (tanker)",
+  "Walking-floor": "Walking-floor",
+  Trash: "Trash (MSW)",
+};
 
 export type FormState = {
   truck: string;
@@ -27,6 +39,7 @@ type LoadFormProps = {
   onChange: (next: FormState) => void;
   original?: FormState;
   onChangeTruck: () => void;
+  driverName?: string | null;
 };
 
 export function LoadForm({
@@ -34,6 +47,7 @@ export function LoadForm({
   onChange,
   original,
   onChangeTruck,
+  driverName,
 }: LoadFormProps) {
   const { loads } = useLoads();
   const rankedStations = useMemo(
@@ -53,6 +67,8 @@ export function LoadForm({
     ? rankedStations
     : rankedStations.slice(0, visibleCount);
 
+  const customNames = readCustomSpecialtyNames();
+  const customPickupId = lookupCustomSpecialtyIdByName(value.pickup);
   const commodities = commoditiesFor(value.stationId);
   const destinations = destinationsFor(value.stationId, value.commodity);
   const isCustom = value.stationId === CUSTOM_ID;
@@ -104,7 +120,12 @@ export function LoadForm({
       <section className="field">
         <div className="field-label">Truck #</div>
         <div className="truck-field">
-          <div className="truck-value">{value.truck || "—"}</div>
+          <div className="truck-value">
+            {value.truck || "—"}
+            {driverName ? (
+              <span className="truck-driver-inline"> · {driverName}</span>
+            ) : null}
+          </div>
           <button type="button" className="text-btn amber" onClick={onChangeTruck}>
             Change...
           </button>
@@ -131,14 +152,28 @@ export function LoadForm({
           ) : null}
           <Chip
             label="Custom..."
-            selected={isCustom}
+            selected={isCustom && !customPickupId}
             onClick={() => selectStation(CUSTOM_ID)}
           />
+          {CUSTOM_SPECIALTY_IDS.map((id) => (
+            <Chip
+              key={id}
+              label={customNames[id]}
+              selected={isCustom && customPickupId === id}
+              onClick={() =>
+                onChange({
+                  ...value,
+                  stationId: CUSTOM_ID,
+                  pickup: customNames[id],
+                })
+              }
+            />
+          ))}
         </div>
         {isCustom ? (
           <input
             className="text-input"
-            placeholder="e.g. Landfill, yard, customer site"
+            placeholder="Odd-ball pickup name (matches a specialty bubble)"
             value={value.pickup}
             onChange={(e) => onChange({ ...value, pickup: e.target.value })}
             autoComplete="off"
@@ -155,7 +190,12 @@ export function LoadForm({
         {isCustom ? (
           <>
             <div className="chip-row">
-              {CUSTOM.exampleCommodities.map((item) => (
+              {(customPickupId
+                ? CUSTOM_SPECIALTY_LOAD_TYPES.map(
+                    (item) => CUSTOM_SPECIALTY_COMMODITIES[item] ?? item,
+                  )
+                : CUSTOM.exampleCommodities
+              ).map((item) => (
                 <Chip
                   key={item}
                   label={item}
@@ -166,7 +206,7 @@ export function LoadForm({
             </div>
             <input
               className="text-input"
-              placeholder="Commodity (e.g. Leachate tanker)"
+              placeholder="Commodity (Leachate, Walking-floor, or Trash)"
               value={value.commodity}
               onChange={(e) => onChange({ ...value, commodity: e.target.value })}
               autoComplete="off"

@@ -1,5 +1,6 @@
 -- Ad-hoc same-day call-offs entered on the Available drivers card.
--- Additive to the Google Sheets pull; not written back to the sheet.
+-- Manual same-day call-offs stored in the app / Supabase.
+-- Additive to Full Roster status; not a spreadsheet pull.
 
 create table if not exists public.manual_call_offs (
   date date not null,

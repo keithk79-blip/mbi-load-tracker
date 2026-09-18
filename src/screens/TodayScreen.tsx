@@ -1,18 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { dailyCounts } from "../lib/analytics";
-import {
-  applyDailyEodToCards,
-  displayLoadCount,
-  isSheetEodCard,
-} from "../lib/dailyEod";
+import { displayLoadCount } from "../lib/dailyEod";
 import {
   chicagoToday,
   formatHeaderDate,
   weekStartingSunday,
 } from "../lib/chicagoDate";
 import { sortLoadsNewestFirst } from "../lib/sortLoads";
-import { daySummaryCards } from "../lib/totals";
 import { useDailyEod } from "../store/DailyEodContext";
 import { useDrivers } from "../store/DriversContext";
 import { useLoads } from "../store/LoadsContext";
@@ -22,7 +17,9 @@ import { DriversCard } from "../components/DriversCard";
 import { StationCallsCard } from "../components/StationCallsCard";
 import { SpecialtyBoardCard } from "../components/SpecialtyBoardCard";
 import { ChicagoTrafficCard } from "../components/ChicagoTrafficCard";
+import { DispatchTalliesRow } from "../components/DispatchTalliesRow";
 import { LoadRow } from "../components/LoadRow";
+import { SheetTotalsForm } from "../components/SheetTotalsForm";
 
 type TodayScreenProps = {
   date: string;
@@ -43,7 +40,7 @@ export function TodayScreen({
 }: TodayScreenProps) {
   const today = chicagoToday();
   const { loads, loadsOn } = useLoads();
-  const { totalsOn } = useDailyEod();
+  const { totalsOn, upsertTotals } = useDailyEod();
   const { availabilityOn } = useDrivers();
   const dayLoads = useMemo(() => sortLoadsNewestFirst(loadsOn(date)), [date, loadsOn]);
   const snapshot = totalsOn(date);
@@ -62,8 +59,17 @@ export function TodayScreen({
     return map;
   }, [loads, date, totalsOn]);
 
-  const summaryCards = applyDailyEodToCards(daySummaryCards(dayLoads), snapshot);
   const loadWord = dayLoads.length === 1 ? "load" : "loads";
+  const msWDispatchedToday = useMemo(() => {
+    const counts = { batavia: 0, evanston: 0 };
+    for (const load of dayLoads) {
+      if (load.commodity !== "Trash (MSW)") continue;
+      const pickup = load.pickup.trim().toLowerCase();
+      if (pickup === "batavia") counts.batavia += 1;
+      else if (pickup === "evanston") counts.evanston += 1;
+    }
+    return counts;
+  }, [dayLoads]);
 
   return (
     <div className="screen">
@@ -91,35 +97,27 @@ export function TodayScreen({
         </button>
       ) : null}
 
-      <div className="tally-block">
-        <div className="tally-row">
-          {summaryCards.map((card) => {
-            const fromSheet = Boolean(snapshot) && isSheetEodCard(card.key);
-            return (
-              <article
-                key={card.key}
-                className={[
-                  card.emphasis ? "tally-card tally-loads" : "tally-card",
-                  fromSheet ? "tally-card-sheet" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                <span className="tally-label">{card.label}</span>
-                <span className="tally-value">{card.count}</span>
-              </article>
-            );
-          })}
-        </div>
-      </div>
+      <DriversCard compact collapsible date={date} loadCount={displayLoadCount(dayLoads.length, snapshot)} />
 
-      <button type="button" className="log-load-top" onClick={() => onLog(date)}>
-        + Log load
-      </button>
+      <div className="log-load-row">
+        <button type="button" className="log-load-top" onClick={() => onLog(date)}>
+          + Log load
+        </button>
+        <DispatchTalliesRow
+          date={date}
+          bataviaDispatchedToday={msWDispatchedToday.batavia}
+          evanstonDispatchedToday={msWDispatchedToday.evanston}
+        />
+      </div>
 
       <ChicagoTrafficCard />
 
-      <DriversCard compact date={date} />
+      <SheetTotalsForm
+        key={`${date}:${snapshot?.updatedAt ?? "new"}`}
+        date={date}
+        existing={snapshot}
+        onSave={upsertTotals}
+      />
 
       <StationCallsCard date={date} />
 

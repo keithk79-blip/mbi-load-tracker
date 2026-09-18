@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { BrandMark } from "./components/BrandMark";
 import { SessionBar } from "./components/SessionBar";
@@ -6,6 +6,8 @@ import { TabBar } from "./components/TabBar";
 import { chicagoToday } from "./lib/chicagoDate";
 import { useDesktopLayout } from "./lib/layout";
 import { replaceRetiredTotalsLocation, replaceTabLocation, tabFromLocation } from "./lib/tabRoute";
+import { CallOffsScreen } from "./screens/CallOffsScreen";
+import { CustomersScreen } from "./screens/CustomersScreen";
 import { DriverScreen } from "./screens/DriverScreen";
 import { EditLoadScreen } from "./screens/EditLoadScreen";
 import { LogLoadScreen } from "./screens/LogLoadScreen";
@@ -16,7 +18,10 @@ import { TodayScreen } from "./screens/TodayScreen";
 import { TotalsScreen } from "./screens/TotalsScreen";
 import { VacationScreen } from "./screens/VacationScreen";
 import { AuthProvider, useAuth } from "./store/AuthContext";
+import { CallOffLogProvider } from "./store/CallOffLogContext";
+import { CustomerLanesProvider } from "./store/CustomerLanesContext";
 import { DailyEodProvider } from "./store/DailyEodContext";
+import { DispatchTalliesProvider } from "./store/DispatchTalliesContext";
 import { DriverGoneProvider } from "./store/DriverGoneContext";
 import { DriverRosterProvider } from "./store/DriverRosterContext";
 import { DriversProvider } from "./store/DriversContext";
@@ -42,6 +47,9 @@ function wrapOverlay(desktop: boolean, child: ReactNode) {
 
 function Gate({ children }: { children: ReactNode }) {
   const { configured, loading, session } = useAuth();
+  useLayoutEffect(() => {
+    document.body.classList.add("app-ready");
+  }, []);
   if (configured && loading) {
     return (
       <div className="screen overlay-screen login-screen">
@@ -73,7 +81,7 @@ function Shell() {
     setJustEditedId(id);
     setOverlay(null);
     if (date) setFeedDate(date);
-    if (tab === "analytics" || tab === "vacation" || tab === "driver") return;
+    if (tab === "analytics" || tab === "vacation" || tab === "driver" || tab === "calloffs" || tab === "customers") return;
     setTab("today");
   };
 
@@ -107,7 +115,7 @@ function Shell() {
           <div className="desk-topbar-brand">
             <BrandMark size="lg" />
             <div>
-              <p className="eyebrow">Keith&apos;s Load Tracker</p>
+              <p className="eyebrow">Keith's Load Tracker</p>
               <h1 className="desk-brand">Load Tracker</h1>
             </div>
           </div>
@@ -168,6 +176,10 @@ function Shell() {
 
           {tab === "driver" ? <DriverScreen /> : null}
 
+          {tab === "customers" ? <CustomersScreen /> : null}
+
+          {tab === "calloffs" ? <CallOffsScreen /> : null}
+
           {tab === "vacation" ? <VacationScreen /> : null}
         </div>
       </div>
@@ -220,13 +232,19 @@ export default function App() {
           <VacationProvider>
             <DriverRosterProvider>
               <DriverGoneProvider>
-                <DriversProvider>
-                  <DailyEodProvider>
-                    <Gate>
-                      <Shell />
-                    </Gate>
-                  </DailyEodProvider>
-                </DriversProvider>
+                <CallOffLogProvider>
+                  <DriversProvider>
+                    <CustomerLanesProvider>
+                    <DailyEodProvider>
+                    <DispatchTalliesProvider>
+                      <Gate>
+                        <Shell />
+                      </Gate>
+                    </DispatchTalliesProvider>
+                    </DailyEodProvider>
+                    </CustomerLanesProvider>
+                  </DriversProvider>
+                </CallOffLogProvider>
               </DriverGoneProvider>
             </DriverRosterProvider>
           </VacationProvider>

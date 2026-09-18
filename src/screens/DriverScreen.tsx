@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BrandMark } from "../components/BrandMark";
 import { DriverNameInput } from "../components/DriverNameInput";
 import { ConfirmOverlay } from "../components/ConfirmOverlay";
+import { FullRosterDriverCard } from "../components/FullRosterDriverCard";
 import { addDays, chicagoToday, formatMonthDayYear, isValidISODate, weekdayOfISO, yearOfISO } from "../lib/chicagoDate";
 import {
   entriesForGoneYear,
@@ -17,10 +18,8 @@ import {
   driverRosterYardLabel,
   entriesForRoster,
   formatRosterCopyList,
-  fullRosterRowCount,
   fullRosterTally,
   rosterEntryCount,
-  rosterStatusLabel,
   rosterStatusRemovesFromAvailable,
   satDateForYard,
   satRosterColumnCount,
@@ -34,9 +33,15 @@ import {
   effectiveRosterStatus,
   vacationNamesOnDate,
 } from "../lib/rosterVacation";
+import { allotmentForName, yearlyAllotmentUses } from "../lib/rosterAllotment";
+import { weekPayForDriver } from "../lib/loadPay";
 import { sundayOnOrBefore } from "../lib/vacationBoard";
+import { useCallOffLog } from "../store/CallOffLogContext";
+import { useCustomerLanes } from "../store/CustomerLanesContext";
 import { useDriverGone } from "../store/DriverGoneContext";
 import { useDriverRoster } from "../store/DriverRosterContext";
+import { useDrivers } from "../store/DriversContext";
+import { useLoads } from "../store/LoadsContext";
 import { useVacation } from "../store/VacationContext";
 
 function upcomingSaturday(today: string): string {
@@ -88,12 +93,13 @@ function AddRosterForm({
 }: {
   kind: DriverRosterKind;
   onCancel: () => void;
-  onSave: (emp: string, name: string, status: string, assignedTruck: string) => void;
+  onSave: (emp: string, name: string, status: string, assignedTruck: string) => Promise<string | null>;
 }) {
   const [truck, setTruck] = useState("");
   const [assignedTruck, setAssignedTruck] = useState("");
   const [name, setName] = useState("");
   const [status, setStatus] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -106,7 +112,12 @@ function AddRosterForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (!name.trim()) return;
-        onSave(truck.trim(), name.trim(), status.trim(), assignedTruck.trim());
+        setError(null);
+        void onSave(truck.trim(), name.trim(), status.trim(), assignedTruck.trim()).then(
+          (conflictName) => {
+            if (conflictName) setError(`Truck # already assigned to ${conflictName}.`);
+          },
+        );
       }}
     >
       <input
@@ -122,7 +133,10 @@ function AddRosterForm({
         <input
           className="text-input drv-add-truck"
           value={assignedTruck}
-          onChange={(event) => setAssignedTruck(event.target.value)}
+          onChange={(event) => {
+            setAssignedTruck(event.target.value);
+            if (error) setError(null);
+          }}
           placeholder="Truck #"
           autoComplete="off"
           aria-label="Truck number"
@@ -151,6 +165,11 @@ function AddRosterForm({
           ))}
         </select>
       ) : null}
+      {error ? (
+        <p className="drv-add-error" role="alert">
+          {error}
+        </p>
+      ) : null}
       <div className="vac-add-actions">
         <button type="submit" className="text-btn amber">
           Add
@@ -167,40 +186,6 @@ function tabGroupLabel(group: DriverTabGroup, goneYear: number): string {
   if (group === "full") return "Full Roster";
   if (group === "sat") return "Sat Roster";
   return goneYearLabel(goneYear);
-}
-
-function AssignedTruckInput({
-  entry,
-  onSave,
-}: {
-  entry: DriverRosterEntry;
-  onSave: (value: string) => void;
-}) {
-  const [value, setValue] = useState(entry.assignedTruck ?? "");
-
-  useEffect(() => {
-    setValue(entry.assignedTruck ?? "");
-  }, [entry.assignedTruck]);
-
-  return (
-    <input
-      className="text-input drv-assigned-truck"
-      value={value}
-      onChange={(event) => setValue(event.target.value)}
-      onBlur={() => {
-        const next = value.trim();
-        if ((entry.assignedTruck ?? "") !== next) onSave(next);
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") {
-          event.currentTarget.blur();
-        }
-      }}
-      placeholder="Truck #"
-      autoComplete="off"
-      aria-label={`Truck number for ${entry.name}`}
-    />
-  );
 }
 
 function AddGoneForm({
@@ -319,6 +304,7 @@ export function DriverScreen() {
     addDriver,
     setDriverStatus,
     setDriverAssignedTruck,
+    setDriverProfile,
     removeDriver,
     removeHiredAndSat,
     moveDriver,
@@ -327,6 +313,10 @@ export function DriverScreen() {
   } = useDriverRoster();
   const gone = useDriverGone();
   const vacation = useVacation();
+  const { rows: callOffRows } = useCallOffLog();
+  const { manualOffs } = useDrivers();
+  const { loads } = useLoads();
+  const { store: customerLanes } = useCustomerLanes();
   const [adding, setAdding] = useState(false);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -341,7 +331,6 @@ export function DriverScreen() {
   const [goneYear, setGoneYear] = useState(currentGoneYear);
   const onGone = group === "gone";
   const satCols = useSatRosterColumnCount();
-  const fullCols = satCols;
 
   const entries = useMemo(() => entriesForRoster(store, kind, yard), [store, kind, yard]);
   const goneYears = useMemo(
@@ -357,6 +346,10 @@ export function DriverScreen() {
   const vacationNames = useMemo(
     () => (kind === "full" ? vacationNamesOnDate(vacation.store, asOf, yard) : []),
     [kind, vacation.store, asOf, yard],
+  );
+  const allotmentUses = useMemo(
+    () => (kind === "full" ? yearlyAllotmentUses(callOffRows, manualOffs, yearOfISO(today)) : []),
+    [kind, callOffRows, manualOffs, today],
   );
   const tally = useMemo(
     () =>
@@ -374,7 +367,23 @@ export function DriverScreen() {
   const fullCount = rosterEntryCount(store, "full", yard);
   const satMatchesFull = kind === "sat" && satRosterMatchesFull(store, yard);
   const satRows = satRosterRowCount(entries.length, satCols);
-  const fullRows = fullRosterRowCount(entries.length, fullCols);
+  const weekPayById = useMemo(() => {
+    if (kind !== "full") return new Map<string, ReturnType<typeof weekPayForDriver>>();
+    const map = new Map<string, ReturnType<typeof weekPayForDriver>>();
+    for (const entry of entries) {
+      map.set(
+        entry.id,
+        weekPayForDriver({
+          loads,
+          lanes: customerLanes,
+          driverName: entry.name,
+          hireDate: entry.hireDate,
+          asOf,
+        }),
+      );
+    }
+    return map;
+  }, [kind, entries, loads, customerLanes, asOf]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedCount = selectedIds.length;
 
@@ -522,16 +531,6 @@ export function DriverScreen() {
                 {resetting ? "Resetting…" : "Reset to full roster"}
               </button>
             ) : null}
-            {onGone ? (
-              <button
-                type="button"
-                className="text-btn"
-                disabled={gone.importing || goneTotal > 0}
-                onClick={() => void gone.importFromSheet()}
-              >
-                {gone.importing ? "Importing…" : "Import Gone 2026"}
-              </button>
-            ) : null}
           </div>
         </div>
       </header>
@@ -668,29 +667,21 @@ export function DriverScreen() {
         <AddRosterForm
           kind={kind}
           onCancel={() => setAdding(false)}
-          onSave={(emp, name, status, assignedTruck) => {
-            void addDriver({
+          onSave={async (emp, name, status, assignedTruck) => {
+            const result = await addDriver({
               truckNumber: emp,
               assignedTruck: assignedTruck || null,
               name,
               status,
               forDate: satDate,
             });
+            if (result.conflictName) return result.conflictName;
             setAdding(false);
+            return null;
           }}
         />
       ) : null}
 
-      {onGone && gone.lastImport?.error ? <p className="form-error">{gone.lastImport.error}</p> : null}
-      {onGone && gone.lastImport && !gone.lastImport.error ? (
-        <p className="field-hint">
-          {gone.lastImport.added
-            ? `Imported ${gone.lastImport.added} drivers into the empty Gone archive.`
-            : gone.lastImport.skipped
-              ? "Import ran — Gone already has rows, so nothing was added."
-              : "Import ran — no Gone rows found."}
-        </p>
-      ) : null}
       {!onGone && kind === "sat" ? (
         <div className="drv-copy-card">
           <div className="drv-copy-toolbar">
@@ -717,16 +708,7 @@ export function DriverScreen() {
               : `No ${yardLabel} ${kind === "sat" ? "Saturday planning" : "hired"} drivers yet`}
           </h2>
           <div className="vac-add-actions">
-            {onGone ? (
-              <button
-                type="button"
-                className="text-btn amber"
-                disabled={gone.importing}
-                onClick={() => void gone.importFromSheet()}
-              >
-                Import Gone 2026
-              </button>
-            ) : kind === "sat" && fullCount ? (
+            {!onGone && kind === "sat" && fullCount ? (
               <button
                 type="button"
                 className="text-btn amber"
@@ -910,93 +892,42 @@ export function DriverScreen() {
           </button>
         </div>
       ) : (
-        <div className="drv-sat-board">
-          <div
-            className="drv-sat-grid drv-full-grid"
-            role="list"
-            aria-label={`${yardLabel} hired roster`}
-            style={{ ["--drv-sat-rows" as string]: String(fullRows) }}
-          >
-            {entries.map((entry) => {
-              const effective = effectiveRosterStatus(entry, vacationNames);
-              const out =
-                rosterStatusRemovesFromAvailable(effective.status) ||
-                Boolean(effective.onVacation);
-              const storedOut = rosterStatusRemovesFromAvailable(entry.status);
-              return (
-                <div
-                  key={entry.id}
-                  className={out ? "drv-sat-cell drv-full-cell is-out" : "drv-sat-cell drv-full-cell"}
-                  role="listitem"
-                >
-                  <div className="drv-full-cell-top">
-                    <span className="drv-sat-emp" title="Employee number">
-                      {entry.truckNumber ?? "—"}
-                    </span>
-                    <span className="drv-sat-cell-name">
-                      {entry.name}
-                      {out ? <span className="drv-out-tag">Out</span> : null}
-                      {effective.onVacation ? (
-                        <span className="drv-vac-from" title="From the Vacation tab this week">
-                          Vac
-                        </span>
-                      ) : null}
-                    </span>
-                    <button
-                      type="button"
-                      className="vac-pill-x drv-remove"
-                      aria-label={`Remove ${entry.name}`}
-                      onClick={() => setRemoveDialog({ step: "choose", entry })}
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div className="drv-full-cell-meta">
-                    <AssignedTruckInput
-                      entry={entry}
-                      onSave={(value) => void setDriverAssignedTruck(entry.id, value || null)}
-                    />
-                    <div className="drv-status-cell">
-                      <select
-                        className={
-                          storedOut || effective.onVacation
-                            ? "drv-status-select is-out"
-                            : "drv-status-select"
-                        }
-                        value={entry.status ?? ""}
-                        aria-label={`Unavailability for ${entry.name}`}
-                        onChange={(event) =>
-                          void setDriverStatus(entry.id, event.target.value || null)
-                        }
-                      >
-                        <option value="">{effective.onVacation ? "No mark" : "Available"}</option>
-                        {ROSTER_UNAVAILABLE_REASONS.map((row) => (
-                          <option key={row.token} value={row.token}>
-                            {row.reason !== row.label
-                              ? `${row.label} — ${row.reason}`
-                              : row.label}
-                          </option>
-                        ))}
-                        {entry.status &&
-                        !ROSTER_UNAVAILABLE_REASONS.some((row) => row.token === entry.status) ? (
-                          <option value={entry.status}>
-                            {rosterStatusLabel(entry.status)}
-                          </option>
-                        ) : null}
-                      </select>
-                      {effective.onVacation &&
-                      entry.status &&
-                      entry.status.toLowerCase() !== "vac" ? (
-                        <span className="drv-also-status">
-                          Vac + {rosterStatusLabel(entry.status)}
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+        <div className="drv-pay-list" role="list" aria-label={`${yardLabel} hired roster`}>
+          {entries.map((entry, index) => {
+            const effective = effectiveRosterStatus(entry, vacationNames);
+            const out =
+              rosterStatusRemovesFromAvailable(effective.status) ||
+              Boolean(effective.onVacation);
+            const storedOut = rosterStatusRemovesFromAvailable(entry.status);
+            const allot = allotmentForName(entry.name, allotmentUses);
+            const week = weekPayById.get(entry.id) ?? weekPayForDriver({
+              loads: [],
+              lanes: customerLanes,
+              driverName: entry.name,
+              hireDate: entry.hireDate,
+              asOf,
+            });
+            return (
+              <FullRosterDriverCard
+                key={entry.id}
+                entry={entry}
+                index={index}
+                count={entries.length}
+                today={today}
+                asOf={asOf}
+                out={out}
+                storedOut={storedOut}
+                onVacation={Boolean(effective.onVacation)}
+                allot={allot}
+                week={week}
+                onMove={(delta) => void moveDriver(entry.id, delta)}
+                onRemove={() => setRemoveDialog({ step: "choose", entry })}
+                onStatus={(status) => void setDriverStatus(entry.id, status)}
+                onTruck={(value) => setDriverAssignedTruck(entry.id, value || null)}
+                onProfile={(patch) => void setDriverProfile(entry.id, patch)}
+              />
+            );
+          })}
           <button type="button" className="vac-add-link drv-sat-add" onClick={() => setAdding(true)}>
             + Add
           </button>
@@ -1021,7 +952,7 @@ export function DriverScreen() {
                 setRemoveDialog({
                   step: "terminate",
                   entry: removeDialog.entry,
-                  hireDate: "",
+                  hireDate: removeDialog.entry.hireDate ?? "",
                   terminationDate: today,
                   notes: "",
                 })

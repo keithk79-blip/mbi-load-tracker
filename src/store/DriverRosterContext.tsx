@@ -17,8 +17,11 @@ import {
   cleanDriverRosterYard,
   DRIVER_ROSTER_YARDS,
   cleanDriverTabGroup,
-  mergeImportedRows,
+  findAssignedTruckConflict,
   moveRosterEntry,
+  collapseDuplicateRosterEntries,
+  phonesNeedingUpload,
+  preservePhones,
   readDriverRosterPersisted,
   readDriverRosterUi,
   reconcileDriverRosterCloud,
@@ -40,7 +43,13 @@ import {
   type DriverRosterYard,
   type DriverTabGroup,
 } from "../lib/driverRoster";
-import { describeImportGroup, fetchRosterWorkbook } from "../lib/driverRosterSheet";
+import { assignedTrucksNeedingUpload, preserveAssignedTrucks } from "../lib/rosterAssignedTruck";
+import {
+  applyKnownHireDates,
+  hireDatesNeedingUpload,
+  preserveHireDates,
+} from "../lib/rosterHireDate";
+import { enforceOneYardPerDriver } from "../lib/rosterYardOwnership";
 import { getSupabase } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 
@@ -52,16 +61,12 @@ type EntryRow = {
   assigned_truck?: string | null;
   name: string;
   status: string | null;
+  hire_date?: string | null;
+  phone?: string | null;
   sort_order: number;
   for_date: string | null;
   created_at: string;
   updated_at: string;
-};
-
-export type DriverRosterImportResult = {
-  added: number;
-  skippedGroups: string[];
-  error: string | null;
 };
 
 type DriverRosterContextValue = {
@@ -73,19 +78,23 @@ type DriverRosterContextValue = {
   setGroup: (group: DriverTabGroup) => void;
   setYard: (yard: DriverRosterYard) => void;
   cloud: boolean;
-  importing: boolean;
-  lastImport: DriverRosterImportResult | null;
   refresh: () => Promise<void>;
-  importFromSheet: () => Promise<DriverRosterImportResult>;
-  addDriver: (input: Omit<DriverRosterInput, "kind" | "yard">) => Promise<DriverRosterEntry | null>;
+  addDriver: (
+    input: Omit<DriverRosterInput, "kind" | "yard">,
+  ) => Promise<{ entry: DriverRosterEntry | null; conflictName?: string }>;
   setDriverStatus: (id: string, status: string | null) => Promise<void>;
-  setDriverAssignedTruck: (id: string, assignedTruck: string | null) => Promise<void>;
+  setDriverAssignedTruck: (
+    id: string,
+    assignedTruck: string | null,
+  ) => Promise<{ ok: boolean; conflictName?: string }>;
+  setDriverProfile: (
+    id: string,
+    patch: { hireDate?: string | null; phone?: string | null },
+  ) => Promise<void>;
   removeDriver: (id: string) => Promise<void>;
-  /** Explicit Full Roster × — hired row plus matching Sat. */
   removeHiredAndSat: (id: string) => Promise<void>;
   moveDriver: (id: string, delta: -1 | 1) => Promise<void>;
   setSatDate: (forDate: string | null) => Promise<void>;
-  /** User-initiated: replace this yard's Sat list with a copy of Full Roster. */
   resetSatToFullRoster: () => Promise<void>;
 };
 
@@ -105,6 +114,8 @@ function rowsToStore(rows: EntryRow[]): DriverRosterStore {
           : null,
       name: row.name,
       status: row.status,
+      hireDate: cleanDriverRosterKind(row.kind) === "full" ? row.hire_date ?? null : null,
+      phone: cleanDriverRosterKind(row.kind) === "full" ? row.phone ?? null : null,
       sortOrder: row.sort_order,
       forDate: row.for_date,
       createdAt: row.created_at,
@@ -123,6 +134,8 @@ function entryToRow(entry: DriverRosterEntry, userId: string | null) {
     assigned_truck: entry.assignedTruck,
     name: entry.name,
     status: entry.status,
+    hire_date: entry.hireDate,
+    phone: entry.phone,
     sort_order: entry.sortOrder,
     for_date: entry.forDate,
     created_at: entry.createdAt,
@@ -146,13 +159,14 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
   const [ui, setUi] = useState(readDriverRosterUi);
   const [store, setStore] = useState<DriverRosterStore>(() => {
     const persisted = readDriverRosterPersisted();
-    return applyRosterTombstones(
-      { entries: persisted.entries },
-      persisted.deletedEntryIds,
-    );
+    const owned = enforceOneYardPerDriver({
+      entries: persisted.entries,
+    });
+    return applyRosterTombstones(owned.store, [
+      ...persisted.deletedEntryIds,
+      ...owned.removed.map((row) => row.id),
+    ]);
   });
-  const [importing, setImporting] = useState(false);
-  const [lastImport, setLastImport] = useState<DriverRosterImportResult | null>(null);
   const storeRef = useRef(store);
   storeRef.current = store;
   const deletedRef = useRef<Set<string>>(new Set(readDriverRosterPersisted().deletedEntryIds));
@@ -167,9 +181,13 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
   const seedingRef = useRef(false);
 
   const persistLocal = useCallback((next: DriverRosterStore) => {
+    const owned = enforceOneYardPerDriver(next);
+    const collapsed = collapseDuplicateRosterEntries(owned.store);
+    for (const row of owned.removed) deletedRef.current.add(row.id);
+    for (const id of collapsed.droppedIds) deletedRef.current.add(id);
     const snapshot: DriverRosterPersisted = {
       version: 1,
-      entries: next.entries,
+      entries: collapsed.store.entries,
       deletedEntryIds: [...deletedRef.current],
       seenRemoteEntryIds: [...seenRef.current],
       importedAt: importedAtRef.current,
@@ -178,36 +196,43 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     const stripped = persistSnapshot(snapshot);
     storeRef.current = stripped;
     setStore(stripped);
+    return [
+      ...owned.removed,
+      ...collapsed.droppedIds
+        .map((id) => owned.store.entries[id] ?? next.entries[id])
+        .filter((row): row is DriverRosterEntry => Boolean(row)),
+    ];
   }, []);
 
   const pullRemote = useCallback(async (): Promise<DriverRosterStore | null> => {
     const supabase = getSupabase();
     if (!supabase || !session) return null;
     const page = await fetchAllPaged<EntryRow>(async (from, to) => {
-      const withTruck = await supabase
-        .from("driver_roster_entries")
-        .select(
-          "id, kind, yard, truck_number, assigned_truck, name, status, sort_order, for_date, created_at, updated_at",
-        )
-        .order("id", { ascending: true })
-        .range(from, to);
-      if (!withTruck.error) {
-        return { data: withTruck.data as EntryRow[] | null, error: withTruck.error };
+      const selects = [
+        "id, kind, yard, truck_number, assigned_truck, name, status, hire_date, phone, sort_order, for_date, created_at, updated_at",
+        "id, kind, yard, truck_number, assigned_truck, name, status, hire_date, sort_order, for_date, created_at, updated_at",
+        "id, kind, yard, truck_number, assigned_truck, name, status, sort_order, for_date, created_at, updated_at",
+        "id, kind, yard, truck_number, name, status, sort_order, for_date, created_at, updated_at",
+      ];
+      let lastError: { message?: string; code?: string } | null = null;
+      for (const columns of selects) {
+        const result = await supabase
+          .from("driver_roster_entries")
+          .select(columns)
+          .order("id", { ascending: true })
+          .range(from, to);
+        if (!result.error) {
+          return { data: (result.data as unknown as EntryRow[] | null) ?? null, error: result.error };
+        }
+        lastError = result.error;
+        const missingCol =
+          result.error.code === "42703" ||
+          /hire_date|assigned_truck|phone/i.test(result.error.message ?? "");
+        if (!missingCol) {
+          return { data: result.data as EntryRow[] | null, error: result.error };
+        }
       }
-      const missingAssigned =
-        /assigned_truck/i.test(withTruck.error.message ?? "") ||
-        withTruck.error.code === "42703";
-      if (!missingAssigned) {
-        return { data: withTruck.data as EntryRow[] | null, error: withTruck.error };
-      }
-      const result = await supabase
-        .from("driver_roster_entries")
-        .select(
-          "id, kind, yard, truck_number, name, status, sort_order, for_date, created_at, updated_at",
-        )
-        .order("id", { ascending: true })
-        .range(from, to);
-      return { data: result.data as EntryRow[] | null, error: result.error };
+      return { data: null, error: lastError };
     });
     if (page.error || !page.data) {
       console.warn("driver_roster_entries pull failed", pagedErrorMessage(page.error));
@@ -216,14 +241,11 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     return rowsToStore(page.data);
   }, [session]);
 
-  /**
-   * Remote DELETE is UI × or Sat Reset only. Refresh / import / Vacation VAC
-   * must never call this — same class of bug as loads and vacation silent wipes.
-   */
   const cloudDeleteEntries = useCallback(async (ids: string[]) => {
     if (!ids.length) return;
     const supabase = getSupabase();
     if (!supabase) return;
+    // Explicit × and Sat Reset are the only paths that may DELETE a cloud roster row.
     const { error } = await supabase.from("driver_roster_entries").delete().in("id", ids);
     if (error) console.warn("driver roster delete failed", error.message);
   }, []);
@@ -235,23 +257,30 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       const rows = entries.map((entry) => entryToRow(entry, user?.id ?? null));
       const { error } = await supabase.from("driver_roster_entries").upsert(rows);
       if (!error) return;
-      const missingAssigned =
-        /assigned_truck/i.test(error.message ?? "") || error.code === "42703";
-      if (!missingAssigned) {
+      const msg = error.message ?? "";
+      const missingHire = /hire_date/i.test(msg);
+      const missingAssigned = /assigned_truck/i.test(msg);
+      const missingPhone = /\bphone\b/i.test(msg);
+      if (error.code !== "42703" && !missingHire && !missingAssigned && !missingPhone) {
         console.warn("driver roster upsert failed", error.message);
         return;
       }
-      const fallback = rows.map(({ assigned_truck: _assigned, ...row }) => row);
-      const retry = await supabase.from("driver_roster_entries").upsert(fallback);
+      let payload: Record<string, unknown>[] = rows;
+      if (missingHire) {
+        payload = payload.map(({ hire_date: _h, ...row }) => row);
+      }
+      if (missingAssigned) {
+        payload = payload.map(({ assigned_truck: _a, ...row }) => row);
+      }
+      if (missingPhone) {
+        payload = payload.map(({ phone: _p, ...row }) => row);
+      }
+      const retry = await supabase.from("driver_roster_entries").upsert(payload);
       if (retry.error) console.warn("driver roster upsert failed", retry.error.message);
     },
     [session, user?.id],
   );
 
-  /**
-   * First-open / never-edited Sat lists copy this yard's Full Roster.
-   * Skips yards Keith already edited (including × everyone). Never deletes.
-   */
   const seedEmptySatFromFull = useCallback(async () => {
     const pendingYards = DRIVER_ROSTER_YARDS.filter((yard) => !satInitializedRef.current.has(yard));
     if (!pendingYards.length) return;
@@ -268,18 +297,18 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       if (flagsChanged) persistLocal(storeRef.current);
       return;
     }
-    persistLocal(result.store);
+    const removed = persistLocal(result.store);
+    if (cloud && removed.length) await cloudDeleteEntries(removed.map((row) => row.id));
     if (cloud && result.added) {
       const seeded = new Set(result.seededYards);
       await cloudUpsert(
-        Object.values(result.store.entries).filter(
+        Object.values(storeRef.current.entries).filter(
           (entry) => entry.kind === "sat" && seeded.has(entry.yard),
         ),
       );
     }
-  }, [cloud, cloudUpsert, persistLocal]);
+  }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal]);
 
-  /** First-open only: fill an empty local store. Never a live Today pull. */
   const seedIfEmpty = useCallback(async () => {
     if (seedingRef.current) return;
     if (importedAtRef.current) {
@@ -293,36 +322,19 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       return;
     }
     seedingRef.current = true;
-    setImporting(true);
     try {
-      const { rows } = await fetchRosterWorkbook();
-      const result = mergeImportedRows(storeRef.current, rows);
-      importedAtRef.current = new Date().toISOString();
-      persistLocal(result.store);
-      if (cloud && result.added) {
-        await cloudUpsert(Object.values(result.store.entries));
-      }
-      setLastImport({
-        added: result.added,
-        skippedGroups: result.skippedGroups.map(describeImportGroup),
-        error: null,
-      });
-      await seedEmptySatFromFull();
-    } catch (err) {
       importedAtRef.current = new Date().toISOString();
       persistLocal(storeRef.current);
-      const message = err instanceof Error ? err.message : "Sheet import failed";
-      setLastImport({ added: 0, skippedGroups: [], error: message });
       await seedEmptySatFromFull();
     } finally {
       seedingRef.current = false;
-      setImporting(false);
     }
-  }, [cloud, cloudUpsert, persistLocal, seedEmptySatFromFull]);
+  }, [persistLocal, seedEmptySatFromFull]);
 
   const refreshInner = useCallback(async () => {
     if (!cloud) {
-      persistLocal(storeRef.current);
+      const stamped = applyKnownHireDates(storeRef.current);
+      persistLocal(stamped.store);
       await seedIfEmpty();
       return;
     }
@@ -331,19 +343,35 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     if (epoch !== epochRef.current) return;
 
     if (remote) {
-      // Upsert-only merge. Never delete remote (or local) rows from a pull —
-      // not even when a stale tombstone list is present.
+      const prior = storeRef.current;
       const result = reconcileDriverRosterCloud({
-        local: storeRef.current,
+        local: prior,
         remote,
         deletedEntryIds: deletedRef.current,
         seenRemoteEntryIds: seenRef.current,
       });
       if (epoch !== epochRef.current) return;
-      if (result.toUploadEntries.length && !uploadingRef.current) {
+      const next = preservePhones(
+        prior,
+        preserveHireDates(
+          prior,
+          preserveAssignedTrucks(prior, result.next),
+        ),
+      );
+      const toUpload = [...result.toUploadEntries];
+      for (const row of assignedTrucksNeedingUpload(next, remote)) {
+        if (!toUpload.some((item) => item.id === row.id)) toUpload.push(row);
+      }
+      for (const row of hireDatesNeedingUpload(next, remote)) {
+        if (!toUpload.some((item) => item.id === row.id)) toUpload.push(row);
+      }
+      for (const row of phonesNeedingUpload(next, remote)) {
+        if (!toUpload.some((item) => item.id === row.id)) toUpload.push(row);
+      }
+      if (toUpload.length && !uploadingRef.current) {
         uploadingRef.current = true;
         try {
-          await cloudUpsert(result.toUploadEntries);
+          await cloudUpsert(toUpload);
         } finally {
           uploadingRef.current = false;
         }
@@ -351,12 +379,21 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       if (epoch !== epochRef.current) return;
       deletedRef.current = new Set(result.deletedEntryIds);
       seenRef.current = new Set(result.seenRemoteEntryIds);
-      persistLocal(result.next);
+      if (result.toDeleteRemoteEntries.length) {
+        await cloudDeleteEntries(result.toDeleteRemoteEntries);
+      }
+      const removed = persistLocal(next);
+      if (removed.length) await cloudDeleteEntries(removed.map((row) => row.id));
     }
 
     await seedIfEmpty();
     await seedEmptySatFromFull();
-  }, [cloud, cloudUpsert, persistLocal, pullRemote, seedEmptySatFromFull, seedIfEmpty]);
+    const stamped = applyKnownHireDates(storeRef.current);
+    if (stamped.updated.length) {
+      persistLocal(stamped.store);
+      if (cloud) await cloudUpsert(stamped.updated);
+    }
+  }, [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, pullRemote, seedEmptySatFromFull, seedIfEmpty]);
 
   const refresh = useCallback(() => {
     const run = refreshTailRef.current.then(refreshInner, refreshInner);
@@ -390,48 +427,12 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     };
   }, [cloud, refresh]);
 
-  /** Explicit user import into empty kind+yard groups only. Does not refresh Today from L13. */
-  const importFromSheet = useCallback(async (): Promise<DriverRosterImportResult> => {
-    setImporting(true);
-    try {
-      const { rows } = await fetchRosterWorkbook();
-      const result = mergeImportedRows(storeRef.current, rows);
-      importedAtRef.current = new Date().toISOString();
-      persistLocal(result.store);
-      if (cloud && result.added) {
-        const uploaded = Object.values(result.store.entries).filter((entry) =>
-          result.store.entries[entry.id],
-        );
-        const newIds = new Set(
-          Object.values(result.store.entries)
-            .filter((entry) => !seenRef.current.has(entry.id))
-            .map((entry) => entry.id),
-        );
-        await cloudUpsert(uploaded.filter((entry) => newIds.has(entry.id)));
-      }
-      const summary: DriverRosterImportResult = {
-        added: result.added,
-        skippedGroups: result.skippedGroups.map(describeImportGroup),
-        error: null,
-      };
-      setLastImport(summary);
-      await seedEmptySatFromFull();
-      return summary;
-    } catch (err) {
-      const summary: DriverRosterImportResult = {
-        added: 0,
-        skippedGroups: [],
-        error: err instanceof Error ? err.message : "Sheet import failed",
-      };
-      setLastImport(summary);
-      return summary;
-    } finally {
-      setImporting(false);
-    }
-  }, [cloud, cloudUpsert, persistLocal, seedEmptySatFromFull]);
-
   const addDriver = useCallback(
     async (input: Omit<DriverRosterInput, "kind" | "yard">) => {
+      if (ui.kind === "full") {
+        const conflict = findAssignedTruckConflict(storeRef.current, input.assignedTruck ?? null);
+        if (conflict) return { entry: null, conflictName: conflict.name };
+      }
       epochRef.current += 1;
       const satDate =
         ui.kind === "sat"
@@ -447,13 +448,15 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
         yard: ui.yard,
         forDate: satDate,
       });
-      if (!result.entry) return null;
+      if (!result.entry) return { entry: null };
       if (result.entry.kind === "sat") satInitializedRef.current.add(result.entry.yard);
-      persistLocal(result.store);
-      if (cloud) await cloudUpsert([result.entry]);
-      return result.entry;
+      const removed = persistLocal(result.store);
+      if (cloud && removed.length) await cloudDeleteEntries(removed.map((row) => row.id));
+      const kept = storeRef.current.entries[result.entry.id];
+      if (cloud && kept) await cloudUpsert([kept]);
+      return { entry: kept ?? result.entry };
     },
-    [cloud, cloudUpsert, persistLocal, ui.kind, ui.yard],
+    [cloud, cloudDeleteEntries, cloudUpsert, persistLocal, ui.kind, ui.yard],
   );
 
   const setDriverStatus = useCallback(
@@ -469,8 +472,22 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
 
   const setDriverAssignedTruck = useCallback(
     async (id: string, assignedTruck: string | null) => {
+      const conflict = findAssignedTruckConflict(storeRef.current, assignedTruck, id);
+      if (conflict) return { ok: false, conflictName: conflict.name };
       epochRef.current += 1;
       const next = updateRosterEntry(storeRef.current, id, { assignedTruck });
+      const entry = next.entries[id];
+      persistLocal(next);
+      if (cloud && entry) await cloudUpsert([entry]);
+      return { ok: true };
+    },
+    [cloud, cloudUpsert, persistLocal],
+  );
+
+  const setDriverProfile = useCallback(
+    async (id: string, patch: { hireDate?: string | null; phone?: string | null }) => {
+      epochRef.current += 1;
+      const next = updateRosterEntry(storeRef.current, id, patch);
       const entry = next.entries[id];
       persistLocal(next);
       if (cloud && entry) await cloudUpsert([entry]);
@@ -483,7 +500,6 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       epochRef.current += 1;
       const result = removeRosterEntry(storeRef.current, id);
       if (!result.removed) return;
-      // Explicit UI × — one of the only paths that may DELETE a cloud roster row.
       deletedRef.current.add(id);
       if (result.removed.kind === "sat") {
         satInitializedRef.current.add(result.removed.yard);
@@ -539,10 +555,6 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     [cloud, cloudUpsert, persistLocal, ui.yard],
   );
 
-  /**
-   * Explicit Sat Reset — the only paths that may DELETE a cloud roster row
-   * are this Reset (this yard's Sat rows) and removeDriver (×).
-   */
   const resetSatToFullRoster = useCallback(async () => {
     epochRef.current += 1;
     const yard = ui.yard;
@@ -553,7 +565,7 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     persistLocal(result.store);
     if (!cloud) return;
     if (result.removedIds.length) await cloudDeleteEntries(result.removedIds);
-    const satRows = Object.values(result.store.entries).filter(
+    const satRows = Object.values(storeRef.current.entries).filter(
       (entry) => entry.kind === "sat" && entry.yard === yard,
     );
     if (satRows.length) await cloudUpsert(satRows);
@@ -605,13 +617,11 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       setGroup,
       setYard,
       cloud,
-      importing,
-      lastImport,
       refresh,
-      importFromSheet,
       addDriver,
       setDriverStatus,
       setDriverAssignedTruck,
+      setDriverProfile,
       removeDriver,
       removeHiredAndSat,
       moveDriver,
@@ -627,13 +637,11 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
       setGroup,
       setYard,
       cloud,
-      importing,
-      lastImport,
       refresh,
-      importFromSheet,
       addDriver,
       setDriverStatus,
       setDriverAssignedTruck,
+      setDriverProfile,
       removeDriver,
       removeHiredAndSat,
       moveDriver,

@@ -10,7 +10,9 @@
       "allow": [
         { "url": "https://www.sigalert.com/**" },
         { "url": "https://cdn-dynamic.sigalert.com/**" },
-        { "url": "https://cdn.sigalert.com/**" }
+        { "url": "https://cdn.sigalert.com/**" },
+        { "url": "https://*.supabase.co/**" },
+        { "url": "https://*.supabase.in/**" }
       ]
     }
   ]
