@@ -12,6 +12,7 @@ import type { Load } from "../types";
 import {
   fetchAllPaged,
   isMissingDriverNameColumn,
+  pagedErrorMessage,
   loadToRow,
   rowToLoad,
   type LoadRow,
@@ -75,6 +76,7 @@ type LoadsContextValue = {
   findById: (id: string) => Load | undefined;
   syncStatus: SyncStatus;
   queuedCount: number;
+  lastSyncError: string | null;
   localPendingCount: number;
   uploadLocalLoads: () => Promise<number>;
   pushAllLoadsToCloud: () => Promise<number>;
@@ -126,6 +128,7 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
     isCloudConfigured() ? "syncing" : "local",
   );
   const [queuedCount, setQueuedCount] = useState(() => readQueue().length);
+  const [lastSyncError, setLastSyncError] = useState<string | null>(null);
   const flushing = useRef(false);
   const flushPromise = useRef<Promise<boolean> | null>(null);
   const flushQueueRef = useRef<() => Promise<void>>(async () => {});
@@ -198,7 +201,7 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
     return true;
   }, [backupLocalStore]);
 
-  const applyQueueStatus = useCallback((remaining: number, failed: boolean) => {
+  const applyQueueStatus = useCallback((remaining: number, failed: boolean, message?: string | null) => {
     setQueuedCount(remaining);
     if (!navigator.onLine) {
       setSyncStatus("offline");
@@ -206,8 +209,10 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
     }
     if (remaining > 0 || failed) {
       setSyncStatus("error");
+      if (message) setLastSyncError(message);
       return;
     }
+    setLastSyncError(null);
     setSyncStatus("live");
   }, []);
 
@@ -269,11 +274,17 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
           const rest = removeQueueOp(op.opId);
           setQueuedCount(rest.length);
         }
-      } catch {
+      } catch (error) {
         failed = true;
+        const message =
+          pagedErrorMessage(error) ??
+          (error instanceof Error ? error.message : "Sync failed");
+        console.warn("[load-sync] flushQueue failed", error);
+        setLastSyncError(message);
+        applyQueueStatus(readQueue().length, true, message);
       } finally {
         flushing.current = false;
-        applyQueueStatus(readQueue().length, failed);
+        if (!failed) applyQueueStatus(readQueue().length, false);
       }
       return failed;
     };
@@ -329,7 +340,12 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
         return { data: page.data as LoadRow[] | null, error: page.error };
       });
       if (error || !Array.isArray(data)) {
-        applyQueueStatus(readQueue().length, true);
+        const message =
+          pagedErrorMessage(error) ??
+          (!Array.isArray(data) ? "Load refresh returned bad data" : "Sync failed");
+        console.warn("[load-sync] refreshFromCloud failed", error);
+        setLastSyncError(message);
+        applyQueueStatus(readQueue().length, true, message);
         return;
       }
       const remote = (data as LoadRow[]).map(rowToLoad);
@@ -556,6 +572,7 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
       findById: (id: string) => allLoads(store).find((load) => load.id === id),
       syncStatus: cloud ? syncStatus : "local",
       queuedCount,
+      lastSyncError,
       localPendingCount,
       uploadLocalLoads,
       pushAllLoadsToCloud,
@@ -567,6 +584,7 @@ export function LoadsProvider({ children }: { children: ReactNode }) {
     localPendingCount,
     pushAllLoadsToCloud,
     queuedCount,
+    lastSyncError,
     saveLoad,
     store,
     syncStatus,
