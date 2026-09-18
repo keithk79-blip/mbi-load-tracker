@@ -15,6 +15,7 @@ import {
   STATION_CALL_HOURS,
   stationCallYards,
   addStationCallYard,
+  removeStationCallYard,
   adjacentStationId,
   boardForDate,
   commitStationCell,
@@ -165,6 +166,7 @@ function StationNameCell({
   onEdit,
   onClose,
   onCommit,
+  onRemove,
 }: {
   stationId: string;
   label: string;
@@ -174,6 +176,7 @@ function StationNameCell({
   onEdit: () => void;
   onClose: () => void;
   onCommit: (next: string | null) => void;
+  onRemove?: () => void;
 }) {
   const filled = stationCellFilled(note);
   const shown = filled ? note : "";
@@ -343,29 +346,46 @@ function StationNameCell({
 
   return (
     <th scope="row" className={filled ? "has-station-note" : undefined}>
-      <button
-        ref={btnRef}
-        type="button"
-        className={`station-call-name${filled ? " has-note" : ""}`}
-        data-station={stationId}
-        aria-haspopup="dialog"
-        aria-expanded={open === "edit"}
-        aria-label={filled ? `${label}, has note` : `${label}, add note`}
-        onPointerEnter={(event) => {
-          if (!allowHoverPeek(event.pointerType)) return;
-          if (!filled) return;
-          if (open === "edit") return;
-          cancelHide();
-          onPeek();
-        }}
-        onPointerLeave={(event) => {
-          if (event.pointerType !== "mouse") return;
-          if (open === "peek") schedulePeekHide();
-        }}
-        onClick={beginEdit}
-      >
-        {label}
-      </button>
+      <div className="station-call-row-label">
+        {onRemove ? (
+          <button
+            type="button"
+            className="station-call-remove"
+            aria-label={`Remove ${label}`}
+            title="Remove row"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onRemove();
+            }}
+          >
+            ×
+          </button>
+        ) : null}
+        <button
+          ref={btnRef}
+          type="button"
+          className={`station-call-name${filled ? " has-note" : ""}`}
+          data-station={stationId}
+          aria-haspopup="dialog"
+          aria-expanded={open === "edit"}
+          aria-label={filled ? `${label}, has note` : `${label}, add note`}
+          onPointerEnter={(event) => {
+            if (!allowHoverPeek(event.pointerType)) return;
+            if (!filled) return;
+            if (open === "edit") return;
+            cancelHide();
+            onPeek();
+          }}
+          onPointerLeave={(event) => {
+            if (event.pointerType !== "mouse") return;
+            if (open === "peek") schedulePeekHide();
+          }}
+          onClick={beginEdit}
+        >
+          {label}
+        </button>
+      </div>
       {pop}
     </th>
   );
@@ -580,6 +600,10 @@ export function StationCallsCard({ date }: { date: string }) {
                       )
                     }
                     onCommit={(next) => onNote(yard.id, next)}
+                    onRemove={() => {
+                      if (!window.confirm(`Remove ${yard.label} from Load Count By Hour?`)) return;
+                      if (removeStationCallYard(yard.id)) setExtraTick((n) => n + 1);
+                    }}
                   />
                   <td>
                     <span className={`station-call-start${start === 0 ? " is-zero" : ""}`}>

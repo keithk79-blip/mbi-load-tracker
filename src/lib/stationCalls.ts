@@ -26,6 +26,34 @@ export type StationCallYard = { id: string; label: string };
 
 const EXTRA_YARDS_KEY = "chitrader.load-tracker.station-call-extra-yards.v1";
 
+const HIDDEN_YARDS_KEY = "chitrader.load-tracker.station-call-hidden-yards.v1";
+
+function readHiddenYardIds(): Set<string> {
+  if (typeof localStorage === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(HIDDEN_YARDS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(
+      parsed.filter((id): id is string => typeof id === "string" && id.trim() !== ""),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function writeHiddenYardIds(ids: Set<string>): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(HIDDEN_YARDS_KEY, JSON.stringify([...ids]));
+  } catch {
+    /* ignore */
+  }
+}
+
+
+
 function slugStationId(label: string): string {
   const base = label
     .trim()
@@ -72,7 +100,8 @@ function writeExtraYards(yards: StationCallYard[]): void {
 
 /** Built-in yards plus any rows Keith added with + Add Row. */
 export function stationCallYards(): StationCallYard[] {
-  return [...STATION_CALL_YARDS, ...readExtraYards()];
+  const hidden = readHiddenYardIds();
+  return [...STATION_CALL_YARDS, ...readExtraYards()].filter((y) => !hidden.has(y.id));
 }
 
 /** Add a custom Load Count By Hour row. Returns null if the name is empty or already listed. */
@@ -94,6 +123,25 @@ export function addStationCallYard(label: string): StationCallYard | null {
   writeExtraYards([...readExtraYards(), yard]);
   return yard;
 }
+
+/** Remove a row from Load Count By Hour. Built-ins are hidden; custom extras are deleted. */
+export function removeStationCallYard(stationId: string): boolean {
+  const id = stationId.trim();
+  if (!id || id === "__date__") return false;
+  const extras = readExtraYards();
+  if (extras.some((y) => y.id === id)) {
+    writeExtraYards(extras.filter((y) => y.id !== id));
+    return true;
+  }
+  if (STATION_CALL_YARDS.some((y) => y.id === id)) {
+    const hidden = readHiddenYardIds();
+    hidden.add(id);
+    writeHiddenYardIds(hidden);
+    return true;
+  }
+  return false;
+}
+
 
 
 export type StationCallId = (typeof STATION_CALL_YARDS)[number]["id"];

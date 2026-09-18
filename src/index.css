@@ -2514,7 +2514,7 @@ body.app-ready .splash {
 .station-calls-corner {
   background: #d4cfc8 !important;
   color: var(--text) !important;
-  width: 120px !important;
+  width: 188px !important;
   text-align: left !important;
   padding-left: 6px !important;
   font-size: 9px !important;
@@ -2522,7 +2522,9 @@ body.app-ready .splash {
 .station-calls-table tbody th {
   text-align: left;
   padding: 0;
-  width: 132px;
+  width: 188px;
+  min-width: 188px;
+  max-width: 220px;
   font-size: 10px;
   font-weight: 700;
   background: #f5f3f0;
@@ -2533,12 +2535,37 @@ body.app-ready .splash {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.station-call-row-label {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  min-height: 28px;
+}
+.station-call-remove {
+  flex: 0 0 22px;
+  width: 22px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+.station-call-remove:hover {
+  color: var(--danger, #c62828);
+}
 .station-call-name {
   display: block;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
   height: 28px;
   margin: 0;
-  padding: 0 8px 0 6px;
+  padding: 0 8px 0 2px;
   border: 0;
   background: transparent;
   color: inherit;
