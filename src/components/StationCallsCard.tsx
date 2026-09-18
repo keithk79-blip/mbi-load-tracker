@@ -346,7 +346,7 @@ function StationNameCell({
       : null;
 
   return (
-    <th scope="row" className={filled ? "has-station-note" : undefined}>
+    <th scope="row" className={filled && label ? "has-station-note" : undefined}>
       <div className="station-call-row-label">
         {onRemove ? (
           <button
@@ -366,7 +366,7 @@ function StationNameCell({
         <button
           ref={btnRef}
           type="button"
-          className={`station-call-name${filled ? " has-note" : ""}`}
+          className={`station-call-name${filled && label ? " has-note" : ""}`}
           data-station={stationId}
           aria-haspopup="dialog"
           aria-expanded={open === "edit"}
