@@ -520,7 +520,7 @@ export function StationCallsCard({ date }: { date: string }) {
             <tr>
               <StationNameCell
                 stationId="__date__"
-                label="Date"
+                label=""
                 note={noteForStation(notes, "__date__")}
                 open={activeNote?.id === "__date__" ? activeNote.mode : null}
                 onPeek={() =>
