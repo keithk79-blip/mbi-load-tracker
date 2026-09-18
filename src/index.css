@@ -2251,9 +2251,10 @@ body.app-ready .splash {
 .station-calls-table td {
   border: 1px solid var(--line);
   text-align: center;
-  padding: 0;
+  padding: 8px 4px;
   min-width: 0;
-  height: 28px;
+  height: 40px;
+  font-size: 14px;
 }
 .station-calls-table thead th {
   background: #ede9e4;
@@ -2415,13 +2416,13 @@ body.app-ready .splash {
 }
 .station-call-input {
   width: 100%;
-  height: 28px;
+  height: 40px;
   border: 0;
   background: transparent;
   color: var(--text);
   text-align: center;
   font-weight: 700;
-  font-size: 10px;
+  font-size: 14px;
   border-radius: 0;
   padding: 0 1px;
 }
@@ -3726,3 +3727,5 @@ body.app-ready .splash {
     grid-template-columns: repeat(1, minmax(0, 1fr));
   }
 }
+
+

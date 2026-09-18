@@ -518,7 +518,7 @@ export function StationCallsCard({ date }: { date: string }) {
         <table className="station-calls-table">
           <thead>
             <tr>
-              <th className="station-calls-corner">{date.slice(5).replace("-", "/")}</th>
+              <th className="station-calls-corner"> </th>
               <th>Start</th>
               {STATION_CALL_HOURS.map((h) => (
                 <th key={h.key}>{h.label}</th>
