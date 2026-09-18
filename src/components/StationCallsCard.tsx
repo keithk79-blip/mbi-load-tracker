@@ -518,7 +518,26 @@ export function StationCallsCard({ date }: { date: string }) {
         <table className="station-calls-table">
           <thead>
             <tr>
-              <th className="station-calls-corner"> </th>
+              <StationNameCell
+                stationId="__date__"
+                label="Date"
+                note={noteForStation(notes, "__date__")}
+                open={activeNote?.id === "__date__" ? activeNote.mode : null}
+                onPeek={() =>
+                  setNoteOpen((cur) =>
+                    cur?.date === date && cur.mode === "edit"
+                      ? cur
+                      : { date, id: "__date__", mode: "peek" },
+                  )
+                }
+                onEdit={() => setNoteOpen({ date, id: "__date__", mode: "edit" })}
+                onClose={() =>
+                  setNoteOpen((cur) =>
+                    cur?.date === date && cur.id === "__date__" ? null : cur,
+                  )
+                }
+                onCommit={(next) => onNote("__date__", next)}
+              />
               <th>Start</th>
               {STATION_CALL_HOURS.map((h) => (
                 <th key={h.key}>{h.label}</th>
@@ -584,6 +603,21 @@ export function StationCallsCard({ date }: { date: string }) {
           </tbody>
         </table>
       </div>
+      <button
+        type="button"
+        className="station-calls-add-btn"
+        onClick={() => {
+          const newId = prompt("Enter station ID (e.g., 'my-yard'):");
+          if (!newId) return;
+          const newLabel = prompt("Enter station name:");
+          if (!newLabel) return;
+          // Add new yard to the list
+          alert("Stations are managed at the database level. Contact your admin to add new yards.");
+        }}
+      >
+        + Add Row
+      </button>
     </article>
   );
 }
+
