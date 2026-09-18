@@ -1,6 +1,6 @@
 import { ChevronDown } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import type { RankRow, TotalsFilter } from "../lib/totals";
+import { formatRankTrashTotal, type RankRow, type TotalsFilter } from "../lib/totals";
 
 type CollapsibleRankProps = {
   title: string;
@@ -120,7 +120,12 @@ function RankInner({
           {row.label}
           {row.custom ? <span className="custom-pill">Custom</span> : null}
         </span>
-        <strong className="rank-count">{row.count}</strong>
+        <strong
+          className="rank-count"
+          aria-label={`${row.trashCount} trash of ${row.count} loads`}
+        >
+          {formatRankTrashTotal(row)}
+        </strong>
       </div>
       {showBar ? (
         <div className="rank-track" aria-hidden>

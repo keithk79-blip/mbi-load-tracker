@@ -1515,6 +1515,9 @@ button.log-load-top {
   font-size: 22px;
   font-weight: 800;
   letter-spacing: -0.03em;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
 .rank-track {
