@@ -61,11 +61,13 @@ describe("chicago Full Roster available base", () => {
       saturdayUsesWeekdayBase: false,
     });
     expect(live.base).toBe(1);
+    expect(live.rosterTotal).toBe(2);
     expect(live.offs.map((row) => row.name)).toEqual(["Dave Vanderbilt"]);
     expect(computeAvailability(live, "2026-09-04")).toMatchObject({
       base: 1,
       offs: 1,
       available: 0,
+      rosterTotal: 2,
     });
   });
 
@@ -93,9 +95,11 @@ describe("chicago Full Roster available base", () => {
     });
     expect(live.base).toBe(2);
     expect(live.saturdayBase).toBe(2);
+    expect(live.rosterTotal).toBe(3);
     expect(computeAvailability(live, "2026-09-12")).toMatchObject({
       base: 2,
       available: 2,
+      rosterTotal: 3,
     });
     expect(computeAvailability({ ...live, saturdayUsesWeekdayBase: true }, "2026-09-12")).toMatchObject({
       base: 2,
@@ -130,6 +134,12 @@ describe("chicago Full Roster available base", () => {
     expect(src).toMatch(/today uses Full\s+Roster/);
   });
 
+  it("Available-drivers card uses rosterTotal, not the reduced working base", () => {
+    const src = readFileSync(new URL("../components/DriversCard.tsx", import.meta.url), "utf8");
+    expect(src).toContain("formatAvailableOutOf");
+    expect(src).not.toMatch(/out of \$\{dayAvail\.base\}/);
+  });
+
   it("dev proxy has no Google Sheets roster paths", () => {
     const src = readFileSync(new URL("../../vite.config.ts", import.meta.url), "utf8");
     expect(src).not.toContain("/sheets/roster-full/");
@@ -149,5 +159,35 @@ describe("chicago Full Roster available base", () => {
       [{ name: "Glen Barker" }],
     );
     expect(leftover).toHaveLength(1);
+  });
+
+  it("keeps available math on the reduced base and exposes hired as rosterTotal", () => {
+    const roster = rosterWith(
+      Array.from({ length: 162 }, (_, i) => ({
+        yard: (["burnham", "rockford", "pontiac", "arc", "zion"] as const)[i % 5],
+        name: `Driver ${i + 1}`,
+        status: i < 23 ? "oot" : null,
+      })),
+    );
+    const live = liveSheetFromRoster({
+      roster,
+      vacation: emptyVacationStore(),
+      date: "2026-09-18",
+      offs: [
+        { name: "Driver 24", start: "2026-09-18", end: null, reason: "Call Off" },
+        { name: "Driver 25", start: "2026-09-18", end: null, reason: "P-Day" },
+        { name: "Driver 26", start: "2026-09-18", end: null, reason: "ok'd off" },
+      ],
+      saturdayUsesWeekdayBase: true,
+    });
+    expect(live.rosterTotal).toBe(162);
+    expect(live.base).toBe(139);
+    const day = computeAvailability(live, "2026-09-18");
+    expect(day).toMatchObject({
+      rosterTotal: 162,
+      base: 139,
+      offs: 3,
+      available: 136,
+    });
   });
 });

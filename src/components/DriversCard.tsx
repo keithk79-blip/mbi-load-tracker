@@ -8,6 +8,7 @@ import {
 } from "../lib/chicagoDate";
 import {
   CALL_OFF_KIND_OPTIONS,
+  formatAvailableOutOf,
   type CallOffKind,
 } from "../lib/driverAvailability";
 import { vacationNamesOnDateAllYards } from "../lib/rosterVacation";
@@ -146,8 +147,8 @@ export function DriversCard({
     ? "No Sunday tally"
     : dayAvail
       ? collapsed
-        ? `${dayAvail.available} out of ${dayAvail.base} drivers`
-        : `${dayAvail.available} out of ${dayAvail.base} · ${whenLabel}`
+        ? formatAvailableOutOf(dayAvail, "drivers")
+        : formatAvailableOutOf(dayAvail, whenLabel)
       : viewingToday
         ? "Roster not loaded"
         : `No snapshot for ${formatHeaderDate(viewed)}`;

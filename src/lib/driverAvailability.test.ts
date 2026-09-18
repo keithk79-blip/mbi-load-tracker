@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import { parseSheetDate } from "./chicagoDate";
 import {
   availableDrivers,
+  availableOutOfTotal,
   CALL_OFF_KIND_OPTIONS,
   CALL_OFF_KIND_TONES,
   callOffAppliesToDay,
   callOffKindFromReason,
   cleanCallOffEntries,
+  formatAvailableOutOf,
   fullDayOffCount,
   fullDayOffEntries,
   isCallOffKind,
@@ -356,5 +358,31 @@ describe("fullDayOffEntries + manuals", () => {
       offs: 2,
       available: 141,
     });
+  });
+});
+
+describe("available out of Full Roster hired", () => {
+  it("uses rosterTotal as the display denominator, not the reduced working base", () => {
+    const day = availableDrivers(139, [], "2026-09-18", 162);
+    expect(day).toMatchObject({
+      base: 139,
+      available: 139,
+      rosterTotal: 162,
+    });
+    expect(availableOutOfTotal(day)).toBe(162);
+    expect(formatAvailableOutOf(day, "today")).toBe("139 out of 162 · today");
+    expect(formatAvailableOutOf({ available: 136, base: 139, rosterTotal: 162 }, "today")).toBe(
+      "136 out of 162 · today",
+    );
+    expect(formatAvailableOutOf({ available: 136, base: 139, rosterTotal: 162 }, "drivers")).toBe(
+      "136 out of 162 drivers",
+    );
+  });
+
+  it("falls back to base only when rosterTotal was never snapshotted", () => {
+    expect(availableOutOfTotal({ base: 139 })).toBe(139);
+    expect(formatAvailableOutOf({ available: 136, base: 139 }, "today")).toBe(
+      "136 out of 139 · today",
+    );
   });
 });

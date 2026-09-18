@@ -42,6 +42,8 @@ export type LiveSheet = {
    * Live Today always passes true (no Sat-* sheet banner).
    */
   saturdayUsesWeekdayBase?: boolean;
+  /** Full Roster hired (all yards). Display “out of”; not used for available math. */
+  rosterTotal?: number;
   offs: CallOffRow[];
   /** Live OOT names — only written onto today's snapshot, never past days. */
   ootNames?: string[];
@@ -88,14 +90,24 @@ export function projectFutureDay(live: LiveSheet, date: string, today: string): 
 }
 
 
+function withRosterTotal(day: DayAvailability, live: LiveSheet): DayAvailability {
+  if (typeof live.rosterTotal !== "number" || !Number.isFinite(live.rosterTotal)) {
+    return day;
+  }
+  return { ...day, rosterTotal: Math.max(0, Math.floor(live.rosterTotal)) };
+}
+
 export function computeAvailability(live: LiveSheet, day: string): DayAvailability {
   if (usesSaturdayWorklist(live, day)) {
     const base = Math.max(0, Math.floor(live.saturdayBase));
     const offs = fullDayOffCount(manualsToRows(live.manualOffs, day), day);
-    return { date: day, base, offs, available: Math.max(0, base - offs) };
+    return withRosterTotal(
+      { date: day, base, offs, available: Math.max(0, base - offs) },
+      live,
+    );
   }
   const rows = withManualOffs(live.offs, live.manualOffs, day);
-  return availableDrivers(live.base, rows, day);
+  return availableDrivers(live.base, rows, day, live.rosterTotal);
 }
 
 /**
@@ -124,6 +136,7 @@ export function applyManualsToStoredDay(
       base: existing.base,
       saturdayBase: existing.base,
       saturdayUsesWeekdayBase: storedDayUsesWeekdayBase(existing),
+      rosterTotal: existing.rosterTotal ?? live.rosterTotal,
       offs: sheetRows,
       manualOffs: live.manualOffs,
     },
@@ -135,6 +148,7 @@ export function applyManualsToStoredDay(
       ...existing,
       offs: computed.offs,
       available: computed.available,
+      rosterTotal: computed.rosterTotal ?? existing.rosterTotal,
       callOffs: fullDayOffEntries(sheetRows, live.manualOffs, date),
     },
   };
@@ -160,6 +174,7 @@ export function availabilityWithManuals(
       base: day.base,
       saturdayBase: day.base,
       saturdayUsesWeekdayBase: storedDayUsesWeekdayBase(day),
+      rosterTotal: day.rosterTotal ?? live.rosterTotal,
       offs: sheetRows,
       manualOffs: live.manualOffs,
     },
@@ -169,6 +184,7 @@ export function availabilityWithManuals(
     ...day,
     offs: computed.offs,
     available: computed.available,
+    rosterTotal: computed.rosterTotal ?? day.rosterTotal,
     callOffs,
   };
 }

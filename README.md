@@ -196,6 +196,8 @@ Today and Analytics show:
 
 `available = max(0, Full Roster available − leftover full-day manual offs)`
 
+The card label is `{available} out of {hired}` — **hired** is every company driver on Full Roster across all yards. `base` (hired − status − Vacation VAC) is only the working headcount used for available math, not the “out of” number.
+
 - **Roster** (base): in-app **Full Roster** across Burnham + Rockford + Pontiac + Arc + Zion (`hired − status − Vacation VAC`). Today does **not** read a spreadsheet. Available drivers come from Full Roster plus manuals — not Burnham!L13, Sat-* sums, or OOT grids.
 - **Call-offs (app)**: Full Roster status + Vacation auto-VAC + **+ Add** manuals on the Available drivers card (`public.manual_call_offs`). Call-off names are entered in the app. Locked past days keep the pills that were already stored.
 - **Subtract** only full-day / status offs: P-day, Call off, FMLA, ok’d off, NCNS / no-call no-show, Jury Duty, Court, Vacation Day, Bereavement, Last Day / retiring.

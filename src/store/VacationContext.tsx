@@ -10,6 +10,7 @@ import {
 } from "react";
 import { VACATION_SEEDS_BY_YEAR } from "../data/vacationSeed";
 import { fetchAllPaged, pagedErrorMessage } from "../lib/cloud";
+import { attachCloudRefresh } from "../lib/cloudRefresh";
 import { getSupabase } from "../lib/supabase";
 import {
   addVacationEntry,
@@ -393,6 +394,11 @@ export function VacationProvider({ children }: { children: ReactNode }) {
     return () => {
       void supabase.removeChannel(channel);
     };
+  }, [cloud, refresh]);
+
+  useEffect(() => {
+    if (!cloud) return;
+    return attachCloudRefresh(refresh);
   }, [cloud, refresh]);
 
   const addDriver = useCallback(

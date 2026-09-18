@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { fetchAllPaged, pagedErrorMessage } from "../lib/cloud";
+import { attachCloudRefresh } from "../lib/cloudRefresh";
 import { getSupabase } from "../lib/supabase";
 import {
   addSpecialtySlot,
@@ -289,6 +290,11 @@ export function SpecialtyProvider({ children }: { children: ReactNode }) {
     return () => {
       void supabase.removeChannel(channel);
     };
+  }, [cloud, refresh]);
+
+  useEffect(() => {
+    if (!cloud) return;
+    return attachCloudRefresh(refresh);
   }, [cloud, refresh]);
 
   const addOpen = useCallback(

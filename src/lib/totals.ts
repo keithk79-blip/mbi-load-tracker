@@ -2,6 +2,7 @@ import { CUSTOM_ID, getStation } from "../data/stations";
 import { commodityRankLabel, tallyLabel } from "./commodity";
 import { STATION_CALL_YARDS, type StationDayBoard } from "./stationCalls";
 import { isBrokerTruck } from "./truck";
+import { sortLoadsNewestFirst } from "./sortLoads";
 import type { Load } from "../types";
 
 export type RankRow = {
@@ -86,6 +87,14 @@ export function filterLoads(loads: Load[], filter: TotalsFilter | null): Load[] 
     );
   }
   return loads.filter((load) => tallyLabel(load.commodity) === filter.key);
+}
+
+/** Station / landfill / commodity accordion: matching loads, newest logged first. */
+export function rankAccordionLoads(
+  loads: Load[],
+  filter: TotalsFilter | null,
+): Load[] {
+  return sortLoadsNewestFirst(filterLoads(loads, filter));
 }
 
 export function filterCaption(filter: TotalsFilter): string {

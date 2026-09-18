@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Load } from "../types";
 import { SPECIALTY_STATIONS } from "./specialtyBoard";
@@ -22,6 +23,7 @@ import {
   isWalkingFloorLoad,
   loadMatchesCallYard,
   rankCommodities,
+  rankAccordionLoads,
 } from "./totals";
 
 function load(partial: Partial<Load>): Load {
@@ -878,5 +880,40 @@ describe("endOfDaySummary", () => {
     const summary = endOfDaySummary([], board);
     expect(summary.stations.find((row) => row.id === "melrose")?.left).toBe("1.5");
     expect(summary.stations.find((row) => row.id === "calumet")?.left).toBe("late");
+  });
+});
+
+describe("rankAccordionLoads", () => {
+  it("keeps only the selected pickup and sorts newest createdAt first", () => {
+    const loads = [
+      load({
+        id: "old",
+        pickup: "Batavia",
+        createdAt: "2026-09-18T10:00:00.000Z",
+        updatedAt: "2026-09-18T18:00:00.000Z",
+      }),
+      load({
+        id: "new",
+        pickup: "Batavia",
+        createdAt: "2026-09-18T14:00:00.000Z",
+        updatedAt: "2026-09-18T14:00:00.000Z",
+      }),
+      load({
+        id: "other",
+        pickup: "Melrose",
+        createdAt: "2026-09-18T15:00:00.000Z",
+      }),
+    ];
+    expect(
+      rankAccordionLoads(loads, { kind: "pickup", key: "Batavia" }).map((row) => row.id),
+    ).toEqual(["new", "old"]);
+  });
+
+  it("Today RHS Transfer station expands loads under the row, not at the bottom", () => {
+    const src = readFileSync(new URL("../screens/TotalsScreen.tsx", import.meta.url), "utf8");
+    expect(src).toContain("rankAccordionLoads");
+    expect(src).toContain("expandedPanel");
+    expect(src).toContain("RankLoadList");
+    expect(src).not.toContain("matching-block");
   });
 });

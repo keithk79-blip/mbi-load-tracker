@@ -23,6 +23,7 @@ import {
   type DailyEodStore,
   type DailyEodTotals,
 } from "../lib/dailyEod";
+import { attachCloudRefresh } from "../lib/cloudRefresh";
 import { getSupabase } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 
@@ -113,6 +114,11 @@ export function DailyEodProvider({ children }: { children: ReactNode }) {
     return () => {
       void supabase.removeChannel(channel);
     };
+  }, [cloud, refresh]);
+
+  useEffect(() => {
+    if (!cloud) return;
+    return attachCloudRefresh(refresh);
   }, [cloud, refresh]);
 
   const saveTotals = useCallback(

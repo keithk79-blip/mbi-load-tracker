@@ -4,6 +4,9 @@
  *   available = hired − status − Vacation VAC − full-day offs
  *               (Late/Early listed, not subtracted)
  *
+ *   base        = hired − status − VAC   (working headcount; available math)
+ *   rosterTotal = hired                  (Full Roster display “out of”)
+ *
  * Chicago = Burnham + Rockford + Pontiac + Arc + Zion.
  * Saturday uses the same Full Roster formula (no Sat-* sheet sums).
  * Sync/import/VAC never delete roster rows.
@@ -126,8 +129,11 @@ export function liveSheetFromRoster(input: {
   const tally = chicagoFullRosterTally(input.roster, input.vacation, input.date);
   const unavailable = rosterUnavailableEntries(input.roster, input.vacation, input.date);
   return {
+    // Working headcount after status / OOT / VAC. Available math subtracts leftover offs from this.
     base: tally.available,
     saturdayBase: tally.available,
+    // Display “out of”: hired company drivers on Full Roster, all yards.
+    rosterTotal: tally.hired,
     saturdayUsesWeekdayBase: input.saturdayUsesWeekdayBase,
     offs: dropOffsAlreadyUnavailable(input.offs, unavailable),
     ootNames: rosterOotNames(input.roster),

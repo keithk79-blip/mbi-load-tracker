@@ -42,6 +42,7 @@ import {
   type CallOffKind,
   type CallOffRow,
 } from "../lib/driverAvailability";
+import { attachCloudRefresh } from "../lib/cloudRefresh";
 import { liveSheetFromRoster } from "../lib/rosterAvailability";
 import { useCallOffLog } from "./CallOffLogContext";
 import { useDriverRoster } from "./DriverRosterContext";
@@ -303,9 +304,6 @@ export function DriversProvider({ children }: { children: ReactNode }) {
 
     const onVisible = () => {
       freezePastDays();
-      if (document.visibilityState === "visible") {
-        void refresh();
-      }
     };
 
     const id = window.setInterval(freezePastDays, 30_000);
@@ -316,6 +314,11 @@ export function DriversProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [persistDays, refresh]);
+
+  useEffect(() => {
+    if (!configured || !session) return;
+    return attachCloudRefresh(refresh);
+  }, [configured, session, refresh]);
 
   const availabilityOn = useCallback(
     (date: string): LockedDay | null => {

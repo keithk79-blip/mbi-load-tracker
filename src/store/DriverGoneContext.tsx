@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { fetchAllPaged, pagedErrorMessage } from "../lib/cloud";
+import { attachCloudRefresh } from "../lib/cloudRefresh";
 import {
   addGoneEntry,
   applyGoneTombstones,
@@ -248,6 +249,11 @@ export function DriverGoneProvider({ children }: { children: ReactNode }) {
     return () => {
       void supabase.removeChannel(channel);
     };
+  }, [cloud, refresh]);
+
+  useEffect(() => {
+    if (!cloud) return;
+    return attachCloudRefresh(refresh);
   }, [cloud, refresh]);
 
   const addGone = useCallback(
