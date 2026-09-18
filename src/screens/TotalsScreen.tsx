@@ -27,14 +27,14 @@ import {
 import {
   endOfDayCards,
   endOfDaySummary,
-  filterCaption,
-  filterLoads,
+  rankAccordionLoads,
   rankCommodities,
   rankDestinations,
   rankPickups,
   type TotalsFilter,
 } from "../lib/totals";
 import { useAuth } from "../store/AuthContext";
+import { attachCloudRefresh } from "../lib/cloudRefresh";
 import { useDailyEod } from "../store/DailyEodContext";
 import { useDrivers } from "../store/DriversContext";
 import { useLoads } from "../store/LoadsContext";
@@ -57,13 +57,18 @@ function useStationCallBoard(date: string) {
   useEffect(() => {
     if (!cloud) return;
     let alive = true;
-    void fetchStationCallStoreFromCloud().then((remote) => {
-      if (!alive || !remote) return;
-      const merged = mergeStationCallStores(readStationCallStore(), remote.days);
-      writeStationCallStore(merged);
-    });
+    const pull = () => {
+      void fetchStationCallStoreFromCloud().then((remote) => {
+        if (!alive || !remote) return;
+        const merged = mergeStationCallStores(readStationCallStore(), remote.days);
+        writeStationCallStore(merged);
+      });
+    };
+    pull();
+    const stop = attachCloudRefresh(pull);
     return () => {
       alive = false;
+      stop();
     };
   }, [cloud]);
 
@@ -102,7 +107,7 @@ export function TotalsScreen({
     [dayLoads, board, snapshot],
   );
 
-  const matching = filter ? filterLoads(dayLoads, filter) : [];
+  const matching = filter ? rankAccordionLoads(dayLoads, filter) : [];
   const dayPhrase = date === today ? "today" : `on ${formatShortDate(date)}`;
 
   const toggle = (next: TotalsFilter) => {
@@ -212,7 +217,7 @@ export function TotalsScreen({
         <>
           <CollapsibleRank
             title="Transfer station"
-            hint="Pickup location. Custom sites are tagged. Tap a row to list those loads."
+            hint="Pickup location. Custom sites are tagged. Tap a row to expand those loads under it."
             rows={byPickup}
             filterKind="pickup"
             active={filter}
@@ -220,10 +225,15 @@ export function TotalsScreen({
             defaultOpen
             compact
             emptyText="Nothing logged this day."
+            expandedPanel={
+              filter?.kind === "pickup" ? (
+                <RankLoadList loads={matching} onEdit={onEdit} />
+              ) : null
+            }
           />
           <CollapsibleRank
             title="Landfill"
-            hint="Delivery / destination. Tap a row to list those loads."
+            hint="Delivery / destination. Tap a row to expand those loads under it."
             rows={byDestination}
             filterKind="destination"
             active={filter}
@@ -231,6 +241,11 @@ export function TotalsScreen({
             defaultOpen={false}
             compact
             emptyText="Nothing logged this day."
+            expandedPanel={
+              filter?.kind === "destination" ? (
+                <RankLoadList loads={matching} onEdit={onEdit} />
+              ) : null
+            }
           />
           <CollapsibleRank
             title="Commodity"
@@ -242,37 +257,16 @@ export function TotalsScreen({
             defaultOpen={false}
             compact
             emptyText="Nothing logged this day."
+            expandedPanel={
+              filter?.kind === "commodity" ? (
+                <RankLoadList loads={matching} onEdit={onEdit} />
+              ) : null
+            }
           />
 
-          {filter ? (
-            <section className="totals-block matching-block">
-              <div className="matching-head">
-                <h2>{filterCaption(filter)}</h2>
-                <button
-                  type="button"
-                  className="text-btn amber"
-                  onClick={() => setFilter(null)}
-                >
-                  Clear
-                </button>
-              </div>
-              <p className="totals-hint">
-                {matching.length} {matching.length === 1 ? "load" : "loads"} · tap
-                Edit to change a row. Totals refresh on save.
-              </p>
-              <div className="feed">
-                {matching.map((load) => (
-                  <LoadRow
-                    key={load.id}
-                    load={load}
-                    onEdit={() => onEdit(load.id)}
-                  />
-                ))}
-              </div>
-            </section>
-          ) : (
-            <p className="field-hint">Tap a row to list those loads.</p>
-          )}
+          {!filter ? (
+            <p className="field-hint">Tap a row to list those loads under it.</p>
+          ) : null}
 
           <button type="button" className="btn-primary" onClick={() => onLog(date)}>
             + Log load
@@ -289,6 +283,25 @@ export function TotalsScreen({
           Clear sample loads
         </button>
       ) : null}
+    </div>
+  );
+}
+
+function RankLoadList({
+  loads,
+  onEdit,
+}: {
+  loads: ReturnType<typeof rankAccordionLoads>;
+  onEdit: (id: string) => void;
+}) {
+  if (loads.length === 0) {
+    return <p className="field-hint">No loads in this group.</p>;
+  }
+  return (
+    <div className="feed rank-accordion-feed">
+      {loads.map((load) => (
+        <LoadRow key={load.id} load={load} onEdit={() => onEdit(load.id)} />
+      ))}
     </div>
   );
 }

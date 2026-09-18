@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { Load } from "../types";
 import { SPECIALTY_STATIONS } from "./specialtyBoard";
@@ -22,6 +23,9 @@ import {
   isWalkingFloorLoad,
   loadMatchesCallYard,
   rankCommodities,
+  rankAccordionLoads,
+  rankPickups,
+  formatRankTrashTotal,
 } from "./totals";
 
 function load(partial: Partial<Load>): Load {
@@ -576,7 +580,7 @@ describe("rankCommodities", () => {
         load({ id: "1", commodity: "C&D" }),
         load({ id: "2", commodity: "Trash (MSW)" }),
       ]),
-    ).toEqual([{ key: "TRASH", label: "Trash (MSW)", count: 2 }]);
+    ).toEqual([{ key: "TRASH", label: "Trash (MSW)", count: 2, trashCount: 2 }]);
   });
 
   it("groups Tires with Trash (MSW) because they share the TRASH tally bucket", () => {
@@ -585,7 +589,51 @@ describe("rankCommodities", () => {
         load({ id: "1", commodity: "Tires" }),
         load({ id: "2", commodity: "Trash (MSW)" }),
       ]),
-    ).toEqual([{ key: "TRASH", label: "Trash (MSW)", count: 2 }]);
+    ).toEqual([{ key: "TRASH", label: "Trash (MSW)", count: 2, trashCount: 2 }]);
+  });
+});
+
+describe("rank grouping trash / total", () => {
+  it("counts MSW + C&D trash against station total, excluding recycle and walking-floor", () => {
+    const loads = [
+      ...Array.from({ length: 10 }, (_, i) =>
+        load({ id: `msw-${i}`, pickup: "Northlake", commodity: "Trash (MSW)" }),
+      ),
+      load({ id: "cd", pickup: "Northlake", commodity: "C&D" }),
+      ...Array.from({ length: 19 }, (_, i) =>
+        load({ id: `rec-${i}`, pickup: "Northlake", commodity: "Recycle" }),
+      ),
+    ];
+    const row = rankPickups(loads).find((item) => item.key === "Northlake");
+    expect(row).toMatchObject({ count: 30, trashCount: 11 });
+    expect(formatRankTrashTotal(row!)).toBe("11 / 30");
+  });
+
+  it("does not count Van Drunen MSW as trash (walking-floor lane, same as Today TRASH)", () => {
+    const loads = [
+      load({
+        id: "vd",
+        pickup: "Van Drunen",
+        commodity: "Trash (MSW)",
+        stationId: "vandrunen",
+      }),
+      load({ id: "nl", pickup: "Northlake", commodity: "Trash (MSW)" }),
+    ];
+    const rows = rankPickups(loads);
+    expect(rows.find((row) => row.key === "Van Drunen")).toMatchObject({
+      count: 1,
+      trashCount: 0,
+    });
+    expect(rows.find((row) => row.key === "Northlake")).toMatchObject({
+      count: 1,
+      trashCount: 1,
+    });
+  });
+
+  it("renders trash / total on CollapsibleRank grouping rows", () => {
+    const src = readFileSync(new URL("../components/CollapsibleRank.tsx", import.meta.url), "utf8");
+    expect(src).toContain("formatRankTrashTotal");
+    expect(src).not.toMatch(/rank-count\}>\{row\.count\}/);
   });
 });
 
@@ -878,5 +926,40 @@ describe("endOfDaySummary", () => {
     const summary = endOfDaySummary([], board);
     expect(summary.stations.find((row) => row.id === "melrose")?.left).toBe("1.5");
     expect(summary.stations.find((row) => row.id === "calumet")?.left).toBe("late");
+  });
+});
+
+describe("rankAccordionLoads", () => {
+  it("keeps only the selected pickup and sorts newest createdAt first", () => {
+    const loads = [
+      load({
+        id: "old",
+        pickup: "Batavia",
+        createdAt: "2026-09-18T10:00:00.000Z",
+        updatedAt: "2026-09-18T18:00:00.000Z",
+      }),
+      load({
+        id: "new",
+        pickup: "Batavia",
+        createdAt: "2026-09-18T14:00:00.000Z",
+        updatedAt: "2026-09-18T14:00:00.000Z",
+      }),
+      load({
+        id: "other",
+        pickup: "Melrose",
+        createdAt: "2026-09-18T15:00:00.000Z",
+      }),
+    ];
+    expect(
+      rankAccordionLoads(loads, { kind: "pickup", key: "Batavia" }).map((row) => row.id),
+    ).toEqual(["new", "old"]);
+  });
+
+  it("Today RHS Transfer station expands loads under the row, not at the bottom", () => {
+    const src = readFileSync(new URL("../screens/TotalsScreen.tsx", import.meta.url), "utf8");
+    expect(src).toContain("rankAccordionLoads");
+    expect(src).toContain("expandedPanel");
+    expect(src).toContain("RankLoadList");
+    expect(src).not.toContain("matching-block");
   });
 });

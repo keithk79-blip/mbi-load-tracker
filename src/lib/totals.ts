@@ -2,12 +2,15 @@ import { CUSTOM_ID, getStation } from "../data/stations";
 import { commodityRankLabel, tallyLabel } from "./commodity";
 import { STATION_CALL_YARDS, type StationDayBoard } from "./stationCalls";
 import { isBrokerTruck } from "./truck";
+import { sortLoadsNewestFirst } from "./sortLoads";
 import type { Load } from "../types";
 
 export type RankRow = {
   key: string;
   label: string;
   count: number;
+  /** Today / EOD TRASH bubble count for this group (MSW + C&D + Tires, not walking-floor). */
+  trashCount: number;
   custom?: boolean;
 };
 
@@ -17,22 +20,42 @@ function sortRanks(rows: RankRow[]): RankRow[] {
   );
 }
 
+/** Collapsed grouping-row label: trash / total, e.g. `10 / 30`. */
+export function formatRankTrashTotal(row: Pick<RankRow, "count" | "trashCount">): string {
+  return `${row.trashCount} / ${row.count}`;
+}
+
+function bumpRank(
+  map: Map<string, RankRow>,
+  key: string,
+  label: string,
+  load: Load,
+  extra?: { custom?: boolean },
+): void {
+  const trash = isTrashLoad(load) ? 1 : 0;
+  const existing = map.get(key);
+  if (existing) {
+    existing.count += 1;
+    existing.trashCount += trash;
+    if (extra?.custom) existing.custom = true;
+    return;
+  }
+  map.set(key, {
+    key,
+    label,
+    count: 1,
+    trashCount: trash,
+    custom: extra?.custom,
+  });
+}
+
 export function rankPickups(loads: Load[]): RankRow[] {
   const map = new Map<string, RankRow>();
   for (const load of loads) {
     const key = load.pickup.trim() || "—";
-    const existing = map.get(key);
-    if (existing) {
-      existing.count += 1;
-      existing.custom = existing.custom || load.stationId === CUSTOM_ID;
-    } else {
-      map.set(key, {
-        key,
-        label: key,
-        count: 1,
-        custom: load.stationId === CUSTOM_ID,
-      });
-    }
+    bumpRank(map, key, key, load, {
+      custom: load.stationId === CUSTOM_ID,
+    });
   }
   return sortRanks([...map.values()]);
 }
@@ -41,9 +64,7 @@ export function rankDestinations(loads: Load[]): RankRow[] {
   const map = new Map<string, RankRow>();
   for (const load of loads) {
     const key = load.destination.trim() || "—";
-    const existing = map.get(key);
-    if (existing) existing.count += 1;
-    else map.set(key, { key, label: key, count: 1 });
+    bumpRank(map, key, key, load);
   }
   return sortRanks([...map.values()]);
 }
@@ -52,20 +73,14 @@ export function rankCommodities(loads: Load[]): RankRow[] {
   const map = new Map<string, RankRow>();
   for (const load of loads) {
     const key = tallyLabel(load.commodity);
-    const existing = map.get(key);
-    if (existing) existing.count += 1;
-    else {
-      map.set(key, {
-        key,
-        // C&D shares the TRASH tally bucket; always label that row Trash (MSW)
-        // so a C&D-first day does not title the merged bucket "C&D".
-        label:
-          key === "TRASH"
-            ? "Trash (MSW)"
-            : commodityRankLabel(load.commodity),
-        count: 1,
-      });
-    }
+    bumpRank(
+      map,
+      key,
+      // C&D shares the TRASH tally bucket; always label that row Trash (MSW)
+      // so a C&D-first day does not title the merged bucket "C&D".
+      key === "TRASH" ? "Trash (MSW)" : commodityRankLabel(load.commodity),
+      load,
+    );
   }
   return sortRanks([...map.values()]);
 }
@@ -86,6 +101,14 @@ export function filterLoads(loads: Load[], filter: TotalsFilter | null): Load[] 
     );
   }
   return loads.filter((load) => tallyLabel(load.commodity) === filter.key);
+}
+
+/** Station / landfill / commodity accordion: matching loads, newest logged first. */
+export function rankAccordionLoads(
+  loads: Load[],
+  filter: TotalsFilter | null,
+): Load[] {
+  return sortLoadsNewestFirst(filterLoads(loads, filter));
 }
 
 export function filterCaption(filter: TotalsFilter): string {
@@ -185,10 +208,12 @@ export function countWalkingFloorLoads(loads: Load[]): number {
  * Today / EOD TRASH bubble: MSW, C&D, and Tires that are not a walking-floor
  * lane (Van Drunen, GraysLake Recycle → Hodgkins, Groot, wood, etc.).
  */
+export function isTrashLoad(load: Load): boolean {
+  return tallyLabel(load.commodity) === "TRASH" && !isWalkingFloorLoad(load);
+}
+
 export function countTrashLoads(loads: Load[]): number {
-  return loads.filter(
-    (load) => tallyLabel(load.commodity) === "TRASH" && !isWalkingFloorLoad(load),
-  ).length;
+  return loads.filter(isTrashLoad).length;
 }
 
 /** Dispatch Board Total Loads = Total MSW + Total Tank + Total Walking-Floor. */

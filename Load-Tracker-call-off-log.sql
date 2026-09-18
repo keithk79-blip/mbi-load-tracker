@@ -41,3 +41,10 @@ create policy "crew_delete_call_off_log"
   on public.call_off_log for delete
   to authenticated
   using (true);
+
+do $$
+begin
+  alter publication supabase_realtime add table public.call_off_log;
+exception
+  when duplicate_object then null;
+end $$;

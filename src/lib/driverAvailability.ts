@@ -151,9 +151,19 @@ export function withManualOffs(
 
 export type DayAvailability = {
   date: string;
+  /**
+   * Working headcount after Full Roster status / OOT / Vacation VAC.
+   * Used for available math (available = base − leftover full-day offs).
+   * Not the “out of” display total.
+   */
   base: number;
   offs: number;
   available: number;
+  /**
+   * Full Roster hired count across all yards (company drivers on the Driver
+   * tab). Display denominator for “{available} out of {rosterTotal}”.
+   */
+  rosterTotal?: number;
   ootNames?: string[];
 };
 
@@ -305,14 +315,41 @@ export function availableDrivers(
   base: number,
   rows: CallOffRow[],
   day: string,
+  rosterTotal?: number,
 ): DayAvailability {
   const offs = fullDayOffCount(rows, day);
-  return {
+  const dayAvail: DayAvailability = {
     date: day,
     base,
     offs,
     available: Math.max(0, Math.floor(base) - offs),
   };
+  if (typeof rosterTotal === "number" && Number.isFinite(rosterTotal)) {
+    dayAvail.rosterTotal = Math.max(0, Math.floor(rosterTotal));
+  }
+  return dayAvail;
+}
+
+/** Display denominator: Full Roster hired, never the reduced working base. */
+export function availableOutOfTotal(
+  day: Pick<DayAvailability, "base" | "rosterTotal">,
+): number {
+  if (typeof day.rosterTotal === "number" && Number.isFinite(day.rosterTotal)) {
+    return Math.max(0, Math.floor(day.rosterTotal));
+  }
+  return Math.max(0, Math.floor(day.base));
+}
+
+export function formatAvailableOutOf(
+  day: Pick<DayAvailability, "available" | "base" | "rosterTotal">,
+  whenLabel?: string | null,
+): string {
+  const outOf = availableOutOfTotal(day);
+  if (whenLabel === "drivers") {
+    return `${day.available} out of ${outOf} drivers`;
+  }
+  if (whenLabel) return `${day.available} out of ${outOf} · ${whenLabel}`;
+  return `${day.available} out of ${outOf}`;
 }
 
 export function averageAvailable(

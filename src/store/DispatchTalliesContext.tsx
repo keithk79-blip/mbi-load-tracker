@@ -21,6 +21,7 @@ import {
   type DispatchTalliesPersisted,
   type DispatchTalliesStore,
 } from "../lib/dispatchTallies";
+import { attachCloudRefresh } from "../lib/cloudRefresh";
 import { getSupabase } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 
@@ -112,6 +113,11 @@ export function DispatchTalliesProvider({ children }: { children: ReactNode }) {
     return () => {
       void supabase.removeChannel(channel);
     };
+  }, [cloud, refresh]);
+
+  useEffect(() => {
+    if (!cloud) return;
+    return attachCloudRefresh(refresh);
   }, [cloud, refresh]);
 
   const save = useCallback(

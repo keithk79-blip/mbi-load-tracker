@@ -10,6 +10,7 @@ import {
 } from "react";
 import { callOffLogSeedRows } from "../data/callOffLogSeed";
 import { fetchAllPaged, pagedErrorMessage } from "../lib/cloud";
+import { attachCloudRefresh } from "../lib/cloudRefresh";
 import {
   addCallOffLogEntry,
   cleanCallOffLogRows,
@@ -232,6 +233,11 @@ export function CallOffLogProvider({ children }: { children: ReactNode }) {
     return () => {
       void supabase.removeChannel(channel);
     };
+  }, [cloud, refresh]);
+
+  useEffect(() => {
+    if (!cloud) return;
+    return attachCloudRefresh(refresh);
   }, [cloud, refresh]);
 
   const loadSheet = useCallback(async () => {

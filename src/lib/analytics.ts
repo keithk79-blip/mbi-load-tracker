@@ -75,9 +75,10 @@ export function pickupPieSlices(rows: RankRow[]): PieSlice[] {
     const head = live.slice(0, MAX_NAMED_SLICES);
     const tail = live.slice(MAX_NAMED_SLICES);
     const otherCount = tail.reduce((sum, row) => sum + row.count, 0);
+    const otherTrash = tail.reduce((sum, row) => sum + row.trashCount, 0);
     grouped = [
       ...head,
-      { key: "other", label: "Other", count: otherCount },
+      { key: "other", label: "Other", count: otherCount, trashCount: otherTrash },
     ];
   }
 

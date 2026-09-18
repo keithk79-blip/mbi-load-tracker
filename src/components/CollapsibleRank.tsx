@@ -1,6 +1,6 @@
 import { ChevronDown } from "lucide-react";
-import { useState } from "react";
-import type { RankRow, TotalsFilter } from "../lib/totals";
+import { useState, type ReactNode } from "react";
+import { formatRankTrashTotal, type RankRow, type TotalsFilter } from "../lib/totals";
 
 type CollapsibleRankProps = {
   title: string;
@@ -13,6 +13,8 @@ type CollapsibleRankProps = {
   emptyText?: string;
   /** Compact numbers/table — no full-width bars. */
   compact?: boolean;
+  /** Loads for the selected row, rendered as an accordion under that row. */
+  expandedPanel?: ReactNode;
 };
 
 export function CollapsibleRank({
@@ -25,6 +27,7 @@ export function CollapsibleRank({
   defaultOpen = true,
   emptyText = "Nothing logged in this group.",
   compact = false,
+  expandedPanel,
 }: CollapsibleRankProps) {
   const [open, setOpen] = useState(defaultOpen);
   const max = rows[0]?.count ?? 0;
@@ -63,7 +66,10 @@ export function CollapsibleRank({
                   active?.kind === filterKind && active.key === row.key;
                 const pct = max === 0 ? 0 : Math.max(8, (row.count / max) * 100);
                 return (
-                  <li key={row.key}>
+                  <li
+                    key={row.key}
+                    className={selected ? "rank-item rank-item-open" : "rank-item"}
+                  >
                     {onSelect ? (
                       <button
                         type="button"
@@ -72,6 +78,7 @@ export function CollapsibleRank({
                             ? `rank-row rank-row-active${compact ? " rank-row-compact" : ""}`
                             : `rank-row${compact ? " rank-row-compact" : ""}`
                         }
+                        aria-expanded={selected}
                         onClick={() => onSelect({ kind: filterKind, key: row.key })}
                       >
                         <RankInner row={row} pct={pct} showBar={!compact} />
@@ -83,6 +90,9 @@ export function CollapsibleRank({
                         <RankInner row={row} pct={pct} showBar={!compact} />
                       </div>
                     )}
+                    {selected && expandedPanel ? (
+                      <div className="rank-accordion">{expandedPanel}</div>
+                    ) : null}
                   </li>
                 );
               })}
@@ -110,7 +120,12 @@ function RankInner({
           {row.label}
           {row.custom ? <span className="custom-pill">Custom</span> : null}
         </span>
-        <strong className="rank-count">{row.count}</strong>
+        <strong
+          className="rank-count"
+          aria-label={`${row.trashCount} trash of ${row.count} loads`}
+        >
+          {formatRankTrashTotal(row)}
+        </strong>
       </div>
       {showBar ? (
         <div className="rank-track" aria-hidden>

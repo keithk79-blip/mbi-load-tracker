@@ -654,4 +654,76 @@ alter table public.driver_roster_entries
 comment on column public.driver_roster_entries.phone is
   'Optional Full Roster contact. Sat rows stay null.';
 
+-- Call-off spreadsheet log (Available drivers). Must be on supabase_realtime
+-- or postgres_changes never fires and the other device stays stale.
+create table if not exists public.call_off_log (
+  id text primary key,
+  name text not null,
+  start_date date not null,
+  end_date date,
+  reason text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by uuid
+);
+
+create index if not exists call_off_log_start_idx
+  on public.call_off_log (start_date);
+
+alter table public.call_off_log enable row level security;
+
+drop policy if exists "crew_select_call_off_log" on public.call_off_log;
+create policy "crew_select_call_off_log"
+  on public.call_off_log for select to authenticated using (true);
+
+drop policy if exists "crew_insert_call_off_log" on public.call_off_log;
+create policy "crew_insert_call_off_log"
+  on public.call_off_log for insert to authenticated with check (true);
+
+drop policy if exists "crew_update_call_off_log" on public.call_off_log;
+create policy "crew_update_call_off_log"
+  on public.call_off_log for update to authenticated using (true) with check (true);
+
+drop policy if exists "crew_delete_call_off_log" on public.call_off_log;
+create policy "crew_delete_call_off_log"
+  on public.call_off_log for delete to authenticated using (true);
+
+do $$
+begin
+  alter publication supabase_realtime add table public.call_off_log;
+exception when duplicate_object then null;
+end $$;
+
+create table if not exists public.day_dispatch_tallies (
+  date date primary key,
+  batavia_preload int not null default 0,
+  evanston_asking int not null default 0,
+  updated_at timestamptz not null default now(),
+  updated_by uuid references auth.users (id) on delete set null
+);
+
+alter table public.day_dispatch_tallies enable row level security;
+
+drop policy if exists "crew_select_day_dispatch_tallies" on public.day_dispatch_tallies;
+create policy "crew_select_day_dispatch_tallies"
+  on public.day_dispatch_tallies for select to authenticated using (true);
+
+drop policy if exists "crew_insert_day_dispatch_tallies" on public.day_dispatch_tallies;
+create policy "crew_insert_day_dispatch_tallies"
+  on public.day_dispatch_tallies for insert to authenticated with check (true);
+
+drop policy if exists "crew_update_day_dispatch_tallies" on public.day_dispatch_tallies;
+create policy "crew_update_day_dispatch_tallies"
+  on public.day_dispatch_tallies for update to authenticated using (true) with check (true);
+
+drop policy if exists "crew_delete_day_dispatch_tallies" on public.day_dispatch_tallies;
+create policy "crew_delete_day_dispatch_tallies"
+  on public.day_dispatch_tallies for delete to authenticated using (true);
+
+do $$
+begin
+  alter publication supabase_realtime add table public.day_dispatch_tallies;
+exception when duplicate_object then null;
+end $$;
+
 notify pgrst, 'reload schema';

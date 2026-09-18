@@ -8,6 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { formatHeaderDate } from "../lib/chicagoDate";
+import { attachCloudRefresh } from "../lib/cloudRefresh";
 import { getSupabase } from "../lib/supabase";
 import { useAuth } from "../store/AuthContext";
 import {
@@ -449,8 +450,10 @@ export function StationCallsCard({ date }: { date: string }) {
         },
       )
       .subscribe();
+    const stopRefresh = attachCloudRefresh(hydrate);
     return () => {
       alive = false;
+      stopRefresh();
       void supabase.removeChannel(channel);
     };
   }, [cloud, user?.id]);

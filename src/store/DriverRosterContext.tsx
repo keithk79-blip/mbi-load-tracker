@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { fetchAllPaged, pagedErrorMessage } from "../lib/cloud";
+import { attachCloudRefresh } from "../lib/cloudRefresh";
 import {
   addRosterEntry,
   applyRosterTombstones,
@@ -425,6 +426,11 @@ export function DriverRosterProvider({ children }: { children: ReactNode }) {
     return () => {
       void supabase.removeChannel(channel);
     };
+  }, [cloud, refresh]);
+
+  useEffect(() => {
+    if (!cloud) return;
+    return attachCloudRefresh(refresh);
   }, [cloud, refresh]);
 
   const addDriver = useCallback(

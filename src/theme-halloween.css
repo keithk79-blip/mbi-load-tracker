@@ -249,3 +249,16 @@ html[data-theme="halloween"] .calloff-kind-late-early.selected {
   background: #c2410c !important;
   color: #ffffff !important;
 }
+
+html[data-theme="halloween"] .rank-row-active {
+  background: rgba(58, 32, 20, 0.95) !important;
+  border-color: var(--amber) !important;
+}
+
+html[data-theme="halloween"] .rank-accordion {
+  border-left-color: var(--amber);
+}
+
+html[data-theme="halloween"] .rank-accordion .load-row {
+  background: rgba(36, 20, 26, 0.76) !important;
+}
