@@ -2522,7 +2522,7 @@ body.app-ready .splash {
 .station-calls-table tbody th {
   text-align: left;
   padding: 0;
-  width: 68px;
+  width: 132px;
   font-size: 10px;
   font-weight: 700;
   background: #f5f3f0;
@@ -2652,7 +2652,7 @@ body.app-ready .splash {
   width: 100%;
   height: 28px;
   font-weight: 700;
-  font-size: 10px;
+  font-size: 16px;
 }
 .station-call-start.is-zero,
 .station-call-input.is-zero {

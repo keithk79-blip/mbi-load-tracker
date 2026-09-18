@@ -22,13 +22,88 @@ export const STATION_CALL_YARDS = [
   { id: "roscoe", label: "Roscoe" },
 ] as const;
 
+export type StationCallYard = { id: string; label: string };
+
+const EXTRA_YARDS_KEY = "chitrader.load-tracker.station-call-extra-yards.v1";
+
+function slugStationId(label: string): string {
+  const base = label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return base || `station-${Date.now()}`;
+}
+
+function readExtraYards(): StationCallYard[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(EXTRA_YARDS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const out: StationCallYard[] = [];
+    const seen = new Set<string>(STATION_CALL_YARDS.map((y) => y.id));
+    for (const row of parsed) {
+      if (!row || typeof row !== "object") continue;
+      const id = typeof (row as { id?: unknown }).id === "string" ? (row as { id: string }).id.trim() : "";
+      const label =
+        typeof (row as { label?: unknown }).label === "string"
+          ? (row as { label: string }).label.trim()
+          : "";
+      if (!id || !label || seen.has(id)) continue;
+      seen.add(id);
+      out.push({ id, label });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function writeExtraYards(yards: StationCallYard[]): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(EXTRA_YARDS_KEY, JSON.stringify(yards));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+/** Built-in yards plus any rows Keith added with + Add Row. */
+export function stationCallYards(): StationCallYard[] {
+  return [...STATION_CALL_YARDS, ...readExtraYards()];
+}
+
+/** Add a custom Load Count By Hour row. Returns null if the name is empty or already listed. */
+export function addStationCallYard(label: string): StationCallYard | null {
+  const trimmed = label.trim();
+  if (!trimmed) return null;
+  const existing = stationCallYards();
+  if (existing.some((y) => y.label.toLowerCase() === trimmed.toLowerCase())) {
+    return null;
+  }
+  let id = slugStationId(trimmed);
+  const used = new Set(existing.map((y) => y.id));
+  if (used.has(id)) {
+    let n = 2;
+    while (used.has(`${id}-${n}`)) n += 1;
+    id = `${id}-${n}`;
+  }
+  const yard = { id, label: trimmed };
+  writeExtraYards([...readExtraYards(), yard]);
+  return yard;
+}
+
+
 export type StationCallId = (typeof STATION_CALL_YARDS)[number]["id"];
 
 /** Next/previous yard in table order. Null at either end (Enter should blur). */
 export function adjacentStationId(stationId: string, delta: 1 | -1): string | null {
-  const i = STATION_CALL_YARDS.findIndex((y) => y.id === stationId);
+  const yards = stationCallYards();
+  const i = yards.findIndex((y) => y.id === stationId);
   if (i < 0) return null;
-  return STATION_CALL_YARDS[i + delta]?.id ?? null;
+  return yards[i + delta]?.id ?? null;
 }
 
 /** Hour slots after Start, before Close. */
@@ -92,7 +167,7 @@ function emptyRow(): StationDayRow {
 }
 
 function knownStationId(id: string): boolean {
-  return STATION_CALL_YARDS.some((yard) => yard.id === id);
+  return stationCallYards().some((yard) => yard.id === id);
 }
 
 function nowIso(at?: string): string {
@@ -188,7 +263,7 @@ export function gcStationCallTombstones(remote: StationCallStore): void {
 
 export function emptyBoard(): StationDayBoard {
   const board: StationDayBoard = {};
-  for (const yard of STATION_CALL_YARDS) board[yard.id] = emptyRow();
+  for (const yard of stationCallYards()) board[yard.id] = emptyRow();
   return board;
 }
 
@@ -430,7 +505,7 @@ export function subscribeStationNoteStore(listener: StationNoteListener): () => 
 
 export function writeStationNoteStore(notes: StationNoteStore): void {
   const cleaned: StationNoteStore = {};
-  for (const yard of STATION_CALL_YARDS) {
+  for (const yard of stationCallYards()) {
     const row = cleanNoteRow(notes[yard.id]);
     if (row) cleaned[yard.id] = row;
   }
@@ -462,7 +537,7 @@ export function readStationCallStore(): StationCallStore {
     for (const [date, board] of Object.entries(parsed.days)) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !board || typeof board !== "object") continue;
       const day = emptyBoard();
-      for (const yard of STATION_CALL_YARDS) {
+      for (const yard of stationCallYards()) {
         day[yard.id] = cleanRow((board as StationDayBoard)[yard.id]);
       }
       out[date] = day;
@@ -606,7 +681,7 @@ export async function fetchStationCallStoreFromCloud(): Promise<StationCallCloud
     const board = row.board;
     rawDays[row.date] = board;
     if (board && typeof board === "object") {
-      for (const yard of STATION_CALL_YARDS) {
+      for (const yard of stationCallYards()) {
         day[yard.id] = cleanRow((board as StationDayBoard)[yard.id]);
       }
     }
@@ -740,7 +815,7 @@ function cellsVisuallyEqual(
 
 /** True when two boards show the same hour/Close values (null and missing both blank). */
 export function boardsEquivalent(a: StationDayBoard, b: StationDayBoard): boolean {
-  for (const yard of STATION_CALL_YARDS) {
+  for (const yard of stationCallYards()) {
     const la = a[yard.id] ?? emptyRow();
     const lb = b[yard.id] ?? emptyRow();
     if (!cellsVisuallyEqual(la.close, lb.close)) return false;
@@ -759,7 +834,7 @@ export function notesEquivalent(
 }
 
 export function hasExplicitClears(board: StationDayBoard): boolean {
-  for (const yard of STATION_CALL_YARDS) {
+  for (const yard of stationCallYards()) {
     const row = board[yard.id] ?? emptyRow();
     if (row.close === null && row.closeAt) return true;
     for (const hour of STATION_CALL_HOURS) {
@@ -786,7 +861,7 @@ export function mergeBoardCells(
   remote: StationDayBoard,
 ): StationDayBoard {
   const out = emptyBoard();
-  for (const yard of STATION_CALL_YARDS) {
+  for (const yard of stationCallYards()) {
     const l = local[yard.id] ?? emptyRow();
     const r = remote[yard.id] ?? emptyRow();
     const hours: StationHourMap = {};
@@ -817,7 +892,7 @@ export function mergeBoardCells(
 /** Filled hour cells + non-null closes — used to decide which board to push. */
 export function boardFillScore(board: StationDayBoard): number {
   let score = 0;
-  for (const yard of STATION_CALL_YARDS) {
+  for (const yard of stationCallYards()) {
     const row = board[yard.id] ?? emptyRow();
     for (const hour of STATION_CALL_HOURS) {
       if (stationCellFilled(row.hours[hour.key])) score += 1;
@@ -858,7 +933,7 @@ export function reconcileStationNotesCloud(
 ): StationNoteReconcile {
   const merged = seedStationNotes(mergeStationNoteStores(local, remote), legacy);
   const toPush: { stationId: string; row: StationNoteRow }[] = [];
-  for (const yard of STATION_CALL_YARDS) {
+  for (const yard of stationCallYards()) {
     const row = merged[yard.id];
     if (!row || !stationNoteInitialized(row)) continue;
     const remoteRow = remote[yard.id];

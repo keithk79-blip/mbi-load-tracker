@@ -13,7 +13,8 @@ import { getSupabase } from "../lib/supabase";
 import { useAuth } from "../store/AuthContext";
 import {
   STATION_CALL_HOURS,
-  STATION_CALL_YARDS,
+  stationCallYards,
+  addStationCallYard,
   adjacentStationId,
   boardForDate,
   commitStationCell,
@@ -375,6 +376,11 @@ export function StationCallsCard({ date }: { date: string }) {
   const cloud = configured && !!session;
   const [store, setStore] = useState(() => readStationCallStore());
   const [notes, setNotes] = useState<StationNoteStore>(() => loadStationNotes());
+  const [extraTick, setExtraTick] = useState(0);
+  const yards = useMemo(() => {
+    void extraTick;
+    return stationCallYards();
+  }, [extraTick]);
   const board = useMemo(() => boardForDate(store, date), [store, date]);
   const [noteOpen, setNoteOpen] = useState<{
     date: string;
@@ -549,7 +555,7 @@ export function StationCallsCard({ date }: { date: string }) {
             </tr>
           </thead>
           <tbody>
-            {STATION_CALL_YARDS.map((yard) => {
+            {yards.map((yard) => {
               const row = board[yard.id];
               const start = startForStation(store, date, yard.id);
               const note = noteForStation(notes, yard.id);
@@ -610,12 +616,14 @@ export function StationCallsCard({ date }: { date: string }) {
         type="button"
         className="station-calls-add-btn"
         onClick={() => {
-          const newId = prompt("Enter station ID (e.g., 'my-yard'):");
-          if (!newId) return;
-          const newLabel = prompt("Enter station name:");
+          const newLabel = window.prompt("Customer / station name");
           if (!newLabel) return;
-          // Add new yard to the list
-          alert("Stations are managed at the database level. Contact your admin to add new yards.");
+          const yard = addStationCallYard(newLabel);
+          if (!yard) {
+            window.alert("That name is already on the list.");
+            return;
+          }
+          setExtraTick((n) => n + 1);
         }}
       >
         + Add Row
