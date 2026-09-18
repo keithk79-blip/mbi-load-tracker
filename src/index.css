@@ -2487,7 +2487,8 @@ body.app-ready .splash {
 }
 .station-calls-table {
   border-collapse: collapse;
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   table-layout: fixed;
   font-size: 10px;
 }
@@ -2496,7 +2497,8 @@ body.app-ready .splash {
   border: 1px solid var(--line);
   text-align: center;
   padding: 2px 2px;
-  min-width: 0;
+  width: 44px;
+  min-width: 44px;
   font-size: 14px;
   height: 32px;
 }
@@ -2511,26 +2513,28 @@ body.app-ready .splash {
   top: 0;
   z-index: 1;
 }
+.station-calls-corner,
+.station-calls-table thead th:first-child,
+.station-calls-table tbody th {
+  width: 260px !important;
+  min-width: 260px !important;
+  max-width: none !important;
+  text-align: left !important;
+}
 .station-calls-corner {
   background: #d4cfc8 !important;
   color: var(--text) !important;
-  width: 188px !important;
-  text-align: left !important;
   padding-left: 6px !important;
   font-size: 9px !important;
 }
 .station-calls-table tbody th {
-  text-align: left;
   padding: 0;
-  width: 188px;
-  min-width: 188px;
-  max-width: 220px;
   font-size: 10px;
   font-weight: 700;
   background: #f5f3f0;
   position: sticky;
   left: 0;
-  z-index: 1;
+  z-index: 2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
